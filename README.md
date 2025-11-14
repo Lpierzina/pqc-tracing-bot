@@ -307,6 +307,39 @@ inside the module, invokes `pqc_handshake`, and prints the 32-byte digest in hex
 This is the starting point for wiring the actual Kyber/Dilithium engines and
 embedding the enclave inside Autheo-One’s Go orchestrator.
 
+### End-to-end flow
+
+1. **Host request** – The Go harness builds a nonce-bearing string such as
+   `client=autheo-demo&ts=<unix-nanos>` (see `buildRequestPayload`) and writes
+   it into module memory using `pqc_alloc` + `Memory().Write`.
+2. **WASM call** – Host code allocates a 64-byte response buffer, calls
+   `pqc_handshake(req_ptr, req_len, resp_ptr, resp_len)`, and later frees both
+   buffers via `pqc_free`.
+3. **Contract logic** – Inside `pqc_handshake` (`src/wasm.rs`), the pointers are
+   reinterpreted as Rust slices and passed to `handshake::execute_handshake`.
+4. **Digest derivation** – `execute_handshake` prefixes the request with the
+   domain separator `b"PQCNET_HANDSHAKE_V0"` and hashes it with BLAKE2s, copying
+   the first 32 bytes into the caller-provided response slice. Any empty request
+   or undersized buffer is rejected with `PqcError`.
+5. **Result propagation** – Success returns the number of bytes written
+   (`32`). Errors map to stable codes returned to the host:
+   - `-1` → invalid input (null pointers / empty request);
+   - `-2` → response buffer too small;
+   - `-127` → catch-all internal error.
+6. **Host output** – The harness reads the reported number of bytes back out of
+   WASM memory, hex-encodes them, and logs both the request and deterministic
+   response digest. Replaying the exact same request reproduces the same digest,
+   which keeps the ABI stable while real ML-KEM/ML-DSA plumbing is brought
+   online.
+
+> ℹ️ Replacing the placeholder digest with a true PQC handshake simply means
+> swapping `execute_handshake` for logic that:
+> - pulls the current ML-KEM public key from `KeyManager`,
+> - runs `encapsulate_for_current()` to derive a shared secret,
+> - annotates/signs the transcript via `SignatureManager::sign_kem_transcript`,
+> - serializes the resulting ciphertext, shared secret handle, and signature
+>   back to the host. The wasm/Go ABI remains the same.
+
 License
 
 TBD – e.g. MIT / Apache-2.0 (align with Autheo’s policy).
