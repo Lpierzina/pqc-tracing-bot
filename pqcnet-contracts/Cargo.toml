@@ -1,0 +1,8 @@
+[package]
+name = "pqcnet-contracts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blake2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }

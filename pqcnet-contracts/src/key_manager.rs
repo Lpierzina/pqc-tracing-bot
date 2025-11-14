@@ -1,0 +1,170 @@
+//! ML-KEM key management (rotation + threshold policy metadata).
+
+use crate::error::{PqcError, PqcResult};
+use crate::kem::{MlKemEncapsulation, MlKemEngine, MlKemKeyPair};
+use crate::types::{Bytes, KeyId, SecurityLevel, TimestampMs};
+
+/// Threshold policy for Shamir-style sharing handled by the host.
+#[derive(Clone, Copy, Debug)]
+pub struct ThresholdPolicy {
+    /// Minimum number of shares required to recover the secret.
+    pub t: u8,
+    /// Total number of provisioned shares.
+    pub n: u8,
+}
+
+/// State for a single rotating ML-KEM key.
+#[derive(Clone)]
+pub struct KemKeyState {
+    /// Logical identifier derived from the public key and creation time.
+    pub id: KeyId,
+    /// Serialized ML-KEM public key.
+    pub public_key: Bytes,
+    /// Security level for the key (e.g., ML-KEM-128).
+    pub level: SecurityLevel,
+    /// Timestamp when the key was created.
+    pub created_at: TimestampMs,
+    /// Timestamp when the key expires and must rotate.
+    pub expires_at: TimestampMs,
+}
+
+/// Contract-level key manager (backed by storage in the host runtime).
+///
+/// # Example: key generation and rotation
+///
+/// ```ignore
+/// # use pqcnet_contracts::key_manager::{KeyManager, ThresholdPolicy};
+/// # use pqcnet_contracts::kem::{MlKem, MlKemEngine, MlKemEncapsulation, MlKemKeyPair};
+/// # use pqcnet_contracts::types::{SecurityLevel, TimestampMs};
+/// #
+/// # struct DummyKem;
+/// # impl MlKem for DummyKem {
+/// #     fn level(&self) -> SecurityLevel { SecurityLevel::MlKem128 }
+/// #     fn keygen(&self) -> pqcnet_contracts::error::PqcResult<MlKemKeyPair> {
+/// #         Ok(MlKemKeyPair {
+/// #             public_key: vec![0u8; 32],
+/// #             secret_key: vec![1u8; 32],
+/// #             level: SecurityLevel::MlKem128,
+/// #         })
+/// #     }
+/// #     fn encapsulate(&self, _: &[u8]) -> pqcnet_contracts::error::PqcResult<MlKemEncapsulation> {
+/// #         Ok(MlKemEncapsulation { ciphertext: vec![2u8; 32], shared_secret: vec![3u8; 32] })
+/// #     }
+/// #     fn decapsulate(&self, _: &[u8], _: &[u8]) -> pqcnet_contracts::error::PqcResult<Vec<u8>> {
+/// #         Ok(vec![4u8; 32])
+/// #     }
+/// # }
+/// #
+/// let kem_impl = DummyKem;
+/// let kem_engine = MlKemEngine::new(&kem_impl);
+///
+/// let mut km = KeyManager::new(
+///     kem_engine,
+///     ThresholdPolicy { t: 3, n: 5 },
+///     300_000, // 300 seconds
+/// );
+///
+/// let now: TimestampMs = 1_700_000_000_000;
+/// let state = km.keygen_and_install(now)?;
+/// let rotation = km.rotate_if_needed(now + 301_000)?;
+/// ```
+pub struct KeyManager<'a> {
+    kem: MlKemEngine<'a>,
+    threshold: ThresholdPolicy,
+    rotation_interval_ms: u64,
+    current: Option<KemKeyState>,
+}
+
+impl<'a> KeyManager<'a> {
+    /// Create a new ML-KEM key manager.
+    pub fn new(
+        kem: MlKemEngine<'a>,
+        threshold: ThresholdPolicy,
+        rotation_interval_ms: u64,
+    ) -> Self {
+        Self {
+            kem,
+            threshold,
+            rotation_interval_ms,
+            current: None,
+        }
+    }
+
+    /// Return the threshold policy used for Shamir sharing off-chain.
+    pub fn threshold_policy(&self) -> ThresholdPolicy {
+        self.threshold
+    }
+
+    /// Return the configured rotation interval in milliseconds.
+    pub fn rotation_interval_ms(&self) -> u64 {
+        self.rotation_interval_ms
+    }
+
+    /// Generate new ML-KEM key pair and install as the current key.
+    ///
+    /// The host performs Shamir splitting + storage of the secret key shares.
+    pub fn keygen_and_install(&mut self, now_ms: TimestampMs) -> PqcResult<KemKeyState> {
+        let pair: MlKemKeyPair = self.kem.keygen()?;
+
+        let id = self.compute_key_id(&pair.public_key, now_ms);
+        let state = KemKeyState {
+            id,
+            public_key: pair.public_key.clone(),
+            level: pair.level,
+            created_at: now_ms,
+            expires_at: now_ms + self.rotation_interval_ms,
+        };
+
+        // Persist `state` and share metadata via the host runtime.
+        self.current = Some(state.clone());
+        Ok(state)
+    }
+
+    /// Rotate key if expired according to `rotation_interval_ms`.
+    pub fn rotate_if_needed(
+        &mut self,
+        now_ms: TimestampMs,
+    ) -> PqcResult<Option<(KemKeyState, KemKeyState)>> {
+        let current = match &self.current {
+            Some(c) => c.clone(),
+            None => {
+                let new = self.keygen_and_install(now_ms)?;
+                return Ok(Some((new.clone(), new)));
+            }
+        };
+
+        if now_ms < current.expires_at {
+            return Ok(None);
+        }
+
+        let old = current.clone();
+        let new = self.keygen_and_install(now_ms)?;
+        Ok(Some((old, new)))
+    }
+
+    /// Encapsulate a new session key to the current public key.
+    pub fn encapsulate_for_current(&self) -> PqcResult<(KemKeyState, MlKemEncapsulation)> {
+        let current = self
+            .current
+            .as_ref()
+            .ok_or(PqcError::InternalError("no active KEM key"))?
+            .clone();
+
+        let enc = self.kem.encapsulate(&current.public_key)?;
+        Ok((current, enc))
+    }
+
+    fn compute_key_id(&self, pk: &[u8], now_ms: TimestampMs) -> KeyId {
+        use blake2::Blake2s256;
+        use digest::{Digest, Output};
+
+        let mut hasher = Blake2s256::new();
+        hasher.update(pk);
+        hasher.update(now_ms.to_le_bytes());
+        let out: Output<Blake2s256> = hasher.finalize();
+
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&out[..32]);
+        KeyId(id)
+    }
+}
