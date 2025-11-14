@@ -270,6 +270,43 @@ Roadmap
 
  Publish crate docs via cargo doc / hosted docs
 
+---
+
+## WASM Handshake ABI & Go wazero Harness
+
+The crate now exports a minimal enclave surface so hosts can exercise it via
+WASM:
+
+- `pqc_alloc(len: u32) -> u32` / `pqc_free(ptr: u32, len: u32)` manage linear
+  memory without exposing the allocator directly.
+- `pqc_handshake(req_ptr, req_len, resp_ptr, resp_len) -> i32` consumes arbitrary
+  request bytes and writes a fixed 32-byte digest to `resp_ptr`. Non-negative
+  return values indicate the number of response bytes written; `-1` signals
+  invalid input, `-2` indicates an undersized response buffer, and `-127`
+  captures internal errors. See `pqcnet-contracts/src/handshake.rs` for the
+  placeholder implementation.
+
+### Build the WASM artifact
+
+```
+cd pqcnet-contracts
+cargo build --release --target wasm32-unknown-unknown
+# -> target/wasm32-unknown-unknown/release/pqcnet_contracts.wasm
+```
+
+### Run the Go+wazero harness
+
+```
+cd wazero-harness
+go run . \
+  -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/pqcnet_contracts.wasm
+```
+
+The harness (see `wazero-harness/main.go`) allocates request/response buffers
+inside the module, invokes `pqc_handshake`, and prints the 32-byte digest in hex.
+This is the starting point for wiring the actual Kyber/Dilithium engines and
+embedding the enclave inside Autheo-One’s Go orchestrator.
+
 License
 
 TBD – e.g. MIT / Apache-2.0 (align with Autheo’s policy).

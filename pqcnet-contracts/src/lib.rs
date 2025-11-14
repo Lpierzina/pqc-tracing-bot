@@ -8,10 +8,32 @@
 
 extern crate alloc;
 
+#[cfg(target_arch = "wasm32")]
+extern crate wee_alloc;
+
+#[cfg(target_arch = "wasm32")]
+use core::panic::PanicInfo;
+#[cfg(target_arch = "wasm32")]
+use wee_alloc::WeeAlloc;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
 pub mod dsa;
 pub mod error;
+pub mod handshake;
 pub mod kem;
 pub mod key_manager;
 pub mod qs_dag;
 pub mod signatures;
 pub mod types;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOC: WeeAlloc = WeeAlloc::INIT;
+
+#[cfg(target_arch = "wasm32")]
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}
