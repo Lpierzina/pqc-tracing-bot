@@ -271,6 +271,25 @@ Signature and batch-verification tests
 
 DAG integration tests with a mocked QsDagHost
 
+### Automated Test Coverage Snapshot (2025-11-15)
+
+`cargo test` fans out across all crates and currently reports:
+
+- `autheo-mldsa-dilithium`: 5 unit tests covering ML-DSA key/sig sizing, tamper detection, and failure cases.
+- `autheo-mldsa-falcon`: 4 unit tests that exercise Falcon-style ML-DSA signing and verification edge cases.
+- `autheo-mlkem-kyber`: 4 ML-KEM tests validating keypair levels plus encapsulation/decapsulation error paths.
+- `autheo-pqc-core`: 15 contract-level tests spanning `KeyManager`, `SignatureManager`, `qs_dag::verify_and_anchor`, `runtime`, and the full `handshake::execute_handshake` record serialization.
+- `autheo-pqc-wasm`: ABI crate builds cleanly (0 intrinsic tests) to ensure the WASM surface stays lean and host-driven.
+- Doc-tests: 2 illustrative examples (`key_manager.rs`, `signatures.rs`) compile but are ignored because they depend on host engines.
+
+These results confirm that both the deterministic Kyber/Dilithium adapters and the shared contract glue behave as expected before producing the WASM artifact. The `wazero-harness` then drives the exported `pqc_handshake` ABI with
+
+```
+go run . -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm
+```
+
+to prove that the compiled WASM emits a handshake envelope, recomputes `SignatureManager::sign_kem_transcript`, and records a QS-DAG anchor for the advertised `edge_id`.
+
 Roadmap
 
  Wire to Autheo’s Kyber/Dilithium WASM engines
@@ -358,6 +377,54 @@ The harness now:
 > stand-ins. Swap them for Autheo’s audited Kyber/Dilithium modules (or native
 > bindings) to obtain production-ready shared secrets and signatures without
 > touching the contract logic or harness.
+
+### QS-DAG Handshake Flow
+
+The runtime path for `issueHandshake` requests is implemented jointly by `autheo-pqc-wasm` and `autheo-pqc-core`:
+
+1. The host runtime forwards the client request JSON into the exported `pqc_handshake` function, which immediately calls `handshake::execute_handshake` after validating the buffer and pulling a monotonic timestamp via `runtime::with_contract_state`.
+2. `KeyManager::encapsulate_for_current` rotates Kyber keys if needed, derives the ciphertext/shared secret pair, and exposes the active `ThresholdPolicy`.
+3. `SignatureManager::sign_kem_transcript` binds the ciphertext, shared secret, and original request string with Dilithium before the handshake artifacts are serialized into the `PQC1` binary layout.
+4. The host wraps this envelope into a QS-DAG `edge` payload and invokes its `QsDagHost` implementation; `QsDagPqc::verify_and_anchor` replays the Dilithium verification before gossiping to validators.
+5. Validators attest to the edge, after which the host returns the finalized shared secret, DAG edge metadata, and routing hints to the client.
+
+```mermaid
+---
+config:
+  look: neo
+  theme: redux-color
+---
+sequenceDiagram
+    autonumber
+    participant C as Client / Zer0Veil Node
+    participant H as PQCNet Host<br/>(Go / Rust runtime)
+    participant W as PQC WASM Engine<br/>(Kyber + Dilithium)
+    participant D as QS-DAG Host<br/>(Validator logic)
+    participant V as Validator Set
+    Note over C,H: 1) Client asks for quantum-safe tunnel / route
+    C->>H: issueHandshake(sessionId, intents, nodeId)
+    Note over H,W: 2) Host calls WASM pqc_handshake()
+    H->>W: pqc_handshake(requestJSON)
+    activate W
+    Note over W: 3) Inside WASM: use Kyber & Dilithium<br/>from autheo-pqc-core
+    W->>W: Kyber.encapsulate() → ciphertext + sharedSecret
+    W->>W: Dilithium.sign(transcript) → signature
+    W-->>H: handshakeEnvelopeJSON<br/>(keys, ciphertext, sharedSecret, signature)
+    deactivate W
+    Note over H,D: 4) Host builds DAG edge payload
+    H->>D: submitEdgeRequest(handshakeEnvelope)
+    Note over D: 5) QS-DAG host verifies PQC envelope
+    D->>D: verifyTranscript(envelope, originalRequest)
+    D->>D: check Dilithium signature + Kyber metadata
+    D-->>V: gossipEdge(edgeID, envelope, parents)
+    Note over V: 6) Validators anchor edge in QS-DAG
+    V->>V: verify edge (PQC + parents)
+    V-->>D: edgeAccepted(edgeID)
+    Note over D,H: 7) DAG host confirms anchoring
+    D-->>H: edgeAnchored(edgeID, status=finalized)
+    Note over H,C: 8) Host returns tunnel + edge info
+    H-->>C: HandshakeResult<br/>sharedSecret + dagEdgeId + routes
+```
 
 License
 
