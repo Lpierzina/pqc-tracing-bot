@@ -37,7 +37,7 @@ pub fn execute_handshake(request: &[u8], response: &mut [u8]) -> PqcResult<usize
     }
 
     let timestamp_hint = parse_timestamp_hint(request);
-    let artifacts = runtime::with_contract_state(|state| {
+    let artifacts = runtime::with_contract_state(|state| -> PqcResult<HandshakeArtifacts> {
         let now_ms = state.advance_time(timestamp_hint);
         // Rotate the ML-KEM key if needed before encapsulation.
         let _ = state.key_manager.rotate_if_needed(now_ms)?;

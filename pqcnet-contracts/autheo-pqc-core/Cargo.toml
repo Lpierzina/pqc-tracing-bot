@@ -1,0 +1,12 @@
+[package]
+name = "autheo-pqc-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+autheo-mlkem-kyber = { path = "../autheo-mlkem-kyber" }
+autheo-mldsa-dilithium = { path = "../autheo-mldsa-dilithium" }
+autheo-mldsa-falcon = { path = "../autheo-mldsa-falcon" }
+blake2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }
+spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }

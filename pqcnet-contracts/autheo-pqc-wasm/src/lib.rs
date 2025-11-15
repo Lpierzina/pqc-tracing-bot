@@ -1,10 +1,25 @@
-#![cfg(target_arch = "wasm32")]
+#![cfg_attr(target_arch = "wasm32", no_std)]
 
-use crate::error::PqcError;
-use crate::handshake;
+extern crate alloc;
+
 use alloc::alloc::{alloc, dealloc};
+use autheo_pqc_core::error::PqcError;
+use autheo_pqc_core::handshake;
 use core::alloc::Layout;
 use core::slice;
+
+#[cfg(target_arch = "wasm32")]
+extern crate wee_alloc;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[cfg(target_arch = "wasm32")]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
 
 /// Allocate linear memory for the host.
 #[no_mangle]
@@ -42,11 +57,7 @@ pub extern "C" fn pqc_free(ptr: u32, len: u32) {
 
 /// Entry-point used by the host runtime to perform a handshake.
 ///
-/// # Parameters
-/// * `req_ptr`, `req_len`   – request buffer allocated inside the WASM module.
-/// * `resp_ptr`, `resp_len` – response buffer allocated inside the WASM module.
-///
-/// Returns the number of bytes written to `resp_ptr` (>= 0) or a negative error:
+/// Returns the number of bytes written to `resp_ptr` (>= 0) or a negative error code:
 /// * `-1` – invalid input
 /// * `-2` – response buffer too small
 /// * `-127` – internal error

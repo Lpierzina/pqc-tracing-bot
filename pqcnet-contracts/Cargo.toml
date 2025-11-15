@@ -1,13 +1,9 @@
-[package]
-name = "pqcnet-contracts"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["rlib", "cdylib"]
-
-[dependencies]
-blake2 = { version = "0.10", default-features = false }
-digest = { version = "0.10", default-features = false }
-wee_alloc = { version = "0.4", default-features = false }
-spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
+[workspace]
+members = [
+    "autheo-mlkem-kyber",
+    "autheo-mldsa-dilithium",
+    "autheo-mldsa-falcon",
+    "autheo-pqc-core",
+    "autheo-pqc-wasm",
+]
+resolver = "2"

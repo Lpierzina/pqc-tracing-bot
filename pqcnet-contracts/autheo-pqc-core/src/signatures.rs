@@ -24,10 +24,10 @@ pub struct DsaKeyState {
 /// # Example: ML-DSA sign / verify / batch
 ///
 /// ```ignore
-/// # use pqcnet_contracts::signatures::SignatureManager;
-/// # use pqcnet_contracts::dsa::{MlDsa, MlDsaEngine, MlDsaKeyPair};
-/// # use pqcnet_contracts::types::{SecurityLevel, TimestampMs, Bytes, KeyId};
-/// # use pqcnet_contracts::error::PqcResult;
+/// # use autheo_pqc_core::signatures::SignatureManager;
+/// # use autheo_pqc_core::dsa::{MlDsa, MlDsaEngine, MlDsaKeyPair};
+/// # use autheo_pqc_core::types::{SecurityLevel, TimestampMs, Bytes, KeyId};
+/// # use autheo_pqc_core::error::PqcResult;
 /// #
 /// # struct DummyDsa;
 /// # impl MlDsa for DummyDsa {
@@ -43,7 +43,7 @@ pub struct DsaKeyState {
 /// #         Ok(message.to_vec())
 /// #     }
 /// #     fn verify(&self, _: &[u8], message: &[u8], signature: &[u8]) -> PqcResult<()> {
-/// #         if message == signature { Ok(()) } else { Err(pqcnet_contracts::error::PqcError::VerifyFailed) }
+/// #         if message == signature { Ok(()) } else { Err(autheo_pqc_core::error::PqcError::VerifyFailed) }
 /// #     }
 /// # }
 /// #

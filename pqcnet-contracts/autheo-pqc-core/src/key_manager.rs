@@ -33,24 +33,24 @@ pub struct KemKeyState {
 /// # Example: key generation and rotation
 ///
 /// ```ignore
-/// # use pqcnet_contracts::key_manager::{KeyManager, ThresholdPolicy};
-/// # use pqcnet_contracts::kem::{MlKem, MlKemEngine, MlKemEncapsulation, MlKemKeyPair};
-/// # use pqcnet_contracts::types::{SecurityLevel, TimestampMs};
+/// # use autheo_pqc_core::key_manager::{KeyManager, ThresholdPolicy};
+/// # use autheo_pqc_core::kem::{MlKem, MlKemEngine, MlKemEncapsulation, MlKemKeyPair};
+/// # use autheo_pqc_core::types::{SecurityLevel, TimestampMs};
 /// #
 /// # struct DummyKem;
 /// # impl MlKem for DummyKem {
 /// #     fn level(&self) -> SecurityLevel { SecurityLevel::MlKem128 }
-/// #     fn keygen(&self) -> pqcnet_contracts::error::PqcResult<MlKemKeyPair> {
+/// #     fn keygen(&self) -> autheo_pqc_core::error::PqcResult<MlKemKeyPair> {
 /// #         Ok(MlKemKeyPair {
 /// #             public_key: vec![0u8; 32],
 /// #             secret_key: vec![1u8; 32],
 /// #             level: SecurityLevel::MlKem128,
 /// #         })
 /// #     }
-/// #     fn encapsulate(&self, _: &[u8]) -> pqcnet_contracts::error::PqcResult<MlKemEncapsulation> {
+/// #     fn encapsulate(&self, _: &[u8]) -> autheo_pqc_core::error::PqcResult<MlKemEncapsulation> {
 /// #         Ok(MlKemEncapsulation { ciphertext: vec![2u8; 32], shared_secret: vec![3u8; 32] })
 /// #     }
-/// #     fn decapsulate(&self, _: &[u8], _: &[u8]) -> pqcnet_contracts::error::PqcResult<Vec<u8>> {
+/// #     fn decapsulate(&self, _: &[u8], _: &[u8]) -> autheo_pqc_core::error::PqcResult<Vec<u8>> {
 /// #         Ok(vec![4u8; 32])
 /// #     }
 /// # }

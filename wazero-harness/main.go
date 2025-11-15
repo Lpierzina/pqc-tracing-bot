@@ -23,7 +23,7 @@ const (
 )
 
 func main() {
-	defaultWasm := "../pqcnet-contracts/target/wasm32-unknown-unknown/release/pqcnet_contracts.wasm"
+	defaultWasm := "../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm"
 	wasmPath := flag.String("wasm", defaultWasm, "path to the built pqcnet WASM module")
 	flag.Parse()
 

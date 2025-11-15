@@ -15,7 +15,20 @@ It provides:
 
 ---
 
-## High-Level Architecture
+## Workspace Layout
+
+- `autheo-mlkem-kyber/` – deterministic Kyber (ML-KEM-768) adapter + browser WASM demo artifacts.
+- `autheo-mldsa-dilithium/` – deterministic Dilithium3 (ML-DSA-65) adapter + demo artifacts.
+- `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
+- `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue.
+- `autheo-pqc-wasm/` – `cdylib` that exposes the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for hosts.
+- `wazero-harness/` – Go harness used to exercise the WASM ABI end-to-end.
+
+Add new algorithm crates (e.g., future NIST picks) by following the same pattern and letting `autheo-pqc-core` compose them.
+
+---
+
+## High-Level Architecture (`autheo-pqc-core`)
 
 ### Modules
 
@@ -136,9 +149,9 @@ Example Usage
 These examples use pseudo “host engines” – in real deployments you’d bind to WASM or native implementations from autheo-pqc.
 
 Key Generation & Rotation (ML-KEM)
-use pqcnet_contracts::kem::{MlKem, MlKemEngine};
-use pqcnet_contracts::key_manager::{KeyManager, ThresholdPolicy};
-use pqcnet_contracts::types::TimestampMs;
+use autheo_pqc_core::kem::{MlKem, MlKemEngine};
+use autheo_pqc_core::key_manager::{KeyManager, ThresholdPolicy};
+use autheo_pqc_core::types::TimestampMs;
 
 struct HostKemImpl; // your Kyber implementation
 
@@ -162,8 +175,8 @@ fn example_key_rotation(now_ms: TimestampMs) {
 }
 
 Signing & Verifying (ML-DSA)
-use pqcnet_contracts::dsa::{MlDsa, MlDsaEngine};
-use pqcnet_contracts::signatures::SignatureManager;
+use autheo_pqc_core::dsa::{MlDsa, MlDsaEngine};
+use autheo_pqc_core::signatures::SignatureManager;
 
 struct HostDsaImpl; // your Dilithium implementation
 
@@ -316,8 +329,8 @@ sections (the wazero harness allocates 4 KiB for simplicity).
 
 ```
 cd pqcnet-contracts
-cargo build --release --target wasm32-unknown-unknown
-# -> target/wasm32-unknown-unknown/release/pqcnet_contracts.wasm
+cargo build --release -p autheo-pqc-wasm --target wasm32-unknown-unknown
+# -> target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm
 ```
 
 ### Run the Go+wazero harness
@@ -325,7 +338,7 @@ cargo build --release --target wasm32-unknown-unknown
 ```
 cd wazero-harness
 go run . \
-  -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/pqcnet_contracts.wasm
+  -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm
 ```
 
 The harness now:
