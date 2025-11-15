@@ -44,3 +44,86 @@ impl<'a> QsDagPqc<'a> {
         self.host.attach_pqc_signature(edge_id, signer, signature)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{PqcError, PqcResult};
+    use crate::types::{Bytes, EdgeId, KeyId};
+    use alloc::vec::Vec;
+    use spin::Mutex;
+
+    struct RecordingHost {
+        payload: Bytes,
+        attachments: Mutex<Vec<(EdgeId, KeyId, Bytes)>>,
+    }
+
+    impl RecordingHost {
+        fn new(payload: Bytes) -> Self {
+            Self {
+                payload,
+                attachments: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn attachments(&self) -> Vec<(EdgeId, KeyId, Bytes)> {
+            self.attachments.lock().clone()
+        }
+    }
+
+    impl QsDagHost for RecordingHost {
+        fn attach_pqc_signature(
+            &self,
+            edge_id: &EdgeId,
+            signer: &KeyId,
+            signature: &[u8],
+        ) -> PqcResult<()> {
+            self.attachments
+                .lock()
+                .push((edge_id.clone(), signer.clone(), signature.to_vec()));
+            Ok(())
+        }
+
+        fn get_edge_payload(&self, _edge_id: &EdgeId) -> PqcResult<Bytes> {
+            Ok(self.payload.clone())
+        }
+    }
+
+    #[test]
+    fn verify_and_anchor_attaches_signature_on_success() {
+        let host = RecordingHost::new(b"dag payload".to_vec());
+        let facade = QsDagPqc::new(&host);
+        let edge = EdgeId([0xAA; 32]);
+        let signer = KeyId([0x55; 32]);
+        let signature = b"dag payload".to_vec();
+
+        facade
+            .verify_and_anchor(&edge, &signer, &signature, |_id, msg, sig| {
+                assert_eq!(msg, b"dag payload");
+                assert_eq!(sig, signature.as_slice());
+                Ok(())
+            })
+            .expect("verification succeeds");
+
+        let attachments = host.attachments();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].0, edge);
+        assert_eq!(attachments[0].1, signer);
+        assert_eq!(attachments[0].2, signature);
+    }
+
+    #[test]
+    fn verify_and_anchor_propagates_verifier_errors() {
+        let host = RecordingHost::new(b"payload".to_vec());
+        let facade = QsDagPqc::new(&host);
+        let edge = EdgeId([0x01; 32]);
+        let signer = KeyId([0x02; 32]);
+        let err = facade
+            .verify_and_anchor(&edge, &signer, b"sig", |_id, _msg, _sig| {
+                Err(PqcError::VerifyFailed)
+            })
+            .unwrap_err();
+        assert_eq!(err, PqcError::VerifyFailed);
+        assert!(host.attachments().is_empty());
+    }
+}

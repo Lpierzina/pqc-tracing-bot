@@ -4,7 +4,7 @@ use crate::error::PqcResult;
 use crate::types::{Bytes, SecurityLevel};
 
 /// NIST ML-KEM key pair produced by the host engine.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MlKemKeyPair {
     /// Public key bytes serialized per FIPS 203.
     pub public_key: Bytes,
@@ -15,7 +15,7 @@ pub struct MlKemKeyPair {
 }
 
 /// Ciphertext + shared secret from ML-KEM encapsulation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MlKemEncapsulation {
     /// Kyber ciphertext.
     pub ciphertext: Bytes,

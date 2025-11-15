@@ -156,3 +156,54 @@ fn expand_bytes(domain: &[u8], input: &[u8], len: usize) -> Vec<u8> {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keypair_sign_and_verify_success() {
+        let engine = FalconDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        assert_eq!(pair.public_key.len(), 32);
+        assert_eq!(pair.secret_key.len(), 32);
+        assert_eq!(pair.level, FalconLevel::Falcon1024);
+
+        let msg = b"falcon demo payload";
+        let sig = engine.sign(&pair.secret_key, msg).expect("sign");
+        assert_eq!(sig.len(), 32);
+        engine
+            .verify(&pair.public_key, msg, &sig)
+            .expect("verify succeeds");
+    }
+
+    #[test]
+    fn sign_rejects_missing_secret() {
+        let engine = FalconDeterministic::new();
+        let err = engine.sign(&[], b"msg").unwrap_err();
+        assert_eq!(err, FalconError::InvalidInput("falcon secret missing"));
+    }
+
+    #[test]
+    fn verify_rejects_bad_signature_length() {
+        let engine = FalconDeterministic::new();
+        let err = engine
+            .verify(&[1u8; 32], b"msg", &[0u8; 8])
+            .unwrap_err();
+        assert_eq!(
+            err,
+            FalconError::InvalidInput("falcon signature length invalid")
+        );
+    }
+
+    #[test]
+    fn verify_detects_tampering() {
+        let engine = FalconDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        let msg = b"tamper me";
+        let mut sig = engine.sign(&pair.secret_key, msg).expect("sign");
+        sig[31] ^= 0xAA;
+        let err = engine.verify(&pair.public_key, msg, &sig).unwrap_err();
+        assert_eq!(err, FalconError::VerifyFailed);
+    }
+}

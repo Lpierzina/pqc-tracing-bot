@@ -14,7 +14,7 @@ pub struct ThresholdPolicy {
 }
 
 /// State for a single rotating ML-KEM key.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KemKeyState {
     /// Logical identifier derived from the public key and creation time.
     pub id: KeyId,
@@ -166,5 +166,61 @@ impl<'a> KeyManager<'a> {
         let mut id = [0u8; 32];
         id.copy_from_slice(&out[..32]);
         KeyId(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::DemoMlKem;
+    use crate::error::PqcError;
+    use crate::kem::MlKemEngine;
+    use alloc::boxed::Box;
+
+    fn manager(rotation_interval_ms: u64) -> KeyManager<'static> {
+        let kem = Box::new(DemoMlKem::new());
+        let engine = MlKemEngine::new(Box::leak(kem));
+        KeyManager::new(engine, ThresholdPolicy { t: 3, n: 5 }, rotation_interval_ms)
+    }
+
+    #[test]
+    fn keygen_and_encapsulate_for_current_produces_shared_secret() {
+        let mut km = manager(300);
+        let now = 1_700_000_111_000;
+        let current = km.keygen_and_install(now).expect("install");
+        let (state, enc) = km.encapsulate_for_current().expect("encapsulate");
+        assert_eq!(state.id, current.id);
+        assert_eq!(enc.ciphertext.len(), 48);
+        assert_eq!(enc.shared_secret.len(), 32);
+    }
+
+    #[test]
+    fn encapsulate_without_key_returns_error() {
+        let km = manager(100);
+        let err = km.encapsulate_for_current().unwrap_err();
+        assert_eq!(err, PqcError::InternalError("no active KEM key"));
+    }
+
+    #[test]
+    fn rotate_if_needed_respects_interval() {
+        let mut km = manager(100);
+        let start = 1_700_000_000_000;
+        let first = km.keygen_and_install(start).expect("install");
+        assert!(km.rotate_if_needed(start + 50).unwrap().is_none());
+
+        let rotation = km.rotate_if_needed(start + 101).unwrap();
+        let (old, new) = rotation.expect("rotation result");
+        assert_eq!(old.id, first.id);
+        assert_ne!(new.id, first.id);
+        assert!(new.created_at >= start + 101);
+    }
+
+    #[test]
+    fn threshold_policy_and_interval_are_exposed() {
+        let km = manager(250);
+        let policy = km.threshold_policy();
+        assert_eq!(policy.t, 3);
+        assert_eq!(policy.n, 5);
+        assert_eq!(km.rotation_interval_ms(), 250);
     }
 }

@@ -97,7 +97,7 @@ impl Default for KyberDeterministic {
 }
 
 /// Kyber key pair (ML-KEM-768 serialization).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KyberKeyPair {
     pub public_key: Vec<u8>,
     pub secret_key: Vec<u8>,
@@ -105,7 +105,7 @@ pub struct KyberKeyPair {
 }
 
 /// Kyber encapsulation result.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KyberEncapsulation {
     pub ciphertext: Vec<u8>,
     pub shared_secret: Vec<u8>,
@@ -143,4 +143,48 @@ fn expand_bytes(domain: &[u8], input: &[u8], len: usize) -> Vec<u8> {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keypair_has_expected_lengths_and_level() {
+        let engine = KyberDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        assert_eq!(pair.level, KyberLevel::MlKem768);
+        assert_eq!(pair.public_key.len(), 32);
+        assert_eq!(pair.secret_key.len(), 32);
+    }
+
+    #[test]
+    fn encapsulation_round_trip_matches_decapsulation() {
+        let engine = KyberDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        let encapsulation = engine
+            .encapsulate(&pair.public_key)
+            .expect("encapsulate");
+        assert_eq!(encapsulation.ciphertext.len(), 48);
+        assert_eq!(encapsulation.shared_secret.len(), 32);
+
+        let recovered = engine
+            .decapsulate(&pair.secret_key, &encapsulation.ciphertext)
+            .expect("decapsulate");
+        assert_eq!(recovered, encapsulation.shared_secret);
+    }
+
+    #[test]
+    fn encapsulate_rejects_empty_public_key() {
+        let engine = KyberDeterministic::new();
+        let err = engine.encapsulate(&[]).unwrap_err();
+        assert_eq!(err, KyberError::InvalidInput("ml-kem pk missing"));
+    }
+
+    #[test]
+    fn decapsulate_rejects_empty_ciphertext() {
+        let engine = KyberDeterministic::new();
+        let err = engine.decapsulate(&[0u8; 32], &[]).unwrap_err();
+        assert_eq!(err, KyberError::InvalidInput("ml-kem ciphertext missing"));
+    }
 }

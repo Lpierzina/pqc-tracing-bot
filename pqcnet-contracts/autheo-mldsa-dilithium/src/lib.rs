@@ -163,3 +163,61 @@ fn expand_bytes(domain: &[u8], input: &[u8], len: usize) -> Vec<u8> {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keypair_and_signature_lengths_match_expectations() {
+        let engine = DilithiumDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        assert_eq!(pair.public_key.len(), 32);
+        assert_eq!(pair.secret_key.len(), 32);
+        assert_eq!(pair.level, DilithiumLevel::MlDsa65);
+
+        let sig = engine
+            .sign(&pair.secret_key, b"hello world")
+            .expect("sign");
+        assert_eq!(sig.len(), 32);
+    }
+
+    #[test]
+    fn sign_and_verify_roundtrip_succeeds() {
+        let engine = DilithiumDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        let message = b"autheo pqc handshake";
+        let sig = engine.sign(&pair.secret_key, message).expect("sign");
+        engine
+            .verify(&pair.public_key, message, &sig)
+            .expect("verify");
+    }
+
+    #[test]
+    fn sign_rejects_empty_secret_key() {
+        let engine = DilithiumDeterministic::new();
+        let err = engine.sign(&[], b"msg").unwrap_err();
+        assert_eq!(err, DilithiumError::InvalidInput("ml-dsa secret missing"));
+    }
+
+    #[test]
+    fn verify_rejects_bad_signature_length() {
+        let engine = DilithiumDeterministic::new();
+        let err = engine.verify(&[1u8; 32], b"msg", &[0u8; 16]).unwrap_err();
+        assert_eq!(
+            err,
+            DilithiumError::InvalidInput("ml-dsa signature length invalid")
+        );
+    }
+
+    #[test]
+    fn verify_detects_tampering() {
+        let engine = DilithiumDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        let message = b"real message";
+        let mut sig = engine.sign(&pair.secret_key, message).expect("sign");
+        sig[0] ^= 0xFF;
+        let err = engine.verify(&pair.public_key, message, &sig).unwrap_err();
+        assert_eq!(err, DilithiumError::VerifyFailed);
+    }
+}

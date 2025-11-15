@@ -166,3 +166,94 @@ impl<'a> SignatureManager<'a> {
         KeyId(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::{DemoMlDsa, DemoMlKem};
+    use crate::dsa::MlDsaEngine;
+    use crate::error::PqcError;
+    use crate::kem::MlKemEngine;
+    use alloc::boxed::Box;
+
+    fn manager() -> SignatureManager<'static> {
+        let dsa = Box::new(DemoMlDsa::new());
+        let engine = MlDsaEngine::new(Box::leak(dsa));
+        SignatureManager::new(engine)
+    }
+
+    #[test]
+    fn generate_sign_and_verify_flow_registers_key() {
+        let mut mgr = manager();
+        let now = 1_700_000_000_123;
+        let (state, pair) = mgr.generate_signing_key(now).expect("keygen");
+        let message = b"pqcnet message";
+        let sig = mgr.sign(&pair.secret_key, message).expect("sign");
+        mgr.verify(&state.id, message, &sig).expect("verify");
+    }
+
+    #[test]
+    fn verify_with_unknown_key_id_fails() {
+        let mgr = manager();
+        let err = mgr
+            .verify(&KeyId([0u8; 32]), b"msg", &[0u8; 32])
+            .unwrap_err();
+        assert_eq!(err, PqcError::InvalidInput("unknown key id"));
+    }
+
+    #[test]
+    fn batch_verify_enforces_limits_and_succeeds() {
+        let mut mgr = manager();
+        let mut key_ids = Vec::new();
+        let mut messages = Vec::new();
+        let mut signatures = Vec::new();
+
+        for i in 0..2 {
+            let (state, pair) = mgr
+                .generate_signing_key(1_700_000_000_000 + i as u64)
+                .expect("keygen");
+            let msg = vec![i as u8; 4];
+            let sig = mgr.sign(&pair.secret_key, &msg).expect("sign");
+            key_ids.push(state.id.clone());
+            messages.push(msg);
+            signatures.push(sig);
+        }
+
+        let err = mgr
+            .batch_verify(1, &key_ids, &messages, &signatures)
+            .unwrap_err();
+        assert_eq!(err, PqcError::LimitExceeded("batch too large"));
+
+        mgr.batch_verify(2, &key_ids, &messages, &signatures)
+            .expect("batch verify succeeds");
+    }
+
+    #[test]
+    fn sign_kem_transcript_matches_engine_transcript() {
+        let mut mgr = manager();
+        let (_, signing_pair) = mgr
+            .generate_signing_key(1_700_555_000_000)
+            .expect("keygen");
+
+        let kem = Box::new(DemoMlKem::new());
+        let kem_engine = MlKemEngine::new(Box::leak(kem));
+        let kem_pair = kem_engine.keygen().expect("kem keypair");
+        let encapsulation = kem_engine.encapsulate(&kem_pair.public_key).expect("enc");
+        let context = b"client=unit-test";
+
+        let sig = mgr
+            .sign_kem_transcript(&signing_pair.secret_key, &encapsulation, context)
+            .expect("transcript signature");
+
+        let mut transcript = Vec::new();
+        transcript.extend_from_slice(&encapsulation.ciphertext);
+        transcript.extend_from_slice(&encapsulation.shared_secret);
+        transcript.extend_from_slice(context);
+
+        let dsa = DemoMlDsa::new();
+        let expected = dsa
+            .sign(&signing_pair.secret_key, &transcript)
+            .expect("direct sign");
+        assert_eq!(sig, expected);
+    }
+}

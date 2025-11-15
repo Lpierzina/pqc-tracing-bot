@@ -73,3 +73,32 @@ pub fn reset_state_for_tests() {
     let mut guard = STATE.lock();
     *guard = None;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advance_time_prefers_hint_and_remains_monotonic() {
+        reset_state_for_tests();
+        with_contract_state(|state| {
+            assert_eq!(state.monotonic_ms, INITIAL_TIMESTAMP_MS);
+            let hinted = state.advance_time(Some(INITIAL_TIMESTAMP_MS + 500));
+            assert_eq!(hinted, INITIAL_TIMESTAMP_MS + 500);
+            let monotonic = state.advance_time(Some(INITIAL_TIMESTAMP_MS + 100));
+            assert_eq!(monotonic, INITIAL_TIMESTAMP_MS + 501);
+        });
+    }
+
+    #[test]
+    fn reset_state_restores_initial_timestamp() {
+        reset_state_for_tests();
+        with_contract_state(|state| {
+            state.advance_time(Some(INITIAL_TIMESTAMP_MS + 10));
+        });
+        reset_state_for_tests();
+        with_contract_state(|state| {
+            assert_eq!(state.monotonic_ms, INITIAL_TIMESTAMP_MS);
+        });
+    }
+}
