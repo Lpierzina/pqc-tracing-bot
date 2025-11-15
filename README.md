@@ -426,6 +426,24 @@ sequenceDiagram
     H-->>C: HandshakeResult<br/>sharedSecret + dagEdgeId + routes
 ```
 
+---
+
+## LibOQS Integration & CLI Harness
+
+- Enable the optional `liboqs` feature (`cargo build -p autheo-pqc-core --features liboqs`) to swap the deterministic demo engines for liboqs-rs bindings (Kyber ML-KEM + Dilithium ML-DSA).
+- `liboqs::LibOqsProvider` wraps `KeyManager` and `SignatureManager`, exposing:
+  - `keygen(now_ms)` – installs fresh ML-KEM / ML-DSA key material and returns both the contract metadata and the raw keypairs for host persistence.
+  - `rotate(now_ms)` – enforces the ML-KEM rotation interval and rotates the ML-DSA signer for forward secrecy.
+  - `sign(data)` / `verify(data, sig)` – ML-DSA helpers bound to the active key identifier, plus `encapsulate_for_current()` for ML-KEM session establishment.
+- The feature is blocked on `wasm32` targets, so `autheo-pqc-wasm` keeps compiling with the deterministic adapters while native hosts can opt into liboqs.
+- A tiny CLI harness validates the workflow end-to-end:
+
+```
+cargo run -p autheo-pqc-core --bin liboqs_cli --features liboqs -- --message "veil handshake"
+```
+
+  The tool prints the generated key identifiers, signs and verifies the provided message, and forces a rotation cycle to demonstrate the liboqs-backed flow.
+
 License
 
 TBD – e.g. MIT / Apache-2.0 (align with Autheo’s policy).

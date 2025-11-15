@@ -162,9 +162,7 @@ mod tests {
     fn encapsulation_round_trip_matches_decapsulation() {
         let engine = KyberDeterministic::new();
         let pair = engine.keypair().expect("keypair");
-        let encapsulation = engine
-            .encapsulate(&pair.public_key)
-            .expect("encapsulate");
+        let encapsulation = engine.encapsulate(&pair.public_key).expect("encapsulate");
         assert_eq!(encapsulation.ciphertext.len(), 48);
         assert_eq!(encapsulation.shared_secret.len(), 32);
 

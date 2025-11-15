@@ -1,0 +1,534 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineSystem.cmake:233 (message)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      The system is: Linux - 6.1.147 - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /usr/bin/cc 
+      Build flags: -ffunction-sections;-fdata-sections;-fPIC;-m64;--target=x86_64-unknown-linux-gnu
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.out"
+      
+      The C compiler identification is Clang, found in:
+        /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/3.28.3/CompilerIdC/a.out
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:1144 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineASMCompiler.cmake:131 (CMAKE_DETERMINE_COMPILER_ID_VENDOR)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Checking whether the ASM compiler is GNU using "--version" did not match "(GNU assembler)|(GCC)|(Free Software Foundation)":
+      Ubuntu clang version 18.1.3 (1ubuntu1)
+      Target: x86_64-pc-linux-gnu
+      Thread model: posix
+      InstalledDir: /usr/bin
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:1144 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineASMCompiler.cmake:131 (CMAKE_DETERMINE_COMPILER_ID_VENDOR)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Checking whether the ASM compiler is AppleClang using "--version" did not match "(Apple (clang|LLVM) version)":
+      Ubuntu clang version 18.1.3 (1ubuntu1)
+      Target: x86_64-pc-linux-gnu
+      Thread model: posix
+      InstalledDir: /usr/bin
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:1131 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineASMCompiler.cmake:131 (CMAKE_DETERMINE_COMPILER_ID_VENDOR)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Checking whether the ASM compiler is Clang using "--version" matched "(clang version)":
+      Ubuntu clang version 18.1.3 (1ubuntu1)
+      Target: x86_64-pc-linux-gnu
+      Thread model: posix
+      InstalledDir: /usr/bin
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:22 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_be8b6/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_be8b6.dir/build.make CMakeFiles/cmTC_be8b6.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8'
+        Building C object CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu    -v -MD -MT CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+        Ubuntu clang version 18.1.3 (1ubuntu1)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /usr/bin
+        Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/13
+        Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14
+        Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         (in-process)
+         "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model pic -pic-level 2 -fhalf-no-semantic-interposition -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8 -v -ffunction-sections -fdata-sections -fcoverage-compilation-dir=/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8 -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -sys-header-deps -internal-isystem /usr/lib/llvm-18/lib/clang/18/include -internal-isystem /usr/local/include -internal-isystem /usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+        clang -cc1 version 18.1.3 based upon LLVM 18.1.3 default target x86_64-pc-linux-gnu
+        ignoring nonexistent directory "/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../x86_64-linux-gnu/include"
+        ignoring nonexistent directory "/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /usr/lib/llvm-18/lib/clang/18/include
+         /usr/local/include
+         /usr/include/x86_64-linux-gnu
+         /usr/include
+        End of search list.
+        Linking C executable cmTC_be8b6
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_be8b6.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu   -v CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -o cmTC_be8b6 
+        Ubuntu clang version 18.1.3 (1ubuntu1)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /usr/bin
+        Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/13
+        Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14
+        Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         "/usr/bin/ld" -z relro --hash-style=gnu --build-id --eh-frame-hdr -m elf_x86_64 -pie -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_be8b6 /lib/x86_64-linux-gnu/Scrt1.o /lib/x86_64-linux-gnu/crti.o /usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtbeginS.o -L/usr/bin/../lib/gcc/x86_64-linux-gnu/14 -L/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64 -L/lib/x86_64-linux-gnu -L/lib/../lib64 -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib64 -L/lib -L/usr/lib CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtendS.o /lib/x86_64-linux-gnu/crtn.o
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/usr/lib/llvm-18/lib/clang/18/include]
+          add: [/usr/local/include]
+          add: [/usr/include/x86_64-linux-gnu]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/usr/lib/llvm-18/lib/clang/18/include] ==> [/usr/lib/llvm-18/lib/clang/18/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/include/x86_64-linux-gnu] ==> [/usr/include/x86_64-linux-gnu]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/usr/lib/llvm-18/lib/clang/18/include;/usr/local/include;/usr/include/x86_64-linux-gnu;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:159 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:22 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_be8b6/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_be8b6.dir/build.make CMakeFiles/cmTC_be8b6.dir/build]
+        ignore line: [gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8']
+        ignore line: [Building C object CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o]
+        ignore line: [/usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu    -v -MD -MT CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [Ubuntu clang version 18.1.3 (1ubuntu1)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /usr/bin]
+        ignore line: [Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/13]
+        ignore line: [Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14]
+        ignore line: [Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [ (in-process)]
+        ignore line: [ "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model pic -pic-level 2 -fhalf-no-semantic-interposition -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8 -v -ffunction-sections -fdata-sections -fcoverage-compilation-dir=/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-hGmvi8 -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -sys-header-deps -internal-isystem /usr/lib/llvm-18/lib/clang/18/include -internal-isystem /usr/local/include -internal-isystem /usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [clang -cc1 version 18.1.3 based upon LLVM 18.1.3 default target x86_64-pc-linux-gnu]
+        ignore line: [ignoring nonexistent directory "/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../x86_64-linux-gnu/include"]
+        ignore line: [ignoring nonexistent directory "/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /usr/lib/llvm-18/lib/clang/18/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include/x86_64-linux-gnu]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking C executable cmTC_be8b6]
+        ignore line: [/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_be8b6.dir/link.txt --verbose=1]
+        ignore line: [/usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu   -v CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -o cmTC_be8b6 ]
+        ignore line: [Ubuntu clang version 18.1.3 (1ubuntu1)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /usr/bin]
+        ignore line: [Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/13]
+        ignore line: [Found candidate GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14]
+        ignore line: [Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/14]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        link line: [ "/usr/bin/ld" -z relro --hash-style=gnu --build-id --eh-frame-hdr -m elf_x86_64 -pie -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_be8b6 /lib/x86_64-linux-gnu/Scrt1.o /lib/x86_64-linux-gnu/crti.o /usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtbeginS.o -L/usr/bin/../lib/gcc/x86_64-linux-gnu/14 -L/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64 -L/lib/x86_64-linux-gnu -L/lib/../lib64 -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib64 -L/lib -L/usr/lib CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtendS.o /lib/x86_64-linux-gnu/crtn.o]
+          arg [/usr/bin/ld] ==> ignore
+          arg [-zrelro] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--build-id] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_be8b6] ==> ignore
+          arg [/lib/x86_64-linux-gnu/Scrt1.o] ==> obj [/lib/x86_64-linux-gnu/Scrt1.o]
+          arg [/lib/x86_64-linux-gnu/crti.o] ==> obj [/lib/x86_64-linux-gnu/crti.o]
+          arg [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtbeginS.o] ==> obj [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtbeginS.o]
+          arg [-L/usr/bin/../lib/gcc/x86_64-linux-gnu/14] ==> dir [/usr/bin/../lib/gcc/x86_64-linux-gnu/14]
+          arg [-L/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64] ==> dir [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64]
+          arg [-L/lib/x86_64-linux-gnu] ==> dir [/lib/x86_64-linux-gnu]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/x86_64-linux-gnu] ==> dir [/usr/lib/x86_64-linux-gnu]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/usr/lib] ==> dir [/usr/lib]
+          arg [CMakeFiles/cmTC_be8b6.dir/CMakeCCompilerABI.c.o] ==> ignore
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-lc] ==> lib [c]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtendS.o] ==> obj [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtendS.o]
+          arg [/lib/x86_64-linux-gnu/crtn.o] ==> obj [/lib/x86_64-linux-gnu/crtn.o]
+        collapse obj [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtbeginS.o] ==> [/usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o]
+        collapse obj [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/crtendS.o] ==> [/usr/lib/gcc/x86_64-linux-gnu/14/crtendS.o]
+        collapse library dir [/usr/bin/../lib/gcc/x86_64-linux-gnu/14] ==> [/usr/lib/gcc/x86_64-linux-gnu/14]
+        collapse library dir [/usr/bin/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/x86_64-linux-gnu] ==> [/lib/x86_64-linux-gnu]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/usr/lib] ==> [/usr/lib]
+        implicit libs: [gcc;gcc_s;c;gcc;gcc_s]
+        implicit objs: [/lib/x86_64-linux-gnu/Scrt1.o;/lib/x86_64-linux-gnu/crti.o;/usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o;/usr/lib/gcc/x86_64-linux-gnu/14/crtendS.o;/lib/x86_64-linux-gnu/crtn.o]
+        implicit dirs: [/usr/lib/gcc/x86_64-linux-gnu/14;/usr/lib64;/lib/x86_64-linux-gnu;/lib64;/usr/lib/x86_64-linux-gnu;/lib;/usr/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - ".CMake/compiler_opts.cmake:20 (check_c_compiler_flag)"
+      - "CMakeLists.txt:118 (include)"
+    checks:
+      - "Performing Test CC_SUPPORTS_WA_NOEXECSTACK"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CC_SUPPORTS_WA_NOEXECSTACK"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_40699/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_40699.dir/build.make CMakeFiles/cmTC_40699.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg'
+        Building C object CMakeFiles/cmTC_40699.dir/src.c.o
+        /usr/bin/cc -DCC_SUPPORTS_WA_NOEXECSTACK  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE   -Wa,--noexecstack -MD -MT CMakeFiles/cmTC_40699.dir/src.c.o -MF CMakeFiles/cmTC_40699.dir/src.c.o.d -o CMakeFiles/cmTC_40699.dir/src.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg/src.c
+        Linking C executable cmTC_40699
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_40699.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_40699.dir/src.c.o -o cmTC_40699 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-UOuffg'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckLinkerFlag.cmake:37 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckLinkerFlag.cmake:44 (cmake_check_linker_flag)"
+      - ".CMake/compiler_opts.cmake:29 (check_linker_flag)"
+      - "CMakeLists.txt:118 (include)"
+    checks:
+      - "Performing Test LD_SUPPORTS_WL_Z_NOEXECSTACK"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "LD_SUPPORTS_WL_Z_NOEXECSTACK"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_485b8/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_485b8.dir/build.make CMakeFiles/cmTC_485b8.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC'
+        Building C object CMakeFiles/cmTC_485b8.dir/src.c.o
+        /usr/bin/cc -DLD_SUPPORTS_WL_Z_NOEXECSTACK  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_485b8.dir/src.c.o -MF CMakeFiles/cmTC_485b8.dir/src.c.o.d -o CMakeFiles/cmTC_485b8.dir/src.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC/src.c
+        Linking C executable cmTC_485b8
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_485b8.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -Wl,-z,noexecstack CMakeFiles/cmTC_485b8.dir/src.c.o -o cmTC_485b8 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xVDvSC'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:87 (check_symbol_exists)"
+    checks:
+      - "Looking for getentropy"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_GETENTROPY"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_a5e22/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_a5e22.dir/build.make CMakeFiles/cmTC_a5e22.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA'
+        Building C object CMakeFiles/cmTC_a5e22.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_a5e22.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_a5e22.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_a5e22.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA/CheckSymbolExists.c
+        Linking C executable cmTC_a5e22
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a5e22.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_a5e22.dir/CheckSymbolExists.c.o -o cmTC_a5e22 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-xMaVdA'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:94 (check_symbol_exists)"
+    checks:
+      - "Looking for aligned_alloc"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_ALIGNED_ALLOC"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_9e8db/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_9e8db.dir/build.make CMakeFiles/cmTC_9e8db.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY'
+        Building C object CMakeFiles/cmTC_9e8db.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_9e8db.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_9e8db.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_9e8db.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY/CheckSymbolExists.c
+        Linking C executable cmTC_9e8db
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9e8db.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_9e8db.dir/CheckSymbolExists.c.o -o cmTC_9e8db 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-EOuUOY'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:95 (check_symbol_exists)"
+    checks:
+      - "Looking for posix_memalign"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_POSIX_MEMALIGN"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_06e9c/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_06e9c.dir/build.make CMakeFiles/cmTC_06e9c.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU'
+        Building C object CMakeFiles/cmTC_06e9c.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_06e9c.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_06e9c.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_06e9c.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU/CheckSymbolExists.c
+        Linking C executable cmTC_06e9c
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_06e9c.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_06e9c.dir/CheckSymbolExists.c.o -o cmTC_06e9c 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-zXmRIU'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:96 (check_symbol_exists)"
+    checks:
+      - "Looking for memalign"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_MEMALIGN"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_dcd1f/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_dcd1f.dir/build.make CMakeFiles/cmTC_dcd1f.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10'
+        Building C object CMakeFiles/cmTC_dcd1f.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_dcd1f.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_dcd1f.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_dcd1f.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10/CheckSymbolExists.c
+        Linking C executable cmTC_dcd1f
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_dcd1f.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_dcd1f.dir/CheckSymbolExists.c.o -o cmTC_dcd1f 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-mHLH10'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:111 (check_symbol_exists)"
+    checks:
+      - "Looking for explicit_bzero"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_EXPLICIT_BZERO"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_5522e/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_5522e.dir/build.make CMakeFiles/cmTC_5522e.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz'
+        Building C object CMakeFiles/cmTC_5522e.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_5522e.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_5522e.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_5522e.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz/CheckSymbolExists.c
+        Linking C executable cmTC_5522e
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5522e.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  CMakeFiles/cmTC_5522e.dir/CheckSymbolExists.c.o -o cmTC_5522e 
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-ZTzdfz'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/common/CMakeLists.txt:112 (check_symbol_exists)"
+    checks:
+      - "Looking for memset_s"
+    directories:
+      source: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW"
+      binary: "/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_MEMSET_S"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_8b082/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_8b082.dir/build.make CMakeFiles/cmTC_8b082.dir/build
+        gmake[1]: Entering directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW'
+        Building C object CMakeFiles/cmTC_8b082.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 --target=x86_64-unknown-linux-gnu  -std=gnu11 -fPIE -MD -MT CMakeFiles/cmTC_8b082.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_8b082.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_8b082.dir/CheckSymbolExists.c.o -c /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW/CheckSymbolExists.c
+        /workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW/CheckSymbolExists.c:8:19: error: use of undeclared identifier 'memset_s'; did you mean 'memset'?
+            8 |   return ((int*)(&memset_s))[argc];
+              |                   ^~~~~~~~
+              |                   memset
+        /usr/include/string.h:61:14: note: 'memset' declared here
+           61 | extern void *memset (void *__s, int __c, size_t __n) __THROW __nonnull ((1));
+              |              ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_8b082.dir/build.make:79: CMakeFiles/cmTC_8b082.dir/CheckSymbolExists.c.o] Error 1
+        gmake[1]: Leaving directory '/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out/build/CMakeFiles/CMakeScratch/TryCompile-wtY2iW'
+        gmake: *** [Makefile:127: cmTC_8b082/fast] Error 2
+        
+      exitCode: 2
+...

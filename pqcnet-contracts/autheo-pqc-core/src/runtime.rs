@@ -5,32 +5,31 @@ use crate::kem::MlKemEngine;
 use crate::key_manager::{KeyManager, ThresholdPolicy};
 use crate::signatures::{DsaKeyState, SignatureManager};
 use crate::types::{Bytes, TimestampMs};
+use alloc::boxed::Box;
 use spin::Mutex;
 
-pub struct ContractState<'a> {
-    pub key_manager: KeyManager<'a>,
-    pub signature_manager: SignatureManager<'a>,
+pub struct ContractState {
+    pub key_manager: KeyManager,
+    pub signature_manager: SignatureManager,
     pub signing_secret_key: Bytes,
     pub signing_key_state: DsaKeyState,
     pub monotonic_ms: TimestampMs,
 }
 
-static STATE: Mutex<Option<ContractState<'static>>> = Mutex::new(None);
-static DEMO_KEM: DemoMlKem = DemoMlKem::new();
-static DEMO_DSA: DemoMlDsa = DemoMlDsa::new();
+static STATE: Mutex<Option<ContractState>> = Mutex::new(None);
 
 const DEFAULT_ROTATION_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_THRESHOLD: ThresholdPolicy = ThresholdPolicy { t: 3, n: 5 };
 const INITIAL_TIMESTAMP_MS: TimestampMs = 1_700_000_000_000;
 
-impl<'a> ContractState<'a> {
+impl ContractState {
     fn initialize() -> PqcResult<Self> {
-        let kem_engine = MlKemEngine::new(&DEMO_KEM);
+        let kem_engine = MlKemEngine::new(Box::new(DemoMlKem::new()));
         let mut key_manager =
             KeyManager::new(kem_engine, DEFAULT_THRESHOLD, DEFAULT_ROTATION_INTERVAL_MS);
         let _current = key_manager.keygen_and_install(INITIAL_TIMESTAMP_MS)?;
 
-        let dsa_engine = MlDsaEngine::new(&DEMO_DSA);
+        let dsa_engine = MlDsaEngine::new(Box::new(DemoMlDsa::new()));
         let mut signature_manager = SignatureManager::new(dsa_engine);
         let (signing_state, signing_pair) =
             signature_manager.generate_signing_key(INITIAL_TIMESTAMP_MS)?;
@@ -57,7 +56,7 @@ impl<'a> ContractState<'a> {
 /// Execute a closure with mutable access to the singleton contract state.
 pub fn with_contract_state<F, R>(mut f: F) -> R
 where
-    F: FnMut(&mut ContractState<'static>) -> R,
+    F: FnMut(&mut ContractState) -> R,
 {
     let mut guard = STATE.lock();
     if guard.is_none() {

@@ -176,9 +176,7 @@ mod tests {
         assert_eq!(pair.secret_key.len(), 32);
         assert_eq!(pair.level, DilithiumLevel::MlDsa65);
 
-        let sig = engine
-            .sign(&pair.secret_key, b"hello world")
-            .expect("sign");
+        let sig = engine.sign(&pair.secret_key, b"hello world").expect("sign");
         assert_eq!(sig.len(), 32);
     }
 

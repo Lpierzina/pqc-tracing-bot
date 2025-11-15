@@ -7,3 +7,6 @@ members = [
     "autheo-pqc-wasm",
 ]
 resolver = "2"
+
+[patch.crates-io]
+home = { path = "vendor/home-0.5.5" }

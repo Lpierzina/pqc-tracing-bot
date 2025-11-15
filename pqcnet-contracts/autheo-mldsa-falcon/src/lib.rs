@@ -187,9 +187,7 @@ mod tests {
     #[test]
     fn verify_rejects_bad_signature_length() {
         let engine = FalconDeterministic::new();
-        let err = engine
-            .verify(&[1u8; 32], b"msg", &[0u8; 8])
-            .unwrap_err();
+        let err = engine.verify(&[1u8; 32], b"msg", &[0u8; 8]).unwrap_err();
         assert_eq!(
             err,
             FalconError::InvalidInput("falcon signature length invalid")

@@ -2,6 +2,7 @@
 
 use crate::error::PqcResult;
 use crate::types::{Bytes, SecurityLevel};
+use alloc::boxed::Box;
 
 /// NIST ML-KEM key pair produced by the host engine.
 #[derive(Clone, Debug)]
@@ -44,13 +45,13 @@ pub trait MlKem: Send + Sync {
 }
 
 /// Thin wrapper used by contracts to access the host ML-KEM engine.
-pub struct MlKemEngine<'a> {
-    inner: &'a dyn MlKem,
+pub struct MlKemEngine {
+    inner: Box<dyn MlKem>,
 }
 
-impl<'a> MlKemEngine<'a> {
+impl MlKemEngine {
     /// Create a new engine wrapper.
-    pub fn new(inner: &'a dyn MlKem) -> Self {
+    pub fn new(inner: Box<dyn MlKem>) -> Self {
         Self { inner }
     }
 

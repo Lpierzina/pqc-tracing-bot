@@ -2,6 +2,7 @@
 
 use crate::error::{PqcError, PqcResult};
 use crate::types::{Bytes, SecurityLevel};
+use alloc::boxed::Box;
 
 /// ML-DSA key pair produced by the host engine.
 #[derive(Clone)]
@@ -30,13 +31,13 @@ pub trait MlDsa: Send + Sync {
 }
 
 /// Thin wrapper used by contract logic to call ML-DSA engines.
-pub struct MlDsaEngine<'a> {
-    inner: &'a dyn MlDsa,
+pub struct MlDsaEngine {
+    inner: Box<dyn MlDsa>,
 }
 
-impl<'a> MlDsaEngine<'a> {
+impl MlDsaEngine {
     /// Create a new engine wrapper.
-    pub fn new(inner: &'a dyn MlDsa) -> Self {
+    pub fn new(inner: Box<dyn MlDsa>) -> Self {
         Self { inner }
     }
 
@@ -54,9 +55,7 @@ impl<'a> MlDsaEngine<'a> {
     pub fn verify(&self, pk: &[u8], msg: &[u8], sig: &[u8]) -> PqcResult<()> {
         self.inner.verify(pk, msg, sig)
     }
-}
 
-impl<'a> MlDsaEngine<'a> {
     /// Batch verify up to `max_batch` signatures via repeated calls to the engine.
     pub fn batch_verify(
         &self,

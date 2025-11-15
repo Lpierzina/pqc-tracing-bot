@@ -18,3 +18,9 @@ pub mod qs_dag;
 pub(crate) mod runtime;
 pub mod signatures;
 pub mod types;
+
+#[cfg(all(feature = "liboqs", not(target_arch = "wasm32")))]
+pub mod liboqs;
+
+#[cfg(all(feature = "liboqs", target_arch = "wasm32"))]
+compile_error!("The `liboqs` feature cannot be enabled for wasm32 targets. Disable the feature when building WASM artifacts.");

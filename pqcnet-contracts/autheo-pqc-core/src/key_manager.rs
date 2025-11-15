@@ -56,7 +56,7 @@ pub struct KemKeyState {
 /// # }
 /// #
 /// let kem_impl = DummyKem;
-/// let kem_engine = MlKemEngine::new(&kem_impl);
+/// let kem_engine = MlKemEngine::new(Box::new(kem_impl));
 ///
 /// let mut km = KeyManager::new(
 ///     kem_engine,
@@ -65,23 +65,29 @@ pub struct KemKeyState {
 /// );
 ///
 /// let now: TimestampMs = 1_700_000_000_000;
-/// let state = km.keygen_and_install(now)?;
+/// let (state, _material) = km.keygen_with_material(now)?;
 /// let rotation = km.rotate_if_needed(now + 301_000)?;
 /// ```
-pub struct KeyManager<'a> {
-    kem: MlKemEngine<'a>,
+#[derive(Clone, Debug)]
+pub struct KemRotation {
+    /// Expired state being replaced.
+    pub old: KemKeyState,
+    /// Freshly installed state.
+    pub new: KemKeyState,
+    /// Full ML-KEM key material corresponding to `new`.
+    pub new_material: MlKemKeyPair,
+}
+
+pub struct KeyManager {
+    kem: MlKemEngine,
     threshold: ThresholdPolicy,
     rotation_interval_ms: u64,
     current: Option<KemKeyState>,
 }
 
-impl<'a> KeyManager<'a> {
+impl KeyManager {
     /// Create a new ML-KEM key manager.
-    pub fn new(
-        kem: MlKemEngine<'a>,
-        threshold: ThresholdPolicy,
-        rotation_interval_ms: u64,
-    ) -> Self {
+    pub fn new(kem: MlKemEngine, threshold: ThresholdPolicy, rotation_interval_ms: u64) -> Self {
         Self {
             kem,
             threshold,
@@ -104,20 +110,18 @@ impl<'a> KeyManager<'a> {
     ///
     /// The host performs Shamir splitting + storage of the secret key shares.
     pub fn keygen_and_install(&mut self, now_ms: TimestampMs) -> PqcResult<KemKeyState> {
-        let pair: MlKemKeyPair = self.kem.keygen()?;
-
-        let id = self.compute_key_id(&pair.public_key, now_ms);
-        let state = KemKeyState {
-            id,
-            public_key: pair.public_key.clone(),
-            level: pair.level,
-            created_at: now_ms,
-            expires_at: now_ms + self.rotation_interval_ms,
-        };
-
-        // Persist `state` and share metadata via the host runtime.
-        self.current = Some(state.clone());
+        let (state, _) = self.keygen_with_material(now_ms)?;
         Ok(state)
+    }
+
+    /// Generate a key pair, install it, and return the resulting material + metadata.
+    pub fn keygen_with_material(
+        &mut self,
+        now_ms: TimestampMs,
+    ) -> PqcResult<(KemKeyState, MlKemKeyPair)> {
+        let pair: MlKemKeyPair = self.kem.keygen()?;
+        let state = self.install_from_pair(&pair, now_ms);
+        Ok((state, pair))
     }
 
     /// Rotate key if expired according to `rotation_interval_ms`.
@@ -125,11 +129,22 @@ impl<'a> KeyManager<'a> {
         &mut self,
         now_ms: TimestampMs,
     ) -> PqcResult<Option<(KemKeyState, KemKeyState)>> {
+        Ok(self
+            .rotate_with_material(now_ms)?
+            .map(|rotation| (rotation.old, rotation.new)))
+    }
+
+    /// Rotate the key if needed and expose the new ML-KEM material.
+    pub fn rotate_with_material(&mut self, now_ms: TimestampMs) -> PqcResult<Option<KemRotation>> {
         let current = match &self.current {
             Some(c) => c.clone(),
             None => {
-                let new = self.keygen_and_install(now_ms)?;
-                return Ok(Some((new.clone(), new)));
+                let (state, pair) = self.keygen_with_material(now_ms)?;
+                return Ok(Some(KemRotation {
+                    old: state.clone(),
+                    new: state,
+                    new_material: pair,
+                }));
             }
         };
 
@@ -137,9 +152,13 @@ impl<'a> KeyManager<'a> {
             return Ok(None);
         }
 
-        let old = current.clone();
-        let new = self.keygen_and_install(now_ms)?;
-        Ok(Some((old, new)))
+        let old = current;
+        let (new_state, new_pair) = self.keygen_with_material(now_ms)?;
+        Ok(Some(KemRotation {
+            old,
+            new: new_state,
+            new_material: new_pair,
+        }))
     }
 
     /// Encapsulate a new session key to the current public key.
@@ -152,6 +171,20 @@ impl<'a> KeyManager<'a> {
 
         let enc = self.kem.encapsulate(&current.public_key)?;
         Ok((current, enc))
+    }
+
+    fn install_from_pair(&mut self, pair: &MlKemKeyPair, now_ms: TimestampMs) -> KemKeyState {
+        let id = self.compute_key_id(&pair.public_key, now_ms);
+        let state = KemKeyState {
+            id,
+            public_key: pair.public_key.clone(),
+            level: pair.level,
+            created_at: now_ms,
+            expires_at: now_ms + self.rotation_interval_ms,
+        };
+
+        self.current = Some(state.clone());
+        state
     }
 
     fn compute_key_id(&self, pk: &[u8], now_ms: TimestampMs) -> KeyId {
@@ -177,9 +210,8 @@ mod tests {
     use crate::kem::MlKemEngine;
     use alloc::boxed::Box;
 
-    fn manager(rotation_interval_ms: u64) -> KeyManager<'static> {
-        let kem = Box::new(DemoMlKem::new());
-        let engine = MlKemEngine::new(Box::leak(kem));
+    fn manager(rotation_interval_ms: u64) -> KeyManager {
+        let engine = MlKemEngine::new(Box::new(DemoMlKem::new()));
         KeyManager::new(engine, ThresholdPolicy { t: 3, n: 5 }, rotation_interval_ms)
     }
 
@@ -222,5 +254,14 @@ mod tests {
         assert_eq!(policy.t, 3);
         assert_eq!(policy.n, 5);
         assert_eq!(km.rotation_interval_ms(), 250);
+    }
+
+    #[test]
+    fn keygen_with_material_returns_secret_key() {
+        let mut km = manager(400);
+        let (state, pair) = km.keygen_with_material(1_800_000_000_000).expect("keygen");
+        assert_eq!(state.public_key, pair.public_key);
+        assert_eq!(state.level, pair.level);
+        assert!(!pair.secret_key.is_empty());
     }
 }

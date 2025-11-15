@@ -47,7 +47,7 @@ pub struct DsaKeyState {
 /// #     }
 /// # }
 /// #
-/// let dsa_engine = MlDsaEngine::new(&DummyDsa);
+/// let dsa_engine = MlDsaEngine::new(Box::new(DummyDsa));
 /// let mut sig_mgr = SignatureManager::new(dsa_engine);
 ///
 /// let now: TimestampMs = 1_700_000_000_000;
@@ -58,15 +58,15 @@ pub struct DsaKeyState {
 ///
 /// sig_mgr.verify(&key_state.id, &msg, &sig)?;
 /// ```
-pub struct SignatureManager<'a> {
-    dsa: MlDsaEngine<'a>,
+pub struct SignatureManager {
+    dsa: MlDsaEngine,
     /// Storage hook for public keys (simulated as in-memory).
     keys: Vec<DsaKeyState>,
 }
 
-impl<'a> SignatureManager<'a> {
+impl SignatureManager {
     /// Create a new signature manager.
-    pub fn new(dsa: MlDsaEngine<'a>) -> Self {
+    pub fn new(dsa: MlDsaEngine) -> Self {
         Self {
             dsa,
             keys: Vec::new(),
@@ -176,9 +176,8 @@ mod tests {
     use crate::kem::MlKemEngine;
     use alloc::boxed::Box;
 
-    fn manager() -> SignatureManager<'static> {
-        let dsa = Box::new(DemoMlDsa::new());
-        let engine = MlDsaEngine::new(Box::leak(dsa));
+    fn manager() -> SignatureManager {
+        let engine = MlDsaEngine::new(Box::new(DemoMlDsa::new()));
         SignatureManager::new(engine)
     }
 
@@ -231,12 +230,9 @@ mod tests {
     #[test]
     fn sign_kem_transcript_matches_engine_transcript() {
         let mut mgr = manager();
-        let (_, signing_pair) = mgr
-            .generate_signing_key(1_700_555_000_000)
-            .expect("keygen");
+        let (_, signing_pair) = mgr.generate_signing_key(1_700_555_000_000).expect("keygen");
 
-        let kem = Box::new(DemoMlKem::new());
-        let kem_engine = MlKemEngine::new(Box::leak(kem));
+        let kem_engine = MlKemEngine::new(Box::new(DemoMlKem::new()));
         let kem_pair = kem_engine.keygen().expect("kem keypair");
         let encapsulation = kem_engine.encapsulate(&kem_pair.public_key).expect("enc");
         let context = b"client=unit-test";

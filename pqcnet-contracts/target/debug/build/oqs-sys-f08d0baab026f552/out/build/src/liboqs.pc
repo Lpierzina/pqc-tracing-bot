@@ -1,0 +1,10 @@
+prefix=/workspace/pqcnet-contracts/target/debug/build/oqs-sys-f08d0baab026f552/out
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: liboqs
+Description: Library for quantum-safe cryptographic algorithms
+Version: 0.8.0
+Requires.private: 
+Cflags: -I${includedir}
+Libs: -L${libdir} -loqs
