@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dilithium (ML-DSA) Demo — Explain Mode</title>
+  <style>
+    :root {
+      --bg:#0d6efd; --ok:#137333; --bad:#b00020; --muted:#6b7280; --border:#e5e7eb; --card:#f8fafc;
+    }
+    body{font-family:system-ui,Arial,sans-serif;margin:2rem auto;max-width:940px;line-height:1.5}
+    h1{margin:.25rem 0 .5rem}
+    .muted{color:var(--muted);margin:0 0 1rem}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:.75rem 0 1rem}
+    select,textarea,button{font-size:14px}
+    textarea{width:100%;min-height:72px}
+    button{padding:.6rem 1rem;border:0;border-radius:8px;cursor:pointer;background:var(--bg);color:#fff}
+    button:disabled{background:#9bb8ff;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media (min-width:880px){.grid{grid-template-columns:1.2fr .8fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .card h3{margin:.2rem 0 .4rem;font-size:16px}
+    .kv{display:grid;grid-template-columns:180px 1fr;gap:.25rem .75rem;font-family:ui-monospace,Consolas,monospace}
+    .kv div{padding:.08rem 0}
+    .pill{display:inline-block;padding:.15rem .5rem;border-radius:999px;background:#eef2ff;border:1px solid #dbe0ff;font-size:12px}
+    .ok{color:var(--ok);font-weight:600}
+    .bad{color:var(--bad);font-weight:600}
+    .btn-ghost{background:#eef2ff;color:#111;border:1px solid #d6dbff;padding:.25rem .55rem;border-radius:7px;cursor:pointer}
+    code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .mono{white-space:pre-wrap;word-break:break-word}
+    details{border:1px dashed var(--border);border-radius:10px;padding:10px}
+    details>summary{cursor:pointer;font-weight:600}
+  </style>
+</head>
+<body>
+  <h1>Dilithium (ML-DSA) Demo</h1>
+  <p class="muted">Generate a keypair → sign a message → verify it. Clear cards, copy buttons, and timings included.</p>
+
+  <div class="row">
+    <label for="level"><strong>Security level</strong>:</label>
+    <select id="level">
+      <option value="0" selected>Dilithium2 (Level 2)</option>
+      <option value="1">Dilithium3 (Level 3)</option>
+      <option value="2">Dilithium5 (Level 5)</option>
+    </select>
+    <button id="go">Generate, Sign, Verify</button>
+  </div>
+
+  <label for="msg"><strong>Message to sign</strong></label>
+  <textarea id="msg">Hello, Dilithium!</textarea>
+
+  <div class="grid" style="margin-top:14px">
+    <div id="events" class="stack"></div>
+
+    <div class="card">
+      <h3>What this shows</h3>
+      <p>Digital signatures. The secret key <em>signs</em> a message; anyone with the public key can <em>verify</em> that the <strong>exact</strong> message came from the secret-key holder and wasn’t altered.</p>
+      <details style="margin-top:8px">
+        <summary>Raw log (for debugging)</summary>
+        <pre id="raw" class="mono" style="max-height:300px;overflow:auto;margin-top:8px"></pre>
+      </details>
+    </div>
+  </div>
+
+  <script type="module">
+    import initPQC, { WasmDilithiumLevel, WasmKeypair } from './qies_pqc.js';
+
+    // ---------- helpers ----------
+    const $ = (id) => document.getElementById(id);
+    const events = $('events');
+    const raw = $('raw');
+    const levelSel = $('level');
+    const msgEl = $('msg');
+    const log = (s='') => { raw.textContent += s + '\\n'; raw.scrollTop = raw.scrollHeight; };
+
+    const levelName = (lv) =>
+      lv === WasmDilithiumLevel.Level2 ? 'Dilithium2 (Level 2)' :
+      lv === WasmDilithiumLevel.Level3 ? 'Dilithium3 (Level 3)' : 'Dilithium5 (Level 5)';
+
+    const bytesToHex = (u8) => Array.from(u8).map(b=>b.toString(16).padStart(2,'0')).join('');
+    const hexPreview = (u8, n=24) => {
+      const hex = bytesToHex(u8.slice(0, n));
+      return u8.length ? `${hex}${u8.length>n?'…':''}` : '';
+    };
+    const fmtLen = (u8) => `${u8.length} bytes`;
+    const ms = (t) => `${t.toFixed(1)} ms`;
+
+    function card(title, bodyHTML, footerHTML='') {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `
+        <h3>${title}</h3>
+        <div class="body mono">${bodyHTML}</div>
+        ${footerHTML ? `<div class="foot" style="margin-top:.5rem">${footerHTML}</div>` : ''}
+      `;
+      events.prepend(el);
+      return el;
+    }
+
+    function kv(rows) {
+      return `<div class="kv">${
+        rows.map(([k, v]) => `<div class="muted">${k}</div><div>${v}</div>`).join('')
+      }</div>`;
+    }
+
+    function copyBtn(text, label='Copy') {
+      const id = 'cp_' + Math.random().toString(36).slice(2);
+      queueMicrotask(() => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            const old = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(()=>btn.textContent = old, 900);
+          } catch {}
+        });
+      });
+      return `<button id="${id}" class="btn-ghost">${label}</button>`;
+    }
+
+    // ---------- main flow ----------
+    $('go').onclick = async () => {
+      $('go').disabled = true;
+      events.innerHTML = '';
+      raw.textContent = '';
+      try {
+        const t0 = performance.now();
+        await initPQC();
+        const t1 = performance.now();
+        log(`Loaded PQC module in ${ms(t1 - t0)}`);
+
+        const lvIdx = parseInt(levelSel.value, 10);
+        const wasmLevel = [WasmDilithiumLevel.Level2, WasmDilithiumLevel.Level3, WasmDilithiumLevel.Level5][lvIdx];
+
+        // 1) Key generation
+        const tKey0 = performance.now();
+        const kp = WasmKeypair.generateDilithiumKeypair(wasmLevel);
+        const sk = kp.secret_key();
+        const pk = kp.public_key();
+        const pkBytes = pk.to_bytes();
+        const skBytes = sk.to_bytes();
+        const tKey1 = performance.now();
+        log('Keypair generated');
+
+        card('🔐 Keypair generated', kv([
+          ['Scheme / level', levelName(wasmLevel)],
+          ['Public key', `${fmtLen(pkBytes)}  •  <code>${hexPreview(pkBytes)}</code> ${copyBtn(bytesToHex(pkBytes),'Copy hex')}`],
+          ['Secret key', `${skBytes.length} bytes (kept private)`],
+          ['Time', ms(tKey1 - tKey0)]
+        ]), `<span class="pill">Share public key</span> &nbsp; <span class="pill">Keep secret key safe</span>`);
+
+        // 2) Message
+        const msgText = msgEl.value;
+        const msg = new TextEncoder().encode(msgText);
+        log(`Message: "${msgText}"`);
+        card('📝 Message prepared', kv([
+          ['Text', `<code>${msgText.replace(/</g,'&lt;')}</code>`],
+          ['Byte length', msg.length]
+        ]));
+
+        // 3) Sign
+        const tSign0 = performance.now();
+        const sig = sk.sign(msg);
+        const sigBytes = sig.to_bytes();
+        const isCompressed = sig.is_compressed();
+        const tSign1 = performance.now();
+        log(`Signed (${sigBytes.length} bytes)`);
+
+        card('✍️ Signature created', kv([
+          ['Signature', `${fmtLen(sigBytes)}  •  <code>${hexPreview(sigBytes)}</code> ${copyBtn(bytesToHex(sigBytes),'Copy hex')}`],
+          ['Encoding', isCompressed ? 'compressed' : 'uncompressed'],
+          ['Time', ms(tSign1 - tSign0)]
+        ]), '<span class="muted">Only the holder of the secret key could have produced this signature for this exact message.</span>');
+
+        // 4) Verify (true)
+        const tVer0 = performance.now();
+        const ok = pk.verify(msg, sigBytes, isCompressed);
+        const tVer1 = performance.now();
+        log(`Verify original → ${ok}`);
+        card('🔎 Verification (original message)',
+          `<div class="${ok ? 'ok' : 'bad'}">${ok ? 'VALID ✅' : 'INVALID ❌'}</div>` +
+          kv([['Time', ms(tVer1 - tVer0)]]),
+          '<span class="muted">Public key confirms signature matches the exact message and key.</span>'
+        );
+
+        // 5) Tamper test (false)
+        const changed = msgText.replace(/!$/, '?') || (msgText + ' (edited)');
+        const bad = new TextEncoder().encode(changed);
+        const ok2 = pk.verify(bad, sigBytes, isCompressed);
+        log(`Verify tampered → ${ok2}`);
+        card('🧪 Tamper check (slightly changed message)',
+          `<div class="${ok2 ? 'bad' : 'ok'}">${ok2 ? 'VALID (unexpected) ❌' : 'INVALID (as expected) ✅'}</div>` +
+          kv([
+            ['Changed text', `<code>${changed.replace(/</g,'&lt;')}</code>`],
+            ['Why', 'Even tiny edits break the signature — that’s how tampering is detected.']
+          ])
+        );
+
+      } catch (err) {
+        log('ERROR: ' + (err?.message || String(err)));
+        card('⚠️ Error', `<div class="bad mono">${(err?.message || String(err))}</div>`,
+             '<span class="muted">Open DevTools → Console for stack details.</span>');
+      } finally {
+        $('go').disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

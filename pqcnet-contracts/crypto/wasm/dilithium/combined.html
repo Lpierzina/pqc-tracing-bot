@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PQC Combined Demo — Kyber (ML-KEM) + Dilithium (ML-DSA)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --ink:#0f172a; --muted:#64748b; --bg:#0b1020; --panel:#0f1224;
+      --card:#11162a; --line:#1f2540; --accent:#60a5fa; --good:#16a34a; --bad:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0; font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#e5e7eb;
+         background:linear-gradient(180deg,#0a0f1f,#0b1020);}
+    .wrap{max-width:1100px;margin:36px auto;padding:0 16px}
+    h1{font-size:26px;margin:0 0 6px}
+    .muted{color:#9aa4b2;margin:0 0 24px}
+    .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 12px;box-shadow:0 6px 22px rgba(12,16,30,.35)}
+    .title{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+    .title .pill{font-size:12px;border:1px solid #293050;background:#12193a;border-radius:999px;padding:.15rem .5rem}
+    label{display:block;margin:.25rem 0 .4rem;color:#cbd5e1}
+    textarea{width:100%;min-height:90px;border-radius:10px;border:1px solid var(--line);background:#0c1230;color:#e7ecf8;padding:10px 12px}
+    input[type="file"]{display:none}
+    .file{display:inline-block;background:#1a2144;border:1px dashed #334;padding:.5rem .75rem;border-radius:10px;cursor:pointer}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    select,button{font:14px inherit}
+    select{background:#12193a;border:1px solid #2a335b;color:#e7ecf8;border-radius:10px;padding:.5rem .6rem}
+    button{background:linear-gradient(180deg,#2563eb,#1d4ed8);border:0;color:#fff;border-radius:10px;padding:.65rem 1rem;cursor:pointer}
+    button.secondary{background:#1a2144;border:1px solid #2a335b}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    pre{white-space:pre-wrap;background:#0c1130;border:1px solid #222a50;border-radius:12px;padding:12px;max-height:280px;overflow:auto;color:#cfe3ff}
+    .explain{background:#0c1536;border-left:4px solid var(--accent);padding:10px 12px;border-radius:10px;margin:10px 0;color:#cfe3ff}
+    .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+    .kpi{background:#101738;border:1px solid #223;border-radius:10px;padding:8px}
+    .kpi small{color:#9aa4b2}
+    .mutebar{border-top:1px dashed #2a335b;margin:12px -16px 0;padding:10px 16px;color:#aab6c8;font-size:12px}
+    .small{font-size:12px;color:#9aa4b2}
+    .copy{margin-left:8px;font-size:12px}
+    .badge{display:inline-block;padding:.1rem .45rem;border-radius:999px;border:1px solid #2a335b;background:#12193a;color:#bcd}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PQC Combined Demo</h1>
+  <p class="muted">One click shows the full story: <strong>Kyber (ML-KEM)</strong> establishes a key and encrypts your message/file, then <strong>Dilithium (ML-DSA)</strong> signs the exact content (or a PDF fingerprint) so anyone can verify it hasn’t been altered.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3 class="title">1) Inputs <span class="pill">what we’ll protect</span></h3>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <label><strong>Kyber security</strong></label>
+          <select id="kemLevel">
+            <option value="1">ML-KEM-768 (Level 3)</option>
+            <option value="0">ML-KEM-512 (Level 1)</option>
+            <option value="2">ML-KEM-1024 (Level 5)</option>
+          </select>
+        </div>
+        <div>
+          <label><strong>Dilithium security</strong></label>
+          <select id="dsaLevel">
+            <option value="0">Dilithium2 (Level 2)</option>
+            <option value="1">Dilithium3 (Level 3)</option>
+            <option value="2">Dilithium5 (Level 5)</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="msg"><strong>Message</strong> (plaintext to encrypt + sign)</label>
+      <textarea id="msg" class="mono">Hi there</textarea>
+
+      <div class="row" style="margin-top:10px">
+        <label for="pdf" class="file">Optional: attach a PDF (we’ll compute a SHA-256 fingerprint)</label>
+        <input id="pdf" type="file" accept=".pdf" />
+        <span id="pdfInfo" class="small">No file chosen.</span>
+      </div>
+
+      <div class="explain">
+        <strong>Story:</strong> We’ll generate a Kyber keypair, derive a shared key, encrypt your message, and decrypt it back.<br/>
+        Then we’ll generate a Dilithium keypair and sign either the plaintext message or (if a PDF is attached) a small JSON
+        “envelope” with the PDF’s filename and SHA-256 fingerprint. Finally we verify the signature and show a tamper test.
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <button id="run">Run end-to-end</button>
+        <button id="reset" class="secondary">Reset output</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="title">2) Results <span class="pill">live as it happens</span></h3>
+      <div class="kpis">
+        <div class="kpi"><small>Kyber module</small><div id="kMod" class="mono">–</div></div>
+        <div class="kpi"><small>Dilithium module</small><div id="dMod" class="mono">–</div></div>
+        <div class="kpi"><small>Overall status</small><div id="status" class="mono">Waiting…</div></div>
+      </div>
+      <div style="margin-top:10px">
+        <pre id="out" class="mono"></pre>
+      </div>
+      <div class="mutebar small">
+        Tip: click the “copy hex” buttons in the log to grab sample bytes (keys, signatures).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* ---------- show early errors instead of a blank page ---------- */
+const overlay = (msg) => {
+  const d = document.createElement('pre');
+  d.style.cssText = 'background:#2b1d1d;color:#ffd7d7;padding:12px;border:1px solid #5a2;white-space:pre-wrap';
+  d.textContent = 'Startup error:\n' + msg;
+  document.querySelector('#out')?.prepend(d);
+};
+window.addEventListener('error', e => overlay(e?.message || String(e)));
+window.addEventListener('unhandledrejection', e => overlay(String(e?.reason || e)));
+
+/* ---------- imports ---------- */
+import kyberInitWasm, {
+  init as kyberInit,
+  create_kyber_manager,
+  generate_random_seed,
+  generate_random_nonce,
+  get_version as kyberVersion,
+  get_name as kyberName,
+  get_description as kyberDesc
+} from './Kyber/qies_kyber.js';
+
+import pqcInit, { WasmDilithiumLevel, WasmKeypair } from './Dilithium/qies_pqc.js';
+
+/* ---------- DOM helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const out = $('out'), statusEl = $('status'), kMod = $('kMod'), dMod = $('dMod');
+const kemLevelSel = $('kemLevel'), dsaLevelSel = $('dsaLevel'), msgEl = $('msg');
+const pdfInput = $('pdf'), pdfInfo = $('pdfInfo');
+$('reset').onclick = () => { out.textContent = ''; status('Waiting…'); };
+
+function log(line = '') { out.textContent += line + '\n'; out.scrollTop = out.scrollHeight; }
+function status(t) { statusEl.textContent = t; }
+function trimHex(u8, show = 16) {
+  const hex = [...u8.slice(0, show)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  return `${u8.length} bytes` + (u8.length ? ` (first ${Math.min(show,u8.length)}: ${hex}${u8.length>show?'…':''})` : '');
+}
+function copyBtn(label, dataHex) {
+  const id = 'copy_' + Math.random().toString(36).slice(2);
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.onclick = async () => {
+      try { await navigator.clipboard.writeText(dataHex);
+        el.textContent = 'copied ✓'; setTimeout(()=>el.textContent=label, 900); } catch(e){}
+    };
+  }, 0);
+  return `<button id="${id}" class="copy badge">${label}</button>`;
+}
+async function sha256Hex(u8) {
+  const d = await crypto.subtle.digest('SHA-256', u8);
+  return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* ---------- AES-GCM over Kyber shared secret (WebCrypto) ---------- */
+async function aesKey(bytes) {
+  return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function aeadEncrypt(keyBytes, plaintext) {
+  const key = await aesKey(keyBytes);
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext));
+  return { iv, ct };
+}
+async function aeadDecrypt(keyBytes, iv, ct) {
+  const key = await aesKey(keyBytes);
+  const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+  return pt;
+}
+
+/* ---------- file UI ---------- */
+pdfInput.addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) { pdfInfo.textContent = 'No file chosen.'; return; }
+  pdfInfo.textContent = `${f.name} — ${(f.size/1024).toFixed(1)} KB`;
+});
+
+/* ---------- main flow ---------- */
+$('run').onclick = async () => {
+  $('run').disabled = true; out.textContent = ''; status('Starting…');
+  try {
+    // 0) Load both WASM modules
+    const t0 = performance.now();
+    await kyberInitWasm(); kyberInit();
+    const kver = `${kyberName()} v${kyberVersion()}`; kMod.textContent = kver;
+    const t1 = performance.now();
+
+    const t2 = performance.now();
+    await pqcInit();
+    dMod.textContent = 'qies_pqc (Dilithium) — ready';
+    const t3 = performance.now();
+
+    log(`Loaded Kyber in ${(t1 - t0).toFixed(1)} ms — ${kyberDesc()}`);
+    log(`Loaded Dilithium in ${(t3 - t2).toFixed(1)} ms`);
+    log('—'.repeat(72));
+
+    // 1) Kyber: keypair → encapsulate → decapsulate
+    const uiIdx = parseInt(kemLevelSel.value, 10);     // UI values are 0/1/2 (order in the <select>)
+    const kyberLevel = [1, 3, 5][uiIdx];               // map to NIST 1/3/5
+    const kmgr = create_kyber_manager(kyberLevel);     // if your build expects 0/1/2, swap to: create_kyber_manager(uiIdx)
+
+    const seed1 = await generate_random_seed();
+    const nonce1 = await generate_random_nonce();
+    const kp = kmgr.generate_keypair(seed1, nonce1);
+    const pk = kp.get_public_key();
+    const sk = kp.get_private_key();
+
+    log(`🔐 Kyber keypair (${kp.get_level()}):`);
+    log(`   • Public key:  ${trimHex(pk)} ${copyBtn('copy hex', [...pk].map(b=>b.toString(16).padStart(2,'0')).join(''))}`);
+    log(`   • Private key: ${sk.length} bytes (kept private)`);
+    log('');
+
+    const seed2 = await generate_random_seed();
+    const nonce2 = await generate_random_nonce();
+    const encap = kmgr.encapsulate(pk, seed2, nonce2);
+    const ct = encap.get_ciphertext();
+    const ss_sender = encap.get_shared_secret();
+
+    log(`🤝 Encapsulated shared secret (sender): ${trimHex(ss_sender)}`);
+    log(`   • Kyber ciphertext: ${trimHex(ct)}`);
+    const ss_recv = kmgr.decapsulate(ct, sk);
+    const match = ss_recv && ss_sender && ss_recv.length === ss_sender.length &&
+                  ss_recv.every((b,i)=>b===ss_sender[i]);
+    log(`   • Decapsulated (receiver) matches: ${match ? 'YES ✅' : 'NO ❌'}`);
+    log('—'.repeat(72));
+
+    // 2) Encrypt + decrypt using WebCrypto AES-GCM over the shared secret
+    const msgText = msgEl.value;
+    if (!msgText) throw new Error('Please enter a message.');
+    const msgBytes = new TextEncoder().encode(msgText);
+
+    const { iv, ct: aeadCt } = await aeadEncrypt(ss_sender, msgBytes);
+    log(`🔒 Encrypted with AES-GCM over Kyber shared secret: ${msgBytes.length} → ${aeadCt.length} bytes`);
+    log(`   • IV: ${trimHex(iv)}  • Ciphertext: ${trimHex(aeadCt)}`);
+
+    try {
+      const decBytes = await aeadDecrypt(ss_recv, iv, aeadCt);
+      const decText = new TextDecoder().decode(decBytes);
+      log(`🔓 Decrypted back to plaintext: "${decText}"`);
+      log('   Explanation: Kyber establishes a shared key; AES-GCM protects the payload with that key.');
+    } catch (e) {
+      log(`❌ Decryption error (AES-GCM): ${e?.message || e}`);
+      log('   Note: if this happens, the shared secrets differed; double-check Kyber level/versions.');
+    }
+    log('—'.repeat(72));
+
+    // 3) Dilithium: generate keypair and sign
+    const levelMap = [WasmDilithiumLevel.Level2, WasmDilithiumLevel.Level3, WasmDilithiumLevel.Level5];
+    const dsaLevel = levelMap[parseInt(dsaLevelSel.value,10)];
+    const tKey0 = performance.now();
+    const dkp = WasmKeypair.generateDilithiumKeypair(dsaLevel);
+    const dsk = dkp.secret_key(); const dpk = dkp.public_key();
+    const tKey1 = performance.now();
+
+    log(`🖊️  Dilithium keypair ready (${dpk.get_level()}), generated in ${(tKey1 - tKey0).toFixed(1)} ms.`);
+    log(`   • Public key: ${trimHex(dpk.to_bytes())}`);
+
+    // If PDF attached, sign an envelope with name + sha256 (standard practice)
+    const file = pdfInput.files?.[0];
+    let signedPayloadDesc = '';
+    let payload;
+
+    if (file) {
+      const u8 = new Uint8Array(await file.arrayBuffer());
+      const digest = await sha256Hex(u8);
+      const envelope = { type:'pdf', name:file.name, size:file.size, sha256:digest };
+      const json = JSON.stringify(envelope);
+      payload = new TextEncoder().encode(json);
+      signedPayloadDesc = `PDF envelope {name:"${file.name}", sha256:${digest.slice(0,16)}…}`;
+      log(`📄 PDF fingerprint: SHA-256(${file.name}) = ${digest}`);
+    } else {
+      payload = msgBytes;
+      signedPayloadDesc = `plaintext message (${msgBytes.length} bytes)`;
+    }
+
+    const tSig0 = performance.now();
+    const sig = dsk.sign(payload);
+    const sigBytes = sig.to_bytes();
+    const tSig1 = performance.now();
+
+    log(`✍️  Signed ${signedPayloadDesc} with Dilithium in ${(tSig1 - tSig0).toFixed(1)} ms:`);
+    log(`   • Signature: ${trimHex(sigBytes)} ${copyBtn('copy hex', [...sigBytes].map(b=>b.toString(16).padStart(2,'0')).join(''))}`);
+    log('   Explanation: only the holder of the secret key could have produced this signature for those exact bytes.');
+
+    // 4) Verify + tamper demo
+    const tVer0 = performance.now();
+    const ok = dpk.verify(payload, sigBytes, sig.is_compressed());
+    const tVer1 = performance.now();
+
+    log(`🔎 Verify → ${ok ? 'VALID ✅' : 'INVALID ❌'} (took ${(tVer1 - tVer0).toFixed(1)} ms)`);
+    if (!file) {
+      const tampered = new TextEncoder().encode(msgText.replace(/!$/, '?') || (msgText + ' (edited)'));
+      const ok2 = dpk.verify(tampered, sigBytes, sig.is_compressed());
+      log(`🧪 Tamper check (edited text) → ${ok2 ? 'VALID (unexpected) ❌' : 'INVALID (as expected) ✅'}`);
+    } else {
+      log('🧪 Tamper check tip: any change to the PDF produces a different SHA-256, and verification will fail.');
+    }
+
+    log('—'.repeat(72));
+    log('✅ Done. Confidentiality (Kyber) + Authenticity/Integrity (Dilithium) demonstrated end-to-end.');
+    status('Success');
+  } catch (err) {
+    log('\n⚠️  Error: ' + (err?.message || String(err)));
+    status('Error');
+    console.error(err);
+  } finally {
+    $('run').disabled = false;
+  }
+};
+</script>
+</body>
+</html>

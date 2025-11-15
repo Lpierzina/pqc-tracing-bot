@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>PQC (Kyber + Dilithium) Combined Demo</title></head>
+<body>
+  <h1>PQC Combined Demo</h1>
+  <button id="run">Run end-to-end</button>
+  <pre id="out"></pre>
+
+  <script type="module">
+    import initPQC, {
+      init_pqc_manager,
+      WasmKyberLevel,    // Level1, Level3, Level5
+      WasmDilithiumLevel // Level2, Level3, Level5
+    } from './qies_pqc.js';
+
+    const out = document.getElementById('out');
+    const log = (...a) => { out.textContent += a.join(' ') + '\n'; };
+
+    document.getElementById('run').onclick = async () => {
+      await initPQC();                          // loads qies_pqc_bg.wasm
+      const mgr = init_pqc_manager('browser');  // any string; used by the wrapper
+
+      // --- 1) Kyber keypair (recipient/server) ---
+      const kyberLevel = WasmKyberLevel.Level3;
+      const kyberPair = mgr.generateKyberKeypair(kyberLevel); // returns 'any' (see note below)
+      // NOTE: Depending on the build, this may be a KyberKeyPair instance (with getters)
+      // or a plain object { public_key, private_key }.
+      const getPub = p => (p.get_public_key ? p.get_public_key() : p.public_key);
+      const getPriv = p => (p.get_private_key ? p.get_private_key() : p.private_key);
+      const kyberPub  = getPub(kyberPair);
+      const kyberPriv = getPriv(kyberPair);
+      log('Kyber keypair ready (Level3). pub=', kyberPub.length, 'priv=', kyberPriv.length);
+
+      // --- 2) Encrypt a message via Kyber (KEM+AES under the hood) ---
+      const msg = new TextEncoder().encode('Hello PQC world');
+      const ct  = mgr.kyberEncrypt(msg, kyberPub, kyberLevel);  // 'any' → typically Uint8Array ciphertext blob
+      log('Kyber-encrypted bytes:', ct.length);
+
+      // --- 3) Decrypt with Kyber private key ---
+      const pt = mgr.kyberDecrypt(ct, kyberPriv, kyberLevel);   // → Uint8Array
+      log('Kyber-decrypted text:', new TextDecoder().decode(pt));
+
+      // --- 4) Dilithium keypair (signer) ---
+      const dsaLevel = WasmDilithiumLevel.Level2;
+      const dsaKp = (await import('./qies_pqc.js')).WasmKeypair.generateDilithiumKeypair(dsaLevel);
+      const sk = dsaKp.secret_key();
+      const pk = dsaKp.public_key();
+      log('Dilithium keypair ready (Level2).');
+
+      // --- 5) Sign the ciphertext (or sign the plaintext, your choice) ---
+      const sig = sk.sign(ct);           // WasmSignature
+      const sigBytes = sig.to_bytes();   // Uint8Array
+      log('Signature bytes:', sigBytes.length, 'compressed?', sig.is_compressed());
+
+      // --- 6) Verify the signature ---
+      const ok = pk.verify(ct, sigBytes, sig.is_compressed());
+      log('Signature verify:', ok ? 'VALID ✅' : 'INVALID ❌');
+    };
+  </script>
+</body>
+</html>

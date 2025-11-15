@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>FN-DSA (Falcon) Demo — Explain Mode</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{--bg:#0ea5e9;--ok:#16a34a;--bad:#ef4444;--muted:#6b7280;--border:#e5e7eb;--card:#f8fafc}
+    body{font-family:system-ui,Arial,sans-serif;margin:2rem auto;max-width:980px;line-height:1.5}
+    h1{margin:.25rem 0 .5rem}.muted{color:var(--muted);margin:0 0 1rem}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:.75rem 0 1rem}
+    select,textarea,button{font-size:14px}
+    textarea{width:100%;min-height:72px}
+    button{padding:.6rem 1rem;border:0;border-radius:8px;cursor:pointer;background:var(--bg);color:#fff}
+    button:disabled{background:#9ddcf5;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media (min-width:880px){.grid{grid-template-columns:1.2fr .8fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .card h3{margin:.2rem 0 .4rem;font-size:16px}
+    .kv{display:grid;grid-template-columns:200px 1fr;gap:.25rem .75rem;font-family:ui-monospace,Consolas,monospace}
+    .kv div{padding:.08rem 0}
+    .pill{display:inline-block;padding:.15rem .5rem;border-radius:999px;background:#eef2ff;border:1px solid #dbe0ff;font-size:12px}
+    .ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+    .btn-ghost{background:#eef2ff;color:#111;border:1px solid #d6dbff;padding:.25rem .55rem;border-radius:7px;cursor:pointer}
+    code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .mono{white-space:pre-wrap;word-break:break-word}
+    details{border:1px dashed var(--border);border-radius:10px;padding:10px}
+    details>summary{cursor:pointer;font-weight:600}
+    .stack>.card{margin-bottom:12px}
+
+    /* Progress overlay */
+    .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,.45);backdrop-filter:blur(2px);z-index:9999}
+    .overlay[hidden]{display:none}
+    .ovl-box{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-width:280px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .spinner{width:32px;height:32px;border-radius:50%;border:3px solid #e5e7eb;border-top-color:var(--bg);margin:0 auto 10px;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .ovl-actions{margin-top:10px;display:flex;gap:8px;justify-content:center}
+  </style>
+</head>
+<body>
+  <h1>FN-DSA (Falcon) Demo</h1>
+  <p class="muted">Generate a keypair → sign a message → verify. Shows sizes and timings. KAT + engine checks included.</p>
+
+  <div class="row">
+    <label for="level"><strong>Parameter set</strong>:</label>
+    <select id="level">
+      <option value="0" selected>FN-DSA-512 (Level 1)</option>
+      <option value="2">FN-DSA-1024 (Level 5)</option>
+    </select>
+    <label><input type="checkbox" id="lockSig" /> Lock signature (verify only)</label>
+    <button id="go">Generate, Sign, Verify</button>
+    <button id="reset" class="btn-ghost" title="Clear cached keys/signature">Reset</button>
+    <button id="selftest" class="btn-ghost" title="Runs module self-test">Self-test</button>
+  </div>
+
+  <label for="msg"><strong>Message to sign</strong></label>
+  <textarea id="msg">Hello, Falcon / FN-DSA!</textarea>
+
+  <div class="grid" style="margin-top:14px">
+    <div id="events" class="stack"></div>
+
+    <div class="card">
+      <h3>What this shows</h3>
+      <p>Falcon is a <em>signature</em> scheme. Sign with the secret key; anyone can verify with the public key.</p>
+      <details style="margin-top:8px">
+        <summary>Raw log (debug)</summary>
+        <pre id="raw" class="mono" style="max-height:320px;overflow:auto;margin-top:8px"></pre>
+      </details>
+      <details style="margin-top:8px">
+        <summary>Run KATs (Known-Answer Tests)</summary>
+        <div class="mono" style="font-size:13px">
+<pre>{
+  "algorithm": "falcon-512|falcon-1024",
+  "cases": [
+    { "msg_hex": "...", "pk_hex": "...", "sig_hex": "..." }
+  ]
+}</pre>
+          <input id="katFile" type="file" accept="application/json" />
+          <div id="katOut" style="margin-top:8px"></div>
+        </div>
+      </details>
+      <details style="margin-top:8px">
+        <summary>Browser-engine checks</summary>
+        <div class="mono" style="font-size:13px">
+          <p>Runs 200 sign/verify loops to sanity-check floating-point verification across engines.</p>
+          <div class="row"><button id="engineCheck" class="btn-ghost">Run 200 sign/verify cycles</button><span id="engineRes" class="muted"></span></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- progress overlay -->
+  <div id="overlay" class="overlay" hidden aria-live="polite">
+    <div class="ovl-box">
+      <div class="spinner"></div>
+      <div id="overlayText" class="mono" style="margin-bottom:6px">Working…</div>
+      <div class="ovl-actions">
+        <button id="cancelRun" class="btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import init, {
+      WasmFalconLevel as Levels,
+      WasmFalconKeypair as Keypair,
+      public_key_from_bytes,
+      self_test
+    } from './qies_fndsa.js';
+
+    await init();
+
+    const $ = (id)=>document.getElementById(id);
+    const events = $('events'), raw = $('raw'), levelSel = $('level'), msgEl = $('msg');
+    const overlay = $('overlay'), overlayText = $('overlayText'), cancelRunBtn = $('cancelRun');
+
+    const log = (s='')=>{ raw.textContent += s+'\n'; raw.scrollTop = raw.scrollHeight; };
+    const bytesToHex = (u8)=>Array.from(u8).map(b=>b.toString(16).padStart(2,'0')).join('');
+    const hexPreview = (u8,n=24)=>{ const h=bytesToHex(u8.slice(0,n)); return u8.length?`${h}${u8.length>n?'…':''}`:''; };
+    const fmtLen = (u8)=>`${u8.length} bytes`;
+    const ms = (t)=>`${t.toFixed(1)} ms`;
+    const waitFrame = () => new Promise(r=>requestAnimationFrame(()=>r()));
+
+    function showOverlay(text='Working…', showCancel=false){
+      overlayText.textContent = text;
+      cancelRunBtn.style.display = showCancel ? 'inline-block' : 'none';
+      cancelRunBtn.disabled = false;
+      overlay.hidden = false;
+    }
+    function hideOverlay(){ overlay.hidden = true; }
+
+    function card(title, bodyHTML, footerHTML=''){
+      const el=document.createElement('div'); el.className='card';
+      el.innerHTML=`<h3>${title}</h3><div class="body mono">${bodyHTML}</div>${footerHTML?`<div class="foot" style="margin-top:.5rem">${footerHTML}</div>`:''}`;
+      events.prepend(el); return el;
+    }
+    function kv(rows){ return `<div class="kv">${rows.map(([k,v])=>`<div class="muted">${k}</div><div>${v}</div>`).join('')}</div>`; }
+    function copyBtn(text,label='Copy'){ const id='cp_'+Math.random().toString(36).slice(2); queueMicrotask(()=>{ const btn=document.getElementById(id); if(!btn)return; btn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(text); const old=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=old,900);}catch{}});}); return `<button id="${id}" class="btn-ghost">${label}</button>`; }
+
+    function makeTampered(msgText, msgBytes) {
+      let changedText = msgText.endsWith('!') ? msgText.slice(0, -1) + '?' : msgText + ' (edited)';
+      let tampered = new TextEncoder().encode(changedText);
+      const same = tampered.length === msgBytes.length && tampered.every((b,i)=>b===msgBytes[i]);
+      if (same) { tampered = new Uint8Array(msgBytes); tampered[tampered.length - 1] ^= 0x01; changedText += ' [byte-flip]'; }
+      return { changedText, tampered };
+    }
+
+    const SIZE = {
+      0: { pk: 897,  sigMin: 600,  sigMax: 800  },
+      2: { pk: 1793, sigMin: 1200, sigMax: 1500 }
+    };
+
+    const levelFromSelect = ()=> (parseInt(levelSel.value,10) === 2 ? Levels.Level1024 : Levels.Level512);
+    const levelName = (lv)=> lv===Levels.Level1024 ? 'FN-DSA-1024 (Level 5)' : 'FN-DSA-512 (Level 1)';
+    const genKeypair = (wasmLevel)=> Keypair.generateFalconKeypair(wasmLevel);
+
+    const getPkBytes = (kp)=>{
+      if (kp.public_key && typeof kp.public_key === 'function') {
+        const pk = kp.public_key();
+        return pk.to_bytes ? pk.to_bytes() : (pk.bytes || pk);
+      }
+      if (kp.pk) return kp.pk;
+      throw new Error('Public key accessor not found');
+    };
+    const getSkObj = (kp)=>{
+      if (kp.secret_key && typeof kp.secret_key === 'function') return kp.secret_key();
+      if (kp.sk) return kp.sk;
+      throw new Error('Secret key accessor not found');
+    };
+    const sign = (skObj, msg)=> skObj.sign(msg);
+    const sigBytes = (sig)=> sig.to_bytes ? sig.to_bytes() : (sig.bytes || sig);
+    const pkVerify = (pkObj, msg, sigB, compressedFlag)=>{
+      if (pkObj.verify) return pkObj.verify(msg, sigB, !!compressedFlag);
+      throw new Error('Verify method not found on public key object');
+    };
+
+    // Key & signature caches (keys are reused until Reset or level change)
+    let cached = { kp:null, level:null };
+    let sigCache = { bytes: null, msgHex: null };
+
+    async function getKeys(level) {
+      if (cached.kp && cached.level === level) return cached.kp;
+      cached.kp = await genKeypair(level);
+      cached.level = level;
+      return cached.kp;
+    }
+    async function getKeysFresh(level) {
+      cached.kp = await genKeypair(level);
+      cached.level = level;
+      return cached.kp;
+    }
+    function clearCaches(){
+      cached = { kp:null, level:null };
+      sigCache = { bytes:null, msgHex:null };
+    }
+    $('reset').onclick = ()=>{
+      clearCaches();
+      card('♻️ Reset', '<span class="muted">Cleared cached keys and signature.</span>');
+    };
+
+    // ---------- main flow ----------
+    $('go').onclick = async () => {
+      $('go').disabled = true; events.innerHTML=''; raw.textContent='';
+      try {
+        const t0=performance.now(); const t1=performance.now();
+        log(`Loaded FN-DSA module in ${ms(t1-t0)}`);
+
+        const wasmLevel = levelFromSelect();
+        const reusedBefore = !!cached.kp && cached.level === wasmLevel;
+
+        const tKey0=performance.now();
+        const kp = await getKeys(wasmLevel);
+        const skObj = getSkObj(kp);
+        const pkObj = kp.public_key? kp.public_key() : kp.pkObj;
+        const pkBytes = getPkBytes(kp);
+        const tKey1=performance.now();
+
+        const sizeRule = SIZE[wasmLevel===Levels.Level1024?2:0];
+        const sizeOK = pkBytes.length===sizeRule.pk;
+
+        card('🔐 Keypair ready', kv([
+          ['Scheme / level', levelName(wasmLevel)],
+          ['Public key', `${fmtLen(pkBytes)}  •  <code>${hexPreview(pkBytes)}</code> ${copyBtn(bytesToHex(pkBytes),'Copy hex')}`],
+          ['Public key size check', sizeOK?'<span class="ok">OK</span>':`<span class="bad">Expected ${sizeRule.pk} bytes</span>`],
+          ['Keys', reusedBefore? 'reused since last run':'freshly generated'],
+          ['Time', ms(tKey1 - tKey0)]
+        ]));
+
+        const msgText=msgEl.value; const msg=new TextEncoder().encode(msgText);
+        log(`Message: "${msgText}"`);
+        card('📝 Message prepared', kv([
+          ['Text', `<code>${msgText.replace(/</g,'&lt;')}</code>`],
+          ['Byte length', msg.length]
+        ]));
+
+        const lock = $('lockSig')?.checked;
+        const msgHex = bytesToHex(msg);
+
+        let sigB, tSign0=0, tSign1=0;
+        if (lock && sigCache.bytes) {
+          sigB = sigCache.bytes.slice();
+          card('🔒 Using locked signature',
+            kv([
+              ['Status', '<span class="muted">Verify-only (no new signing)</span>'],
+              ['Cached signature', `${sigB.length} bytes • <code>${hexPreview(sigB)}</code>`],
+              ['Note', 'Change the message and click again: verification should fail with a locked signature.']
+            ])
+          );
+        } else {
+          tSign0 = performance.now();
+          const sig = sign(skObj, msg);
+          sigB = sigBytes(sig);
+          tSign1 = performance.now();
+
+          sigCache.bytes = sigB.slice();
+          sigCache.msgHex = msgHex;
+
+          const sigOK = sigB.length >= sizeRule.sigMin && sigB.length <= sizeRule.sigMax;
+          const sigSizeText = sigOK
+            ? `<span class="ok">OK (~${sizeRule.sigMin}–${sizeRule.sigMax}B)</span>`
+            : `<span class="bad">${sigB.length}B (expected ~${sizeRule.sigMin}–${sizeRule.sigMax}B)</span>`;
+
+          card('✍️ Signature created', kv([
+            ['Signature', `${fmtLen(sigB)}  •  <code>${hexPreview(sigB)}</code> ${copyBtn(bytesToHex(sigB),'Copy hex')}`],
+            ['Encoding', 'compressed (variable length)'],
+            ['Size check', sigSizeText],
+            ['Time', ms(tSign1 - tSign0)]
+          ]), '<span class="muted">Only the holder of the secret key could have produced this signature for this exact message.</span>');
+        }
+
+        const tVer0 = performance.now();
+        const ok = pkVerify(pkObj, msg, sigB, true);
+        const tVer1 = performance.now();
+        log(`Verify original → ${ok}`);
+        card('🔎 Verification (original message)',
+          `<div class="${ok ? 'ok' : 'bad'}">${ok ? 'VALID ✅' : 'INVALID ❌'}</div>`+
+          kv([[ 'Time', ms(tVer1 - tVer0) ]]),
+          ($('lockSig')?.checked)
+            ? '<span class="muted">Locked: verification used the previously cached signature.</span>'
+            : '<span class="muted">Verification used the signature created above.</span>'
+        );
+
+        const { changedText, tampered } = makeTampered(msgText, msg);
+        const ok2 = pkVerify(pkObj, tampered, sigB, true);
+        log(`Verify tampered → ${ok2}`);
+        card('🧪 Tamper check (slightly changed message)',
+          `<div class="${ok2 ? 'bad' : 'ok'}">${ok2 ? 'VALID (unexpected) ❌' : 'INVALID (as expected) ✅'}</div>` +
+          kv([
+            ['Changed text', `<code>${changedText.replace(/</g,'&lt;')}</code>`],
+            ['Why', 'Even tiny edits break the signature — that’s how tampering is detected.']
+          ])
+        );
+
+        if (!$('lockSig')?.checked) {
+          const sig2 = sign(skObj, tampered);
+          const sig2B = sigBytes(sig2);
+          const ok3 = pkVerify(pkObj, tampered, sig2B, true);
+          card('♻️ Control: sign the changed message',
+            `<div class="${ok3 ? 'ok' : 'bad'}">${ok3 ? 'VALID ✅' : 'INVALID ❌'}</div>` +
+            kv([['New signature', `${sig2B.length} bytes • <code>${hexPreview(sig2B)}</code> ${copyBtn(bytesToHex(sig2B),'Copy hex')}`]])
+          );
+        } else {
+          card('♻️ Control: sign the changed message',
+            '<span class="muted">Locked. Uncheck “Lock signature” to re-sign the changed message.</span>');
+        }
+
+      } catch (err) {
+        log('ERROR: ' + (err?.message || String(err)));
+        card('⚠️ Error', `<div class="bad mono">${(err?.message || err)}</div>`,
+             '<span class="muted">Open DevTools → Console for stack details.</span>');
+      } finally {
+        $('go').disabled = false;
+      }
+    };
+
+    // Self-test (wired back up)
+    $('selftest').onclick = async ()=>{
+      const btn=$('selftest');
+      btn.disabled = true;
+      showOverlay('Running module self-test…');
+      try{
+        const t0 = performance.now();
+        const ok512  = (typeof self_test === 'function') ? !!self_test(0) : false;
+        const ok1024 = (typeof self_test === 'function') ? !!self_test(2) : false;
+        const t1 = performance.now();
+        card('🧪 Module self-test', kv([
+          ['FN-DSA-512', ok512?'<span class="ok">PASS</span>':'<span class="bad">FAIL</span>'],
+          ['FN-DSA-1024', ok1024?'<span class="ok">PASS</span>':'<span class="bad">FAIL</span>'],
+          ['Time', ms(t1 - t0)]
+        ]));
+      }catch(e){
+        card('🧪 Module self-test', `<div class="bad mono">${e?.message||e}</div>`);
+      }finally{
+        hideOverlay();
+        btn.disabled = false;
+      }
+    };
+
+    // KAT runner
+    $('katFile').addEventListener('change', async (e)=>{
+      const out=$('katOut'); out.innerHTML='';
+      try{
+        const f=e.target.files?.[0]; if(!f){ out.textContent='No file.'; return; }
+        const tv=JSON.parse(await f.text());
+        const lvl = (tv.algorithm||'').includes('1024')? Levels.Level1024: Levels.Level512;
+        const levelLabel = lvl===Levels.Level1024?'FN-DSA-1024 (Level 5)':'FN-DSA-512 (Level 1)';
+        let pass=0, fail=0; const rows=[];
+        for(const [i,c] of (tv.cases||[]).entries()){
+          const msg = Uint8Array.from(c.msg_hex.match(/.{2}/g).map(h=>parseInt(h,16)));
+          const pk  = Uint8Array.from(c.pk_hex.match(/.{2}/g).map(h=>parseInt(h,16)));
+          const sig = Uint8Array.from(c.sig_hex.match(/.{2}/g).map(h=>parseInt(h,16)));
+          const pkObj = public_key_from_bytes(pk, lvl);
+          const ok = pkObj.verify(msg, sig, true);
+          rows.push([`Case ${i+1}`, ok?'<span class="ok">PASS</span>':'<span class="bad">FAIL</span>', `${sig.length}B sig`, `${pk.length}B pk`]);
+          ok?pass++:fail++;
+        }
+        const tbl = `<div class="kv">${rows.map(r=>`<div>${r[0]}</div><div>${r[1]}</div><div class="muted">${r[2]}</div><div class="muted">${r[3]}</div>`).join('')}</div>`;
+        out.innerHTML = `<div class="pill">${levelLabel}</div><div style="margin:.5rem 0"><strong>${pass}</strong> pass, <strong>${fail}</strong> fail</div>${tbl}`;
+      }catch(err){ out.innerHTML=`<div class="bad mono">${err?.message||err}</div>`; }
+    });
+
+    // Engine smoke test (fresh keys each loop) with overlay + cancel
+    let cancelRequested = false;
+    cancelRunBtn.onclick = ()=>{ cancelRequested = true; cancelRunBtn.disabled = true; overlayText.textContent = 'Cancelling…'; };
+
+    $('engineCheck').onclick = async ()=>{
+      const btn=$('engineCheck'); btn.disabled = true;
+      cancelRequested = false;
+      showOverlay('Running sign/verify cycles: 0/200', true);
+      const lvl=levelFromSelect(); const N=200; let okCount=0;
+      const t0 = performance.now();
+      try{
+        for(let i=0;i<N;i++){
+          if(cancelRequested) break;
+          const kp = await getKeysFresh(lvl);
+          const skObj = getSkObj(kp);
+          const pkObj = kp.public_key? kp.public_key() : kp.pkObj;
+          const msg = new TextEncoder().encode('engine-check-'+i);
+          const sigB = sigBytes(sign(skObj,msg));
+          const ok = pkVerify(pkObj,msg,sigB,true);
+          if(ok) okCount++;
+          if(i % 5 === 0){ // update UI every few iters
+            overlayText.textContent = `Running sign/verify cycles: ${i+1}/${N}`;
+            await waitFrame();
+          }
+        }
+        const dt = performance.now() - t0;
+        const status = cancelRequested ? `${okCount}/${N} (cancelled)` : `${okCount}/${N} verified`;
+        $('engineRes').innerHTML = `<span class="ok">${status}</span> • ${ms(dt)}`;
+        card('🧪 Engine cycles', kv([
+          ['Cycles', status],
+          ['Time', ms(dt)]
+        ]));
+      }catch(err){
+        $('engineRes').innerHTML = `<span class="bad">${err?.message||err}</span>`;
+        card('🧪 Engine cycles', `<div class="bad mono">${err?.message||err}</div>`);
+      }finally{
+        hideOverlay();
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

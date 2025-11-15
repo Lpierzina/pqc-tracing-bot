@@ -1,0 +1,24 @@
+{
+  "name": "qies_pqc",
+  "type": "module",
+  "collaborators": [
+    "QIES Team"
+  ],
+  "description": "Post-quantum cryptography pallet for QIES enclave providing Dilithium signatures, Kyber encryption, and threshold cryptography",
+  "version": "0.1.0",
+  "license": "NONE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aytch4k/qies_enclave"
+  },
+  "files": [
+    "qies_pqc_bg.wasm",
+    "qies_pqc.js",
+    "qies_pqc.d.ts"
+  ],
+  "main": "qies_pqc.js",
+  "types": "qies_pqc.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

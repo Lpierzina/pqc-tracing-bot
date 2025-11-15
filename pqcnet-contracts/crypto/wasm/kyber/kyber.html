@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QIES Kyber WASM Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1, h2, h3 {
+            color: #333;
+        }
+
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        .output {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+
+        .online {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .offline {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .note {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-left: 4px solid #2196F3;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .input-group select, .input-group input, .input-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .input-group textarea {
+            height: 100px;
+            resize: vertical;
+        }
+
+        .key-display {
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .file-upload {
+            margin-bottom: 15px;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-upload label {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
+        }
+
+        .file-upload label:hover {
+            background-color: #0b7dda;
+        }
+
+        .file-info {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>QIES Kyber WASM Example</h1>
+    <p>This page demonstrates the ML-KEM (Kyber) post-quantum key encapsulation mechanism.</p>
+
+    <div class="note">
+        <strong>Note:</strong> ML-KEM is a lattice-based key encapsulation mechanism (KEM) that is resistant to attacks from quantum computers.
+        It was selected by NIST as a standard for post-quantum key establishment (FIPS 203).
+    </div>
+
+    <div class="container">
+        <h2>WASM Module</h2>
+        <p>Status: <span id="status" class="status offline">Not Initialized</span></p>
+        <p>Version: <span id="version">Not loaded</span></p>
+        <button id="initButton">Initialize QIES Kyber Module</button>
+    </div>
+
+    <div class="container">
+        <h2>Key Generation</h2>
+        
+        <div class="section">
+            <h3>Generate Key Pair</h3>
+            <div class="input-group">
+                <label for="kyberLevel">Security Level:</label>
+                <select id="kyberLevel" disabled>
+                    <option value="0">ML-KEM-512 (NIST Level 1)</option>
+                    <option value="1" selected>ML-KEM-768 (NIST Level 3)</option>
+                    <option value="2">ML-KEM-1024 (NIST Level 5)</option>
+                </select>
+            </div>
+            <button id="generateKeyPairButton" disabled>Generate Kyber Key Pair</button>
+            <div id="keyPair" class="key-display"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Key Encapsulation</h2>
+        
+        <div class="section">
+            <h3>Encapsulate Shared Secret</h3>
+            <button id="encapsulateButton" disabled>Encapsulate Shared Secret</button>
+            <div id="encapsulation" class="key-display"></div>
+        </div>
+        
+        <div class="section">
+            <h3>Decapsulate Shared Secret</h3>
+            <button id="decapsulateButton" disabled>Decapsulate Shared Secret</button>
+            <div id="decapsulation" class="key-display"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Message Encryption</h2>
+        
+        <div class="section">
+            <h3>Encrypt Message</h3>
+            <div class="input-group">
+                <label for="message">Message:</label>
+                <textarea id="message" placeholder="Enter message to encrypt" disabled></textarea>
+            </div>
+            <div class="file-upload">
+                <label for="pdfFile">Upload PDF (Optional)</label>
+                <input type="file" id="pdfFile" accept=".pdf" disabled>
+                <div id="fileInfo" class="file-info"></div>
+            </div>
+            <button id="encryptButton" disabled>Encrypt Message</button>
+            <div id="encryption" class="key-display"></div>
+        </div>
+        
+        <div class="section">
+            <h3>Decrypt Message</h3>
+            <button id="decryptButton" disabled>Decrypt Message</button>
+            <div id="decryption" class="key-display"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Output</h2>
+        <div id="output" class="output"></div>
+    </div>
+
+    <script type="module">
+        // Import the WASM module
+        import init, {
+            init as initKyber,
+            create_kyber_manager,
+            generate_random_seed,
+            generate_random_nonce,
+            get_version,
+            get_name,
+            get_description
+        } from './qies_kyber.js';
+
+        // DOM elements
+        const statusElement = document.getElementById('status');
+        const versionElement = document.getElementById('version');
+        const outputElement = document.getElementById('output');
+        const initButton = document.getElementById('initButton');
+        const kyberLevelSelect = document.getElementById('kyberLevel');
+        const generateKeyPairButton = document.getElementById('generateKeyPairButton');
+        const keyPairElement = document.getElementById('keyPair');
+        const encapsulateButton = document.getElementById('encapsulateButton');
+        const encapsulationElement = document.getElementById('encapsulation');
+        const decapsulateButton = document.getElementById('decapsulateButton');
+        const decapsulationElement = document.getElementById('decapsulation');
+        const messageInput = document.getElementById('message');
+        const pdfFileInput = document.getElementById('pdfFile');
+        const fileInfoElement = document.getElementById('fileInfo');
+        const encryptButton = document.getElementById('encryptButton');
+        const encryptionElement = document.getElementById('encryption');
+        const decryptButton = document.getElementById('decryptButton');
+        const decryptionElement = document.getElementById('decryption');
+
+        // State variables
+        let kyberManager = null;
+        let keyPair = null;
+        let encapsulation = null;
+        let ciphertext = null;
+        let pdfMetadata = null;
+
+        // Helper functions
+        function log(message) {
+            const timestamp = new Date().toISOString();
+            outputElement.innerHTML += `[${timestamp}] ${message}<br>`;
+            outputElement.scrollTop = outputElement.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function bytesToHex(bytes) {
+            return Array.from(bytes)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+
+        function hexToBytes(hex) {
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+            }
+            return bytes;
+        }
+
+        function arrayBufferToString(buffer) {
+            return new TextDecoder().decode(buffer);
+        }
+
+        function stringToArrayBuffer(str) {
+            return new TextEncoder().encode(str);
+        }
+
+        function truncateHex(hex, maxLength = 64) {
+            if (hex.length <= maxLength) {
+                return hex;
+            }
+            return hex.substring(0, maxLength / 2) + '...' + hex.substring(hex.length - maxLength / 2);
+        }
+
+        // Initialize the WASM module
+        initButton.addEventListener('click', async () => {
+            try {
+                log('Initializing QIES Kyber WASM module...');
+                
+                // Initialize the WASM module
+                await init();
+                
+                // Initialize the Kyber module
+                initKyber();
+                
+                // Get module information
+                const version = get_version();
+                const name = get_name();
+                const description = get_description();
+                
+                log(`Module loaded: ${name} v${version}`);
+                log(`Description: ${description}`);
+                
+                // Update UI
+                statusElement.textContent = 'Initialized';
+                statusElement.className = 'status online';
+                versionElement.textContent = version;
+                
+                // Enable controls
+                kyberLevelSelect.disabled = false;
+                generateKeyPairButton.disabled = false;
+                messageInput.disabled = false;
+                pdfFileInput.disabled = false;
+                
+                // Create Kyber manager
+                const level = parseInt(kyberLevelSelect.value);
+                kyberManager = create_kyber_manager(level);
+                log(`Created Kyber manager with security level: ${level}`);
+                
+                // Disable init button
+                initButton.disabled = true;
+            } catch (error) {
+                log(`Error initializing WASM module: ${error}`);
+            }
+        });
+
+        // Generate key pair
+        generateKeyPairButton.addEventListener('click', async () => {
+            try {
+                const level = parseInt(kyberLevelSelect.value);
+                log(`Generating Kyber key pair with level: ${level}`);
+                
+                // Update Kyber manager level if needed
+                if (kyberManager.get_level() !== level) {
+                    kyberManager.set_level(level);
+                    log(`Updated Kyber manager level to: ${level}`);
+                }
+                
+                // Generate random seed and nonce
+                const seed = await generate_random_seed();
+                const nonce = await generate_random_nonce();
+                
+                log(`Generated random seed and nonce`);
+                
+                // Generate key pair
+                keyPair = kyberManager.generate_keypair(seed, nonce);
+                
+                // Display key pair information
+                const publicKeyHex = bytesToHex(keyPair.get_public_key());
+                const privateKeyHex = bytesToHex(keyPair.get_private_key());
+                
+                keyPairElement.innerHTML = `
+                    <strong>Security Level:</strong> ${keyPair.get_level()}<br>
+                    <strong>Public Key (${keyPair.get_public_key().length} bytes):</strong> ${truncateHex(publicKeyHex)}<br>
+                    <strong>Private Key (${keyPair.get_private_key().length} bytes):</strong> ${truncateHex(privateKeyHex)}
+                `;
+                
+                log(`Generated Kyber key pair: public key ${keyPair.get_public_key().length} bytes, private key ${keyPair.get_private_key().length} bytes`);
+                
+                // Enable encapsulate button
+                encapsulateButton.disabled = false;
+                encryptButton.disabled = false;
+            } catch (error) {
+                log(`Error generating key pair: ${error}`);
+            }
+        });
+
+        // Encapsulate shared secret
+        encapsulateButton.addEventListener('click', async () => {
+            try {
+                log('Encapsulating shared secret...');
+                
+                if (!keyPair) {
+                    log('Error: No key pair available. Generate a key pair first.');
+                    return;
+                }
+                
+                // Generate random seed and nonce
+                const seed = await generate_random_seed();
+                const nonce = await generate_random_nonce();
+                
+                // Encapsulate shared secret
+                encapsulation = kyberManager.encapsulate(keyPair.get_public_key(), seed, nonce);
+                
+                // Display encapsulation information
+                const ciphertextHex = bytesToHex(encapsulation.get_ciphertext());
+                const sharedSecretHex = bytesToHex(encapsulation.get_shared_secret());
+                
+                encapsulationElement.innerHTML = `
+                    <strong>Ciphertext (${encapsulation.get_ciphertext().length} bytes):</strong> ${truncateHex(ciphertextHex)}<br>
+                    <strong>Shared Secret (${encapsulation.get_shared_secret().length} bytes):</strong> ${truncateHex(sharedSecretHex)}
+                `;
+                
+                log(`Encapsulated shared secret: ciphertext ${encapsulation.get_ciphertext().length} bytes, shared secret ${encapsulation.get_shared_secret().length} bytes`);
+                
+                // Enable decapsulate button
+                decapsulateButton.disabled = false;
+            } catch (error) {
+                log(`Error encapsulating shared secret: ${error}`);
+            }
+        });
+
+        // Decapsulate shared secret
+        decapsulateButton.addEventListener('click', async () => {
+            try {
+                log('Decapsulating shared secret...');
+                
+                if (!keyPair || !encapsulation) {
+                    log('Error: No key pair or encapsulation available. Generate a key pair and encapsulate first.');
+                    return;
+                }
+                
+                // Decapsulate shared secret
+                const sharedSecret = kyberManager.decapsulate(encapsulation.get_ciphertext(), keyPair.get_private_key());
+                
+                // Display decapsulation information
+                const sharedSecretHex = bytesToHex(sharedSecret);
+                const originalSharedSecretHex = bytesToHex(encapsulation.get_shared_secret());
+                
+                decapsulationElement.innerHTML = `
+                    <strong>Decapsulated Shared Secret (${sharedSecret.length} bytes):</strong> ${truncateHex(sharedSecretHex)}<br>
+                    <strong>Original Shared Secret:</strong> ${truncateHex(originalSharedSecretHex)}<br>
+                    <strong>Match:</strong> ${sharedSecretHex === originalSharedSecretHex ? 'Yes ✓' : 'No ✗'}
+                `;
+                
+                log(`Decapsulated shared secret: ${sharedSecret.length} bytes, match: ${sharedSecretHex === originalSharedSecretHex}`);
+            } catch (error) {
+                log(`Error decapsulating shared secret: ${error}`);
+            }
+        });
+
+        // Handle PDF file upload
+        pdfFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    fileInfoElement.textContent = `Selected file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                    
+                    // For this example, we'll just create some mock metadata
+                    // In a real implementation, you would extract actual metadata from the PDF
+                    pdfMetadata = JSON.stringify({
+                        filename: file.name,
+                        filesize: file.size,
+                        timestamp: new Date().toISOString(),
+                        ip: "192.168.1.1",
+                        user: "example_user"
+                    }, null, 2);
+                    
+                    // Set the metadata as the message
+                    messageInput.value = pdfMetadata;
+                    
+                    log(`Loaded PDF metadata from ${file.name}`);
+                } catch (error) {
+                    log(`Error loading PDF: ${error}`);
+                }
+            }
+        });
+
+        // Encrypt message
+        encryptButton.addEventListener('click', async () => {
+            try {
+                log('Encrypting message...');
+                
+                if (!keyPair) {
+                    log('Error: No key pair available. Generate a key pair first.');
+                    return;
+                }
+                
+                const message = messageInput.value;
+                if (!message) {
+                    log('Error: No message to encrypt.');
+                    return;
+                }
+                
+                // Generate random seed and nonce
+                const seed = await generate_random_seed();
+                const nonce = await generate_random_nonce();
+                
+                // Convert message to bytes
+                const messageBytes = stringToArrayBuffer(message);
+                
+                // Encrypt message
+                ciphertext = kyberManager.kyber_encrypt(messageBytes, keyPair.get_public_key(), seed, nonce);
+                
+                // Display encryption information
+                const ciphertextHex = bytesToHex(ciphertext);
+                
+                encryptionElement.innerHTML = `
+                    <strong>Ciphertext (${ciphertext.length} bytes):</strong> ${truncateHex(ciphertextHex)}<br>
+                    <strong>Original Message Length:</strong> ${messageBytes.length} bytes
+                `;
+                
+                log(`Encrypted message: ${messageBytes.length} bytes -> ${ciphertext.length} bytes`);
+                
+                // Enable decrypt button
+                decryptButton.disabled = false;
+            } catch (error) {
+                log(`Error encrypting message: ${error}`);
+            }
+        });
+
+        // Decrypt message
+        decryptButton.addEventListener('click', async () => {
+            try {
+                log('Decrypting message...');
+                
+                if (!keyPair || !ciphertext) {
+                    log('Error: No key pair or ciphertext available. Generate a key pair and encrypt first.');
+                    return;
+                }
+                
+                // Decrypt message
+                const decrypted = kyberManager.kyber_decrypt(ciphertext, keyPair.get_private_key());
+                
+                // Convert bytes to string
+                const decryptedText = arrayBufferToString(decrypted);
+                
+                // Display decryption information
+                decryptionElement.innerHTML = `
+                    <strong>Decrypted Message (${decrypted.length} bytes):</strong><br>
+                    <pre>${decryptedText}</pre>
+                `;
+                
+                log(`Decrypted message: ${ciphertext.length} bytes -> ${decrypted.length} bytes`);
+                
+                // Try to parse as JSON if it looks like JSON
+                if (decryptedText.trim().startsWith('{') && decryptedText.trim().endsWith('}')) {
+                    try {
+                        const json = JSON.parse(decryptedText);
+                        log(`Successfully parsed decrypted message as JSON: ${Object.keys(json).join(', ')}`);
+                    } catch (e) {
+                        // Not valid JSON, that's fine
+                    }
+                }
+            } catch (error) {
+                log(`Error decrypting message: ${error}`);
+            }
+        });
+
+        // Log initial message
+        log('QIES Kyber WASM Example loaded. Click "Initialize QIES Kyber Module" to begin.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "fndsa-wasm",
+  "type": "module",
+  "description": "FN-DSA (Falcon) signatures compiled to WebAssembly with JS bindings",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "files": [
+    "qies_fndsa_bg.wasm",
+    "qies_fndsa.js",
+    "qies_fndsa.d.ts"
+  ],
+  "main": "qies_fndsa.js",
+  "types": "qies_fndsa.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

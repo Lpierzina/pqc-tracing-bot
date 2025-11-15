@@ -1,0 +1,18 @@
+{
+  "name": "qies_kyber",
+  "version": "0.1.0",
+  "description": "Quantum-resistant encryption using ML-KEM (Kyber) algorithm for QIES ecosystem",
+  "main": "qies_kyber.js",
+  "files": [
+    "qies_kyber_bg.wasm",
+    "qies_kyber.js",
+    "qies_kyber.d.ts",
+    "qies_kyber_bg.wasm.d.ts",
+    "kyber.html"
+  ],
+  "scripts": {
+    "serve": "python -m http.server 9000"
+  },
+  "author": "QIES Team",
+  "license": "NONE"
+}
