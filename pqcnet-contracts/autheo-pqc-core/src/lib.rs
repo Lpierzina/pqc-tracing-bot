@@ -16,6 +16,7 @@ pub mod kem;
 pub mod key_manager;
 pub mod qs_dag;
 pub(crate) mod runtime;
+pub mod secret_sharing;
 pub mod signatures;
 pub mod types;
 

@@ -26,6 +26,17 @@ fn main() -> Result<(), autheo_pqc_core::error::PqcError> {
         artifacts.kem_state.expires_at
     );
     println!(
+        "Distributed {} shares for KEM key version {} (threshold {}-of-{})",
+        artifacts.kem_shares.shares.len(),
+        artifacts.kem_state.version,
+        artifacts.kem_shares.threshold.t,
+        artifacts.kem_shares.threshold.n
+    );
+
+    let quorum = &artifacts.kem_shares.shares[..config.threshold.t as usize];
+    let recovered = provider.combine_kem_secret(quorum)?;
+    assert_eq!(recovered.secret, artifacts.kem_keypair.secret_key);
+    println!(
         "Generated DSA key id={} (level={:?})",
         hex(&artifacts.signing_state.id.0),
         artifacts.signing_state.level
@@ -45,6 +56,11 @@ fn main() -> Result<(), autheo_pqc_core::error::PqcError> {
                 "Rotated KEM key {} → {}",
                 hex(&rotation.kem.old.id.0),
                 hex(&rotation.kem.new.id.0)
+            );
+            println!(
+                "New rotation emitted {} shares (version {})",
+                rotation.kem_shares.shares.len(),
+                rotation.kem.new.version
             );
             println!("New signing key id={}", hex(&rotation.signing_state.id.0));
         }

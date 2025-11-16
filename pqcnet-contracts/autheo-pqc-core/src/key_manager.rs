@@ -5,7 +5,7 @@ use crate::kem::{MlKemEncapsulation, MlKemEngine, MlKemKeyPair};
 use crate::types::{Bytes, KeyId, SecurityLevel, TimestampMs};
 
 /// Threshold policy for Shamir-style sharing handled by the host.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ThresholdPolicy {
     /// Minimum number of shares required to recover the secret.
     pub t: u8,
@@ -18,6 +18,8 @@ pub struct ThresholdPolicy {
 pub struct KemKeyState {
     /// Logical identifier derived from the public key and creation time.
     pub id: KeyId,
+    /// Monotonic version that increments on every rotation.
+    pub version: u32,
     /// Serialized ML-KEM public key.
     pub public_key: Bytes,
     /// Security level for the key (e.g., ML-KEM-128).
@@ -83,6 +85,7 @@ pub struct KeyManager {
     threshold: ThresholdPolicy,
     rotation_interval_ms: u64,
     current: Option<KemKeyState>,
+    next_version: u32,
 }
 
 impl KeyManager {
@@ -93,6 +96,7 @@ impl KeyManager {
             threshold,
             rotation_interval_ms,
             current: None,
+            next_version: 1,
         }
     }
 
@@ -175,8 +179,11 @@ impl KeyManager {
 
     fn install_from_pair(&mut self, pair: &MlKemKeyPair, now_ms: TimestampMs) -> KemKeyState {
         let id = self.compute_key_id(&pair.public_key, now_ms);
+        let version = self.next_version;
+        self.next_version = self.next_version.wrapping_add(1);
         let state = KemKeyState {
             id,
+            version,
             public_key: pair.public_key.clone(),
             level: pair.level,
             created_at: now_ms,
@@ -263,5 +270,18 @@ mod tests {
         assert_eq!(state.public_key, pair.public_key);
         assert_eq!(state.level, pair.level);
         assert!(!pair.secret_key.is_empty());
+    }
+
+    #[test]
+    fn versions_increment_per_rotation() {
+        let mut km = manager(100);
+        let start = 1_700_000_000_000;
+        let first = km.keygen_and_install(start).expect("install");
+        assert_eq!(first.version, 1);
+
+        let rotation = km.rotate_if_needed(start + 200).unwrap().expect("rotation");
+        let (old, new_state) = rotation;
+        assert_eq!(old.version, 1);
+        assert_eq!(new_state.version, 2);
     }
 }

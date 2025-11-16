@@ -2,6 +2,9 @@ use crate::dsa::{MlDsa, MlDsaEngine, MlDsaKeyPair};
 use crate::error::{PqcError, PqcResult};
 use crate::kem::{MlKem, MlKemEncapsulation, MlKemEngine, MlKemKeyPair};
 use crate::key_manager::{KemKeyState, KemRotation, KeyManager, ThresholdPolicy};
+use crate::secret_sharing::{
+    combine_secret, split_secret, RecoveredSecret, SecretShare, SecretSharePackage,
+};
 use crate::signatures::{DsaKeyState, SignatureManager};
 use crate::types::{Bytes, SecurityLevel, TimestampMs};
 use alloc::boxed::Box;
@@ -104,6 +107,7 @@ impl ActiveSigningKey {
 pub struct KeygenArtifacts {
     pub kem_state: KemKeyState,
     pub kem_keypair: MlKemKeyPair,
+    pub kem_shares: SecretSharePackage,
     pub signing_state: DsaKeyState,
     pub signing_keypair: MlDsaKeyPair,
 }
@@ -112,6 +116,7 @@ pub struct KeygenArtifacts {
 #[derive(Clone)]
 pub struct RotationArtifacts {
     pub kem: KemRotation,
+    pub kem_shares: SecretSharePackage,
     pub signing_state: DsaKeyState,
     pub signing_keypair: MlDsaKeyPair,
 }
@@ -142,6 +147,13 @@ impl LibOqsProvider {
     /// Generate ML-KEM + ML-DSA key material and record the active signing key.
     pub fn keygen(&mut self, now_ms: TimestampMs) -> PqcResult<KeygenArtifacts> {
         let (kem_state, kem_pair) = self.key_manager.keygen_with_material(now_ms)?;
+        let kem_shares = split_secret(
+            &kem_pair.secret_key,
+            &kem_state.id,
+            kem_state.version,
+            kem_state.created_at,
+            self.key_manager.threshold_policy(),
+        )?;
         let (signing_state, signing_pair) = self.signature_manager.generate_signing_key(now_ms)?;
         self.signing_key = Some(ActiveSigningKey::new(
             signing_state.clone(),
@@ -151,6 +163,7 @@ impl LibOqsProvider {
         Ok(KeygenArtifacts {
             kem_state,
             kem_keypair: kem_pair,
+            kem_shares,
             signing_state,
             signing_keypair: signing_pair,
         })
@@ -160,6 +173,13 @@ impl LibOqsProvider {
     pub fn rotate(&mut self, now_ms: TimestampMs) -> PqcResult<Option<RotationArtifacts>> {
         match self.key_manager.rotate_with_material(now_ms)? {
             Some(kem_rotation) => {
+                let kem_shares = split_secret(
+                    &kem_rotation.new_material.secret_key,
+                    &kem_rotation.new.id,
+                    kem_rotation.new.version,
+                    kem_rotation.new.created_at,
+                    self.key_manager.threshold_policy(),
+                )?;
                 let (signing_state, signing_pair) =
                     self.signature_manager.generate_signing_key(now_ms)?;
                 self.signing_key = Some(ActiveSigningKey::new(
@@ -168,6 +188,7 @@ impl LibOqsProvider {
                 ));
                 Ok(Some(RotationArtifacts {
                     kem: kem_rotation,
+                    kem_shares,
                     signing_state,
                     signing_keypair: signing_pair,
                 }))
@@ -203,6 +224,11 @@ impl LibOqsProvider {
     /// Expose the configured threshold policy.
     pub fn threshold(&self) -> ThresholdPolicy {
         self.config.threshold
+    }
+
+    /// Reconstruct a ML-KEM secret key from a quorum of shares.
+    pub fn combine_kem_secret(&self, shares: &[SecretShare]) -> PqcResult<RecoveredSecret> {
+        combine_secret(shares)
     }
 }
 

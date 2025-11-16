@@ -17,6 +17,9 @@ digest = { version = "0.10", default-features = false }
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
 oqs = { version = "0.8", optional = true, default-features = false, features = ["kyber", "dilithium", "std"] }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shamir = "2.0"
+
 [[bin]]
 name = "liboqs_cli"
 path = "src/bin/liboqs_cli.rs"
