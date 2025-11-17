@@ -549,6 +549,26 @@ flowchart LR
     QACE --> Tunnel
 ```
 
+#### Component roles
+
+- **ClientSurface** – Wallets, THEO swaps, and Waku relays that construct intents and call the WASM ABI exported by `autheo-pqc-wasm`.
+- **PQCNet Host Runtime** – `autheo-pqc-core/src/runtime.rs` plus `autheo_pqc_wasm::pqc_handshake`. It owns the active ML-KEM/ML-DSA material, orchestrates rotations, and prepares the handshake envelope.
+- **secret_sharing.rs** – Hosts that enforce threshold custody reconstruct ML-KEM secrets with `combine_secret`, run the handshake, and immediately re-split with `split_secret` so private keys only exist in-memory for a single call.
+- **liboqs wrappers** – Optional providers in `src/liboqs.rs` that swap the deterministic demo engines for audited Kyber/Dilithium primitives when `--features liboqs` is set.
+- **QS-DAG validators** – `qs_dag.rs::QsDagPqc` verifies Dilithium signatures over DAG payloads and anchors them so tuple metadata inherits PQC guarantees.
+- **QSTP Runtime + Mesh** – `qstp.rs` (`QstpTunnel`, `MeshTransport`, `TupleChainStore`) and `qace.rs` (`GaQace`, `SimpleQace`) turn handshake outputs into AES-256-GCM tunnels, encrypted TupleChain metadata, and adaptive mesh routing.
+
+#### Flow walkthrough
+
+1. **Handshake request** – The client calls `pqc_handshake` with a request buffer. `runtime.rs` deserializes it, fetches the active ML-KEM key from `KeyManager`, and checks whether a rotation or threshold rebuild is required.
+2. **Threshold enforcement** – If the host stores Shamir shares, `secret_sharing::combine_secret` rehydrates the ML-KEM key just for the handshake, then `split_secret` writes fresh shares back out once the call completes.
+3. **PQC engines** – `handshake::execute_handshake` invokes `MlKemEngine` + `MlDsaEngine` (deterministic adapters or liboqs-backed) to encapsulate, decapsulate, and sign the transcript (`SignatureManager::sign_kem_transcript`).
+4. **Handshake envelope** – The function emits the PQC1 binary layout, which is mapped directly onto `QstpHandshake*` messages in `protos/qstp.proto`. The host returns this buffer to the caller or forwards it across the mesh.
+5. **Tunnel hydration** – `qstp::establish_runtime_tunnel` ingests the handshake artifacts, derives AES-256-GCM keys, binds them to a `MeshRoutePlan`, and emits TupleChain metadata so auditors can trace the session.
+6. **Transport + TupleChain** – `QstpTunnel::seal` wraps application payloads while `TupleChainStore` persists encrypted descriptors (key ids, route hashes, rotation window) for later verification.
+7. **Mesh routing** – Each payload travels over Waku/THEO adapters implementing `MeshTransport`. Telemetry feeds `qace::GaQace`, which mutates the active route without re-running the ML-KEM/Dilithium handshake.
+8. **DAG anchoring** – When required, `qs_dag::verify_and_anchor` reloads the stored payload, re-verifies the Dilithium signature, and anchors it on QS-DAG so TupleChain pointers inherit consensus-level integrity.
+
 Key takeaways:
 
 1. **Integrate liboqs-rs for ML-KEM/ML-DSA wrappers** – opt into the `liboqs` feature so `MlKemEngine`/`MlDsaEngine` pull from audited Kyber + Dilithium bindings before invoking `pqc_handshake`.
