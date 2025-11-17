@@ -25,6 +25,31 @@ directional AES keys from the same salt (`TunnelId || route_hash || epoch`) and
 retain their role (`Initiator` vs `Responder`) to keep send/receive nonces in
 lock-step.
 
+## Handshake Flow (Kyber + Dilithium)
+
+Outside the WASM ABI you can now run the exact same ML-KEM/ML-DSA flow with the
+new trio of helpers:
+
+- `handshake::init_handshake` encapsulates to the responder’s ML-KEM public key,
+  derives a deterministic initiator nonce from the route hash + ciphertext +
+  application payload, and signs that transcript with the initiator’s ML-DSA key.
+- `handshake::respond_handshake` verifies the initiator signature, decapsulates
+  the shared secret, emits the responder nonce + session id, and signs its own
+  transcript with the responder’s ML-DSA key.
+- `handshake::derive_session_keys` finishes the flow for both roles.  The responder
+  calls it immediately after `respond_handshake`; the initiator calls it after
+  verifying the responder signature/nonce embedded in `HandshakeResponse`.
+
+The example at `cargo run -p autheo-pqc-core --example handshake_demo` (or with
+`--features liboqs` to swap Demo adapters for liboqs Kyber/Dilithium) prints the
+shared session id, decrypts a sample payload, and dumps the tuple key so you can
+prove both endpoints derived identical AES-256-GCM bases without ever sharing the
+session secret on the wire.
+
+`protos/qstp.proto` mirrors these envelopes through `HandshakeInit`,
+`HandshakeResponse`, and `SessionKeyMaterial`, allowing non-Rust languages to
+exchange the same signed artifacts before calling into their own AEAD layers.
+
 ## Data Plane & Mesh Integration
 
 - `QstpTunnel::seal` / `open` enforce the PQC transcript, binds every payload to

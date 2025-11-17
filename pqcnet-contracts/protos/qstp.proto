@@ -24,6 +24,37 @@ message MeshRoutePlan {
   uint64 epoch = 4;
 }
 
+message HandshakeInit {
+  bytes route_hash = 1;
+  bytes ciphertext = 2;
+  bytes initiator_nonce = 3;
+  bytes client_signature = 4;
+  bytes client_signing_key = 5;
+  bytes client_signing_key_id = 6;
+  bytes server_signing_key_id = 7;
+  bytes application_data = 8;
+}
+
+message HandshakeResponse {
+  bytes route_hash = 1;
+  bytes session_id = 2;
+  bytes responder_nonce = 3;
+  bytes responder_signature = 4;
+  bytes server_signing_key = 5;
+  bytes server_signing_key_id = 6;
+  bytes server_kem_key = 7;
+  bytes server_kem_key_id = 8;
+}
+
+message SessionKeyMaterial {
+  bytes send_key = 1;
+  bytes send_nonce = 2;
+  bytes recv_key = 3;
+  bytes recv_nonce = 4;
+  bytes tuple_key = 5;
+  bytes session_id = 6;
+}
+
 message TupleMetadata {
   bytes tunnel_id = 1;
   bytes kem_key_id = 2;
@@ -38,15 +69,9 @@ message TupleMetadata {
 }
 
 message HandshakeEnvelope {
-  bytes pqc1_envelope = 1;
-  MeshRoutePlan route = 2;
-  bytes tunnel_id = 3;
-  bytes kem_key_id = 4;
-  bytes signing_key_id = 5;
-  uint32 threshold_t = 6;
-  uint32 threshold_n = 7;
-  bytes tuple_pointer = 8;
-  bytes host_signature = 9;
+  HandshakeInit init = 1;
+  HandshakeResponse response = 2;
+  TupleMetadata metadata = 3;
 }
 
 message QstpFrame {
@@ -81,8 +106,7 @@ message OpenTunnelRequest {
 
 message OpenTunnelResponse {
   HandshakeEnvelope envelope = 1;
-  TupleMetadata metadata = 2;
-  bytes session_secret_hint = 3;
+  SessionKeyMaterial session = 2;
 }
 
 message PublishFrameRequest {
