@@ -9,6 +9,7 @@ use autheo_pqc_core::kem::MlKemEngine;
 use autheo_pqc_core::types::KeyId;
 use blake2::Blake2s256;
 use digest::Digest;
+use std::io::{Error as IoError, ErrorKind};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,22 +75,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("shared session id: {}", hex(&initiator_keys.session_id));
 
-    let sender = Aes256Gcm::new_from_slice(&initiator_keys.send_key)?;
-    let ciphertext = sender.encrypt(
-        Nonce::from_slice(&initiator_keys.send_nonce),
-        Payload {
-            msg: b"post-quantum tunnels are live",
-            aad: &response.route_hash,
-        },
-    )?;
-    let receiver = Aes256Gcm::new_from_slice(&responder_keys.recv_key)?;
-    let cleartext = receiver.decrypt(
-        Nonce::from_slice(&responder_keys.recv_nonce),
-        Payload {
-            msg: &ciphertext,
-            aad: &response.route_hash,
-        },
-    )?;
+    let sender = Aes256Gcm::new_from_slice(&initiator_keys.send_key).map_err(|_| {
+        IoError::new(
+            ErrorKind::InvalidInput,
+            "initiator send key has invalid length for AES-256-GCM",
+        )
+    })?;
+    let ciphertext = sender
+        .encrypt(
+            Nonce::from_slice(&initiator_keys.send_nonce),
+            Payload {
+                msg: b"post-quantum tunnels are live",
+                aad: &response.route_hash,
+            },
+        )
+        .map_err(|_| IoError::new(ErrorKind::Other, "AES-GCM encryption failed"))?;
+    let receiver = Aes256Gcm::new_from_slice(&responder_keys.recv_key).map_err(|_| {
+        IoError::new(
+            ErrorKind::InvalidInput,
+            "responder receive key has invalid length for AES-256-GCM",
+        )
+    })?;
+    let cleartext = receiver
+        .decrypt(
+            Nonce::from_slice(&responder_keys.recv_nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: &response.route_hash,
+            },
+        )
+        .map_err(|_| IoError::new(ErrorKind::Other, "AES-GCM decryption failed"))?;
 
     println!(
         "responder decrypted payload: {}",
