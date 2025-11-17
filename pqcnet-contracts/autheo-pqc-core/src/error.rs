@@ -1,4 +1,5 @@
 use alloc::string::String;
+use core::fmt;
 
 /// Unified error type for PQCNet contracts.
 ///
@@ -24,3 +25,20 @@ pub enum PqcError {
 
 /// Alias for fallible PQC operations.
 pub type PqcResult<T> = core::result::Result<T, PqcError>;
+
+impl fmt::Display for PqcError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PqcError::PrimitiveFailure(msg) => write!(f, "primitive failure: {msg}"),
+            PqcError::InvalidInput(msg) => write!(f, "invalid input: {msg}"),
+            PqcError::ThresholdFailure(msg) => write!(f, "threshold failure: {msg}"),
+            PqcError::VerifyFailed => write!(f, "verification failed"),
+            PqcError::LimitExceeded(msg) => write!(f, "limit exceeded: {msg}"),
+            PqcError::IntegrationError(msg) => write!(f, "integration error: {msg}"),
+            PqcError::InternalError(msg) => write!(f, "internal error: {msg}"),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl std::error::Error for PqcError {}

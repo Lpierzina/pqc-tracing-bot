@@ -17,7 +17,7 @@ use crate::types::{Bytes, KeyId, SecurityLevel, TimestampMs};
 
 const HANDSHAKE_MAGIC: &[u8; 4] = b"PQC1";
 const HANDSHAKE_VERSION: u8 = 1;
-const HANDSHAKE_HEADER_LEN: usize = 4  // magic
+pub(crate) const HANDSHAKE_HEADER_LEN: usize = 4  // magic
     + 1                                // version
     + 1                                // kem level
     + 1                                // dsa level
@@ -37,7 +37,19 @@ pub fn execute_handshake(request: &[u8], response: &mut [u8]) -> PqcResult<usize
     }
 
     let timestamp_hint = parse_timestamp_hint(request);
-    let artifacts = runtime::with_contract_state(|state| -> PqcResult<HandshakeArtifacts> {
+    let artifacts = build_handshake_artifacts_with_hint(request, timestamp_hint)?;
+    serialize_handshake(&artifacts, response)
+}
+
+pub(crate) fn build_handshake_artifacts(request: &[u8]) -> PqcResult<HandshakeArtifacts> {
+    build_handshake_artifacts_with_hint(request, parse_timestamp_hint(request))
+}
+
+fn build_handshake_artifacts_with_hint(
+    request: &[u8],
+    timestamp_hint: Option<TimestampMs>,
+) -> PqcResult<HandshakeArtifacts> {
+    runtime::with_contract_state(|state| -> PqcResult<HandshakeArtifacts> {
         let now_ms = state.advance_time(timestamp_hint);
         // Rotate the ML-KEM key if needed before encapsulation.
         let _ = state.key_manager.rotate_if_needed(now_ms)?;
@@ -57,13 +69,15 @@ pub fn execute_handshake(request: &[u8], response: &mut [u8]) -> PqcResult<usize
             ciphertext: encapsulation.ciphertext,
             shared_secret: encapsulation.shared_secret,
             signature,
+            timestamp_ms: now_ms,
         })
-    })?;
-
-    serialize_handshake(&artifacts, response)
+    })
 }
 
-fn serialize_handshake(artifacts: &HandshakeArtifacts, out: &mut [u8]) -> PqcResult<usize> {
+pub(crate) fn serialize_handshake(
+    artifacts: &HandshakeArtifacts,
+    out: &mut [u8],
+) -> PqcResult<usize> {
     let ciphertext_len = artifacts.ciphertext.len();
     let shared_secret_len = artifacts.shared_secret.len();
     let signature_len = artifacts.signature.len();
@@ -127,6 +141,15 @@ fn serialize_handshake(artifacts: &HandshakeArtifacts, out: &mut [u8]) -> PqcRes
     Ok(offset)
 }
 
+pub(crate) fn compute_handshake_len(artifacts: &HandshakeArtifacts) -> usize {
+    HANDSHAKE_HEADER_LEN
+        + artifacts.ciphertext.len()
+        + artifacts.shared_secret.len()
+        + artifacts.signature.len()
+        + artifacts.kem_state.public_key.len()
+        + artifacts.signing_state.public_key.len()
+}
+
 fn copy_slice(src: &[u8], dst: &mut [u8]) -> usize {
     let len = src.len();
     dst[..len].copy_from_slice(src);
@@ -176,13 +199,14 @@ fn parse_timestamp_hint(request: &[u8]) -> Option<TimestampMs> {
     None
 }
 
-struct HandshakeArtifacts {
-    threshold: ThresholdPolicy,
-    kem_state: KemKeyState,
-    signing_state: DsaKeyState,
-    ciphertext: Bytes,
-    shared_secret: Bytes,
-    signature: Bytes,
+pub(crate) struct HandshakeArtifacts {
+    pub threshold: ThresholdPolicy,
+    pub kem_state: KemKeyState,
+    pub signing_state: DsaKeyState,
+    pub ciphertext: Bytes,
+    pub shared_secret: Bytes,
+    pub signature: Bytes,
+    pub timestamp_ms: TimestampMs,
 }
 
 #[cfg(test)]
