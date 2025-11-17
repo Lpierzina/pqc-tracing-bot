@@ -406,58 +406,97 @@ cargo run -p autheo-pqc-core --example qstp_mesh_sim
 cargo run -p autheo-pqc-core --example qstp_performance
 ```
 
+### Example: QSTP Tunnels for PQCNet Applications
+
+Run the mesh simulator to watch PQCNet provision a QSTP tunnel that THEO swaps or Waku-derived pub-sub meshes can immediately reuse:
+
+```
+cd pqcnet-contracts
+cargo run -p autheo-pqc-core --example qstp_mesh_sim
+```
+
+The example prints each of the following guardrails so you can demonstrate end-to-end confidentiality, integrity, and forward secrecy:
+
+1. **Initiator handshake** – `establish_runtime_tunnel` derives a `QstpTunnel`, `QstpPeerMetadata`, and a session secret straight from the Kyber/Dilithium artifacts returned by `pqc_handshake`.
+2. **Responder hydration** – `hydrate_remote_tunnel` proves that peers only need the advertised `peer_metadata` plus the shared secret to hydrate the tunnel on a different machine (ideal for validators or settlement daemons).
+3. **Payload sealing** – `QstpTunnel::seal` wraps something like a THEO swap intent (`waku::order-intent`) into an AES-256-GCM `QstpFrame` whose AAD binds the tunnel id, route hash, and application context, then the in-memory Waku mesh delivers it to `node_b`.
+4. **Reroute on threat** – feeding `GeneticQace` a high `threat_score` triggers a hop from `waku/mesh/primary` to `waku/mesh/failsafe` without repeating the ML-KEM/ML-DSA handshake, keeping the data plane live while still rotating directional nonces.
+5. **TupleChain audit trail** – `fetch_tuple_metadata` dumps the encrypted pointer and route hash so that control planes can show auditors which policy enforced the tunnel at any point in time.
+6. **Eavesdrop failure** – the simulator spins up a fake responder with zeroed secrets to highlight that any mismatched shared secret trips `PqcError::VerifyFailed`, demonstrating post-quantum confidentiality even on public meshes.
+
+Plug in your own Waku transport by implementing the `MeshTransport` trait and replace the TupleChain stub with your ledger or state store; no contract changes are required.
+
+#### Performance harness (optional)
+
+```
+cd pqcnet-contracts
+cargo run -p autheo-pqc-core --example qstp_performance
+```
+
+This benchmark logs average handshake and payload times for both QSTP tunnels and a TLS 1.3 baseline, plus the percentage overhead. Capture the table when you need to prove that PQCNet stays within the “< 10% end-to-end overhead” target for high-frequency swaps.
+
+#### Targeted tests
+
+```
+cargo test -p autheo-pqc-core qstp::tests::qstp_rerouted_payload_decrypts
+cargo test -p autheo-pqc-core qstp::tests::eavesdropper_cannot_decrypt_frame
+cargo test -p autheo-pqc-core qstp::tests::qace_reroute_updates_route_hash
+```
+
+These tests document that rerouted payloads still decrypt, eavesdroppers fail even with valid metadata, and QACE updates every route hash that downstream meshes rely on.
+
 See `docs/qstp.md` for the design overview, `docs/qstp-performance.md` for the TLS
 comparison (< 10% end-to-end overhead), and `protos/qstp.proto` for the protobuf
 contract that external clients can bind to.
 
-### QS-DAG Handshake Flow
+### Code Flow Diagram (Handshake → QSTP Tunnel)
 
-The runtime path for `issueHandshake` requests is implemented jointly by `autheo-pqc-wasm` and `autheo-pqc-core`:
+The runtime path for `issueHandshake` requests *and* the resulting QSTP tunnel provisioning now works as follows:
 
-1. The host runtime forwards the client request JSON into the exported `pqc_handshake` function, which immediately calls `handshake::execute_handshake` after validating the buffer and pulling a monotonic timestamp via `runtime::with_contract_state`.
-2. `KeyManager::encapsulate_for_current` rotates Kyber keys if needed, derives the ciphertext/shared secret pair, and exposes the active `ThresholdPolicy`.
-3. `SignatureManager::sign_kem_transcript` binds the ciphertext, shared secret, and original request string with Dilithium before the handshake artifacts are serialized into the `PQC1` binary layout.
-4. The host wraps this envelope into a QS-DAG `edge` payload and invokes its `QsDagHost` implementation; `QsDagPqc::verify_and_anchor` replays the Dilithium verification before gossiping to validators.
-5. Validators attest to the edge, after which the host returns the finalized shared secret, DAG edge metadata, and routing hints to the client.
-
-The sequence diagram below is rendered with GitHub-native Mermaid, so it shows up consistently wherever this README is viewed:
+1. The host runtime forwards the client JSON into `pqc_handshake`, which validates buffers and jumps into `handshake::execute_handshake`.
+2. `KeyManager::encapsulate_for_current` (Kyber) and `SignatureManager::sign_kem_transcript` (Dilithium) rotate keys as needed and emit the PQC1 envelope.
+3. The host wraps that envelope into a QS-DAG edge and relies on `QsDagPqc::verify_and_anchor` so validators only accept payloads with valid Dilithium transcripts.
+4. With the DAG edge finalized, the host calls `establish_runtime_tunnel` to mint a `QstpTunnel`, `QstpPeerMetadata`, and AES-256-GCM bases bound to the advertised `MeshRoutePlan`.
+5. Tuple metadata is committed via the `TupleChainStore` implementation so control planes can audit which policy enforced each tunnel.
+6. Responders (validators, settlement daemons, Waku relays) hydrate the tunnel with `hydrate_remote_tunnel` and the shared secret without re-running the Kyber/Dilithium handshake.
+7. Applications (THEO swaps, Waku-derived pub-sub meshes) call `QstpTunnel::seal` / `open` to exchange payloads end-to-end with post-quantum confidentiality, integrity, and forward secrecy.
+8. `MeshTransport` adapters publish the resulting `QstpFrame`s onto the overlay of your choice; only peers with the matching tunnel id, route hash, and nonce base can open them.
+9. `GeneticQace` ingests latency/threat metrics and can reroute or rekey the tunnel without repeating the handshake, keeping the channel live even during mesh reconfiguration.
 
 ```mermaid
 ---
 config:
   look: neo
-  theme: redux-color
+  theme: base
 ---
 sequenceDiagram
     autonumber
-    participant C as Client / Zer0Veil Node
-    participant H as PQCNet Host<br/>(Go / Rust runtime)
-    participant W as PQC WASM Engine<br/>(Kyber + Dilithium)
-    participant D as QS-DAG Host<br/>(Validator logic)
-    participant V as Validator Set
-    Note over C,H: 1) Client asks for quantum-safe tunnel / route
-    C->>H: issueHandshake(sessionId, intents, nodeId)
-    Note over H,W: 2) Host calls WASM pqc_handshake()
-    H->>W: pqc_handshake(requestJSON)
-    activate W
-    Note over W: 3) Inside WASM: use KeyManager + SignatureManager<br/>from autheo-pqc-core
-    W->>W: KeyManager::encapsulate_for_current()
-    W->>W: SignatureManager::sign_kem_transcript()
-    W-->>H: handshakeEnvelopeJSON<br/>(keys, ciphertext, sharedSecret, signature)
-    deactivate W
-    Note over H,D: 4) Host builds DAG edge payload
-    H->>D: submitEdgeRequest(handshakeEnvelope)
-    Note over D: 5) QS-DAG host verifies PQC envelope
-    D->>D: verifyTranscript(envelope, originalRequest)
-    D->>D: check Dilithium signature + Kyber metadata
-    D-->>V: gossipEdge(edgeID, envelope, parents)
-    Note over V: 6) Validators anchor edge in QS-DAG
-    V->>V: verify edge (PQC + parents)
-    V-->>D: edgeAccepted(edgeID)
-    Note over D,H: 7) DAG host confirms anchoring
-    D-->>H: edgeAnchored(edgeID, status=finalized)
-    Note over H,C: 8) Host returns tunnel + edge info
-    H-->>C: HandshakeResult<br/>sharedSecret + dagEdgeId + routes
+    participant App as App / THEO swap / Waku node
+    participant Host as PQCNet Host Runtime
+    participant Wasm as PQC WASM (handshake::execute)
+    participant Dag as QS-DAG Host + Validators
+    participant Qstp as QSTP Runtime (AES-256-GCM)
+    participant Tuple as TupleChain Store
+    participant Mesh as Mesh Transport (Waku overlay)
+    participant Qace as QACE Controller
+    App->>Host: issueHandshake(route plan, intents)
+    Host->>Wasm: pqc_handshake(requestJSON)
+    Wasm->>Wasm: KeyManager::encapsulate_for_current()
+    Wasm->>Wasm: SignatureManager::sign_kem_transcript()
+    Wasm-->>Host: PQC1 envelope (ciphertext + shared secret + signature)
+    Host->>Dag: submitEdgeRequest(envelope)
+    Dag-->>Host: edgeAnchored(edgeId)
+    Host->>Qstp: establish_runtime_tunnel(peer_id, route, tupleStore)
+    Qstp->>Tuple: put(encrypted metadata)
+    Qstp-->>Host: tunnel + peer_metadata + session_secret
+    Host-->>App: handshake result (edgeId, metadata, secret)
+    App->>Qstp: seal(payload, aad)
+    Qstp->>Mesh: publish(QstpFrame)
+    Mesh-->>Qstp: deliver(QstpFrame)
+    Qstp-->>App: open()->payload
+    Qstp->>Qace: report(metrics)
+    Qace-->>Qstp: reroute/rekey decision
+    Qstp->>Mesh: register alternate route & continue
 ```
 
 ---
