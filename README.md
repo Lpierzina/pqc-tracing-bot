@@ -396,16 +396,22 @@ The harness now:
 - A `MeshTransport` trait plus `InMemoryMesh` simulator for Waku-like pub-sub meshes.
 - TupleChain metadata encryption/retrieval (`TupleChainStore`) so the control plane
   can persist tunnel descriptors without leaking plaintext.
-- Adaptive routing via QACE hooks (`GeneticQace`) that re-derive directional keys
+- Adaptive routing via QACE hooks (`GaQace` + `SimpleQace`) that re-derive directional keys
   whenever a reroute is triggered.
 
 Quick start:
 
 ```
 cargo run -p autheo-pqc-core --example qstp_mesh_sim
+cargo run -p autheo-pqc-core --example qace_sim
 cargo run -p autheo-pqc-core --example qstp_performance
 cargo run -p autheo-pqc-core --example handshake_demo
 ```
+
+`qace_sim` drives the new GA controller against synthetic meshes and prints the
+selected primary path, fitness score, and convergence confidence for steady,
+congested, and threat-injection scenarios, making it easy to tune `QaceGaConfig`
+and `QaceWeights` before deploying to a real mesh.
 
 ### Example: QSTP Tunnels for PQCNet Applications
 
@@ -421,7 +427,7 @@ The example prints each of the following guardrails so you can demonstrate end-t
 1. **Initiator handshake** – `establish_runtime_tunnel` derives a `QstpTunnel`, `QstpPeerMetadata`, and a session secret straight from the Kyber/Dilithium artifacts returned by `pqc_handshake`.
 2. **Responder hydration** – `hydrate_remote_tunnel` proves that peers only need the advertised `peer_metadata` plus the shared secret to hydrate the tunnel on a different machine (ideal for validators or settlement daemons).
 3. **Payload sealing** – `QstpTunnel::seal` wraps something like a THEO swap intent (`waku::order-intent`) into an AES-256-GCM `QstpFrame` whose AAD binds the tunnel id, route hash, and application context, then the in-memory Waku mesh delivers it to `node_b`.
-4. **Reroute on threat** – feeding `GeneticQace` a high `threat_score` triggers a hop from `waku/mesh/primary` to `waku/mesh/failsafe` without repeating the ML-KEM/ML-DSA handshake, keeping the data plane live while still rotating directional nonces.
+4. **Reroute on threat** – feeding `GaQace` a high `threat_score` triggers a hop from `waku/mesh/primary` to `waku/mesh/failsafe` without repeating the ML-KEM/ML-DSA handshake, keeping the data plane live while still rotating directional nonces.
 5. **TupleChain audit trail** – `fetch_tuple_metadata` dumps the encrypted pointer and route hash so that control planes can show auditors which policy enforced the tunnel at any point in time.
 6. **Eavesdrop failure** – the simulator spins up a fake responder with zeroed secrets to highlight that any mismatched shared secret trips `PqcError::VerifyFailed`, demonstrating post-quantum confidentiality even on public meshes.
 
@@ -471,6 +477,7 @@ handshake envelopes (`HandshakeInit`, `HandshakeResponse`, `SessionKeyMaterial`)
 cargo test -p autheo-pqc-core qstp::tests::qstp_rerouted_payload_decrypts
 cargo test -p autheo-pqc-core qstp::tests::eavesdropper_cannot_decrypt_frame
 cargo test -p autheo-pqc-core qstp::tests::qace_reroute_updates_route_hash
+cargo test -p autheo-pqc-core qace::tests::ga_qace_prefers_low_latency_route
 ```
 
 These tests document that rerouted payloads still decrypt, eavesdroppers fail even with valid metadata, and QACE updates every route hash that downstream meshes rely on.
@@ -491,7 +498,7 @@ The runtime path for `issueHandshake` requests *and* the resulting QSTP tunnel p
 6. Responders (validators, settlement daemons, Waku relays) hydrate the tunnel with `hydrate_remote_tunnel` and the shared secret without re-running the Kyber/Dilithium handshake.
 7. Applications (THEO swaps, Waku-derived pub-sub meshes) call `QstpTunnel::seal` / `open` to exchange payloads end-to-end with post-quantum confidentiality, integrity, and forward secrecy.
 8. `MeshTransport` adapters publish the resulting `QstpFrame`s onto the overlay of your choice; only peers with the matching tunnel id, route hash, and nonce base can open them.
-9. `GeneticQace` ingests latency/threat metrics and can reroute or rekey the tunnel without repeating the handshake, keeping the channel live even during mesh reconfiguration.
+9. `GaQace` ingests latency/threat metrics and can reroute or rekey the tunnel without repeating the handshake, keeping the channel live even during mesh reconfiguration.
 
 ```mermaid
 ---

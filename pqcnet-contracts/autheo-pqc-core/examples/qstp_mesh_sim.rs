@@ -1,6 +1,7 @@
+use autheo_pqc_core::qace::{GaQace, QaceGaConfig, QaceMetrics, QaceWeights};
 use autheo_pqc_core::qstp::{
-    establish_runtime_tunnel, hydrate_remote_tunnel, GeneticQace, InMemoryMesh, InMemoryTupleChain,
-    MeshPeerId, MeshQosClass, MeshRoutePlan, MeshTransport, QaceMetrics, TunnelRole,
+    establish_runtime_tunnel, hydrate_remote_tunnel, InMemoryMesh, InMemoryTupleChain, MeshPeerId,
+    MeshQosClass, MeshRoutePlan, MeshTransport, TunnelRole,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,29 +64,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         qos: MeshQosClass::Control,
         epoch: 2,
     }]);
-    let mut hook = GeneticQace::default();
-    if let Some(new_route) = node_a.tunnel.apply_qace(
+    let mut engine = GaQace::new(
+        QaceGaConfig {
+            rng_seed: Some(41),
+            ..Default::default()
+        },
+        QaceWeights::default(),
+    );
+    let decision = node_a.tunnel.apply_qace(
         QaceMetrics {
             latency_ms: 2,
             loss_bps: 7_500,
             threat_score: 94,
             route_changes: 0,
+            ..Default::default()
         },
-        &mut hook,
-    )? {
-        println!("QACE rerouted node_a to topic {}", new_route.topic);
-        node_b.register_alternate_routes(vec![new_route.clone()]);
-        node_b.apply_qace(
-            QaceMetrics {
-                latency_ms: 2,
-                loss_bps: 7_500,
-                threat_score: 94,
-                route_changes: 1,
-            },
-            &mut GeneticQace::default(),
-        )?;
-        println!("node_b route switched to {}", node_b.route().topic);
-    }
+        &mut engine,
+    )?;
+    println!(
+        "QACE decision action={:?} score={} primary={}",
+        decision.action, decision.score, decision.path_set.primary.topic
+    );
+    node_b.register_alternate_routes(vec![decision.path_set.primary.clone()]);
+    let mut responder_engine = engine.clone();
+    let responder_decision = node_b.apply_qace(
+        QaceMetrics {
+            latency_ms: 2,
+            loss_bps: 7_500,
+            threat_score: 94,
+            route_changes: 1,
+            ..Default::default()
+        },
+        &mut responder_engine,
+    )?;
+    println!(
+        "node_b route switched to {} (confidence {:.2})",
+        responder_decision.path_set.primary.topic, responder_decision.convergence.confidence
+    );
 
     let rerouted_frame = node_a
         .tunnel

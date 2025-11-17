@@ -1,6 +1,7 @@
 use crate::error::{PqcError, PqcResult};
 use crate::handshake::{self, HandshakeArtifacts};
 use crate::key_manager::ThresholdPolicy;
+use crate::qace::{PathSet, QaceAction, QaceDecision, QaceEngine, QaceMetrics, QaceRequest};
 use crate::types::{Bytes, KeyId, TimestampMs};
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -349,34 +350,36 @@ impl QstpTunnel {
         self.alternates = routes;
     }
 
-    /// Apply QACE metrics and return a reroute decision if one was enacted.
-    pub fn apply_qace<H: QaceHook>(
+    /// Apply QACE metrics and enact any reroute/rekey decision that is returned.
+    pub fn apply_qace<E: QaceEngine>(
         &mut self,
         metrics: QaceMetrics,
-        hook: &mut H,
-    ) -> PqcResult<Option<MeshRoutePlan>> {
-        let mut candidates = Vec::with_capacity(1 + self.alternates.len());
-        candidates.push(self.route.clone());
-        candidates.extend(self.alternates.clone());
-        let ctx = QaceContext {
+        engine: &mut E,
+    ) -> PqcResult<QaceDecision> {
+        let path_set = PathSet::new(self.route.clone(), self.alternates.clone());
+        let request = QaceRequest {
             tunnel_id: &self.metadata.tunnel_id,
+            telemetry_epoch: self.route.epoch,
             metrics,
-            candidates: &candidates,
+            path_set,
         };
-        let decision = hook.evaluate(&ctx);
-        let action = decision.action.clone();
-        self.last_decision = Some(decision);
-        match action {
-            QaceAction::Maintain => Ok(None),
-            QaceAction::Rekey => {
-                self.rotate_route_material();
-                Ok(None)
-            }
-            QaceAction::Reroute(new_route) => {
-                self.install_route(new_route.clone());
-                Ok(Some(new_route))
+        let decision = engine.evaluate(request)?;
+        let route_changed = self.route != decision.path_set.primary;
+        if route_changed {
+            self.install_route(decision.path_set.primary.clone());
+        }
+        self.alternates = decision.path_set.alternates.clone();
+        match &decision.action {
+            QaceAction::Maintain => {}
+            QaceAction::Rekey => self.rotate_route_material(),
+            QaceAction::Reroute(_) => {
+                if !route_changed {
+                    self.install_route(decision.path_set.primary.clone());
+                }
             }
         }
+        self.last_decision = Some(decision.clone());
+        Ok(decision)
     }
 
     /// Retrieve immutable metadata associated with the tunnel.
@@ -502,134 +505,6 @@ impl TupleMetadataPlain {
             route_epoch: u64::from_le_bytes(epoch_bytes),
             established_at: u64::from_le_bytes(established_bytes),
         })
-    }
-}
-
-/// Metrics surfaced to QACE (Quantum Adaptive Channel Engineering) heuristics.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct QaceMetrics {
-    pub latency_ms: u32,
-    pub loss_bps: u32,
-    pub threat_score: u8,
-    pub route_changes: u8,
-}
-
-/// Decisions emitted by QACE hooks.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QaceDecision {
-    pub action: QaceAction,
-    pub score: u32,
-    pub rationale: &'static str,
-}
-
-/// Actions supported by the adaptive controller.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum QaceAction {
-    Maintain,
-    Rekey,
-    Reroute(MeshRoutePlan),
-}
-
-/// Hook invoked when telemetry indicates a threat or path degradation.
-pub trait QaceHook {
-    fn evaluate(&mut self, ctx: &QaceContext) -> QaceDecision;
-}
-
-/// Context forwarded to QACE implementations.
-pub struct QaceContext<'a> {
-    pub tunnel_id: &'a TunnelId,
-    pub metrics: QaceMetrics,
-    pub candidates: &'a [MeshRoutePlan],
-}
-
-/// Weighted genetic-style QACE hook that mutates route selections.
-pub struct GeneticQace {
-    weights: QaceWeights,
-    generation: u32,
-}
-
-/// Tunable fitness weights for the genetic heuristic.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct QaceWeights {
-    pub latency: u32,
-    pub loss: u32,
-    pub threat: u32,
-}
-
-impl Default for QaceWeights {
-    fn default() -> Self {
-        Self {
-            latency: 3,
-            loss: 2,
-            threat: 5,
-        }
-    }
-}
-
-impl GeneticQace {
-    pub fn new(weights: QaceWeights) -> Self {
-        Self {
-            weights,
-            generation: 0,
-        }
-    }
-}
-
-impl Default for GeneticQace {
-    fn default() -> Self {
-        Self::new(QaceWeights::default())
-    }
-}
-
-impl QaceHook for GeneticQace {
-    fn evaluate(&mut self, ctx: &QaceContext) -> QaceDecision {
-        self.generation = self.generation.wrapping_add(1);
-        let mut best_score = 0i64;
-        for (idx, route) in ctx.candidates.iter().enumerate() {
-            let base = (self.weights.latency as i64)
-                .saturating_mul((ctx.metrics.latency_ms.max(1)) as i64)
-                + (self.weights.loss as i64).saturating_mul((ctx.metrics.loss_bps.max(1)) as i64);
-            let genetic =
-                ((idx as u64 + self.generation as u64) as i64).wrapping_mul(route.epoch as i64);
-            let threat_penalty = (self.weights.threat as i64) * (ctx.metrics.threat_score as i64);
-            let score = genetic.saturating_sub(base).saturating_sub(threat_penalty);
-            if score > best_score {
-                best_score = score;
-            }
-        }
-
-        let abs_score = if best_score < 0 {
-            best_score.saturating_neg() as u32
-        } else {
-            best_score as u32
-        };
-
-        if ctx.metrics.threat_score > 80 {
-            let route = ctx
-                .candidates
-                .get(1)
-                .cloned()
-                .unwrap_or_else(|| ctx.candidates[0].clone());
-            return QaceDecision {
-                action: QaceAction::Reroute(route),
-                score: abs_score,
-                rationale: "threat-score-reroute",
-            };
-        }
-
-        if ctx.metrics.loss_bps > 5_000 {
-            return QaceDecision {
-                action: QaceAction::Rekey,
-                score: ctx.metrics.loss_bps,
-                rationale: "high-loss-rekey",
-            };
-        }
-
-        QaceDecision {
-            action: QaceAction::Maintain,
-            score: abs_score,
-            rationale: "stable",
-        }
     }
 }
 
@@ -903,6 +778,7 @@ mod tests {
     use super::*;
     use crate::adapters::DemoMlKem;
     use crate::kem::MlKemEngine;
+    use crate::qace::{QaceAction, SimpleQace};
     use crate::runtime;
     use alloc::boxed::Box;
 
@@ -998,8 +874,8 @@ mod tests {
         established
             .tunnel
             .register_alternate_routes(vec![alternate.clone()]);
-        let mut hook = GeneticQace::default();
-        established
+        let mut hook = SimpleQace::default();
+        let decision = established
             .tunnel
             .apply_qace(
                 QaceMetrics {
@@ -1007,22 +883,29 @@ mod tests {
                     loss_bps: 8_000,
                     threat_score: 99,
                     route_changes: 0,
+                    ..Default::default()
                 },
                 &mut hook,
             )
             .expect("reroute apply");
-        responder.register_alternate_routes(vec![alternate]);
-        responder
+        let new_route = match &decision.action {
+            QaceAction::Reroute(route) => route.clone(),
+            other => panic!("expected reroute, got {other:?}"),
+        };
+        responder.register_alternate_routes(vec![new_route.clone()]);
+        let responder_decision = responder
             .apply_qace(
                 QaceMetrics {
                     latency_ms: 1,
                     loss_bps: 8_000,
                     threat_score: 99,
                     route_changes: 1,
+                    ..Default::default()
                 },
-                &mut GeneticQace::default(),
+                &mut SimpleQace::default(),
             )
             .expect("responder reroute");
+        assert_eq!(responder_decision.path_set.primary.topic, new_route.topic);
 
         let rerouted = established
             .tunnel
@@ -1085,7 +968,7 @@ mod tests {
         let mut established =
             establish_runtime_tunnel(b"client=qace", peer, route, &mut tuple_chain)
                 .expect("tunnel");
-        let mut hook = GeneticQace::default();
+        let mut hook = SimpleQace::default();
         let new_route = MeshRoutePlan {
             topic: "waku/r1".into(),
             hops: vec![MeshPeerId::derive("hop-b")],
@@ -1095,7 +978,7 @@ mod tests {
         established
             .tunnel
             .register_alternate_routes(vec![new_route.clone()]);
-        let reroute = established
+        let decision = established
             .tunnel
             .apply_qace(
                 QaceMetrics {
@@ -1103,11 +986,11 @@ mod tests {
                     loss_bps: 10,
                     threat_score: 90,
                     route_changes: 0,
+                    ..Default::default()
                 },
                 &mut hook,
             )
-            .expect("qace apply")
-            .expect("reroute");
-        assert_eq!(reroute.topic, "waku/r1");
+            .expect("qace apply");
+        assert_eq!(decision.path_set.primary.topic, "waku/r1");
     }
 }
