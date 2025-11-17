@@ -10,8 +10,9 @@ It provides:
 - **Atomic sign-and-exchange flows** for securing key exchanges  
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG
 
-> ⚠️ This crate does **not** implement crypto primitives itself.  
-> It defines **traits and contract logic** around *audited, NIST-compliant* PQC engines that you plug in from `autheo-pqc` (Kyber/Dilithium WASM, PQClean, etc.).
+> ⚠️ This workspace doesn’t ship production ML-KEM / ML-DSA code.  
+> `autheo-pqc-core` only defines traits and contract logic, and the sibling `autheo-mlkem-*` / `autheo-mldsa-*` crates are deterministic BLAKE2s-based stubs for demos/tests.  
+> Real deployments point those traits at audited engines—Autheo’s Kyber/Dilithium WASM builds, PQClean, or the `liboqs` feature that wires in liboqs-rs’ primitives.
 
 ---
 
@@ -506,35 +507,44 @@ The flow below replaces the previous sequence diagram and highlights every contr
 ---
 config:
   look: neo
-  theme: base
+  theme: default
 ---
-flowchart TB
-    App[Client App / THEO swap / Waku node]
-    Host[PQCNet Host Runtime]
-    Wasm[pqc_handshake()<br/>handshake::execute_handshake]
-    LibOQS[liboqs-rs wrappers<br/>feature flag `liboqs`]
-    Threshold[secret_sharing.rs<br/>Shamir key distribution]
-    Dag[QS-DAG validators<br/>QsDagPqc]
-    Proto[QSTP protobuf schema<br/>`protos/qstp.proto`]
-    Tunnel[QSTP tunnels<br/>AES-256-GCM secure transport]
-    Tuple[TupleChain Store<br/>encrypted metadata]
-    Mesh[Mesh transport adapters<br/>Waku / THEO overlays]
-    QACE[QACE adaptive routing<br/>genetic algorithms]
+flowchart LR
+    subgraph ClientSurface["Client / Mesh Apps"]
+        App["Client App / THEO swap / Waku node"]
+    end
+
+    subgraph HostStack["PQCNet Host Runtime"]
+        Host["PQCNet Host Runtime"]
+        Wasm["pqc_handshake()<br/>handshake::execute_handshake"]
+        Threshold["secret_sharing.rs<br/>Shamir key distribution"]
+        Dag["QS-DAG validators<br/>QsDagPqc"]
+        Proto["QSTP protobuf schema<br/>`protos/qstp.proto`"]
+    end
+
+    subgraph Transport["QSTP Runtime + Mesh"]
+        Tunnel["QSTP tunnels<br/>AES-256-GCM secure transport"]
+        Tuple["TupleChain Store<br/>encrypted metadata"]
+        Mesh["Mesh transport adapters<br/>Waku / THEO overlays"]
+        QACE["QACE adaptive routing<br/>genetic algorithms"]
+    end
+
+    LibOQS["liboqs-rs wrappers<br/>(feature flag `liboqs`)"]
 
     App --> Host
     Host --> Wasm
-    LibOQS --> Wasm
-    Wasm -->|ML-KEM + Dilithium handshake| Proto
-    Wasm --> Dag
-    Dag --> Host
     Host --> Threshold
     Threshold --> Host
+    LibOQS --> Wasm
+    Wasm --> Dag
+    Dag --> Host
+    Wasm -- "ML-KEM + Dilithium handshake" --> Proto
     Host --> Tunnel
     Proto --> Tunnel
+    Tunnel --> App
     Tunnel --> Tuple
     Tunnel --> Mesh
     Mesh --> Tunnel
-    Tunnel --> App
     Tunnel --> QACE
     QACE --> Tunnel
 ```
