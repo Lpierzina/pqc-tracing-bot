@@ -386,6 +386,30 @@ The harness now:
 > bindings) to obtain production-ready shared secrets and signatures without
 > touching the contract logic or harness.
 
+## QSTP Data Tunnels
+
+`autheo-pqc-core` now exposes a QSTP tunnel API (`autheo_pqc_core::qstp`) that layers:
+
+- Kyber + Dilithium handshakes (`establish_runtime_tunnel`) returning ready-to-use
+  `QstpTunnel`s and the protobuf-friendly `QstpPeerMetadata`.
+- AES-256-GCM data channels with nonce binding to the active `MeshRoutePlan`.
+- A `MeshTransport` trait plus `InMemoryMesh` simulator for Waku-like pub-sub meshes.
+- TupleChain metadata encryption/retrieval (`TupleChainStore`) so the control plane
+  can persist tunnel descriptors without leaking plaintext.
+- Adaptive routing via QACE hooks (`GeneticQace`) that re-derive directional keys
+  whenever a reroute is triggered.
+
+Quick start:
+
+```
+cargo run -p autheo-pqc-core --example qstp_mesh_sim
+cargo run -p autheo-pqc-core --example qstp_performance
+```
+
+See `docs/qstp.md` for the design overview, `docs/qstp-performance.md` for the TLS
+comparison (< 10% end-to-end overhead), and `protos/qstp.proto` for the protobuf
+contract that external clients can bind to.
+
 ### QS-DAG Handshake Flow
 
 The runtime path for `issueHandshake` requests is implemented jointly by `autheo-pqc-wasm` and `autheo-pqc-core`:

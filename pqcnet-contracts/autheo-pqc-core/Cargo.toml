@@ -16,9 +16,14 @@ blake2 = { version = "0.10", default-features = false }
 digest = { version = "0.10", default-features = false }
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
 oqs = { version = "0.8", optional = true, default-features = false, features = ["kyber", "dilithium", "std"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shamir = "2.0"
+
+[dev-dependencies]
+rcgen = "0.11"
+rustls = "0.21"
 
 [[bin]]
 name = "liboqs_cli"

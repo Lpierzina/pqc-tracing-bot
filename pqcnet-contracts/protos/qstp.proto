@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package pqcnet.qstp;
+
+option go_package = "github.com/autheo-one/pqcnet/qstp/proto";
+
+enum MeshQosClass {
+  MESH_QOS_UNKNOWN = 0;
+  MESH_QOS_GOSSIP = 1;
+  MESH_QOS_LOW_LATENCY = 2;
+  MESH_QOS_CONTROL = 3;
+}
+
+enum QaceAction {
+  QACE_ACTION_MAINTAIN = 0;
+  QACE_ACTION_REKEY = 1;
+  QACE_ACTION_REROUTE = 2;
+}
+
+message MeshRoutePlan {
+  string topic = 1;
+  repeated bytes hops = 2;
+  MeshQosClass qos = 3;
+  uint64 epoch = 4;
+}
+
+message TupleMetadata {
+  bytes tunnel_id = 1;
+  bytes kem_key_id = 2;
+  bytes signing_key_id = 3;
+  uint32 threshold_t = 4;
+  uint32 threshold_n = 5;
+  bytes route_hash = 6;
+  MeshQosClass qos = 7;
+  uint64 route_epoch = 8;
+  uint64 established_at = 9;
+  bytes tuple_pointer = 10;
+}
+
+message HandshakeEnvelope {
+  bytes pqc1_envelope = 1;
+  MeshRoutePlan route = 2;
+  bytes tunnel_id = 3;
+  bytes kem_key_id = 4;
+  bytes signing_key_id = 5;
+  uint32 threshold_t = 6;
+  uint32 threshold_n = 7;
+  bytes tuple_pointer = 8;
+  bytes host_signature = 9;
+}
+
+message QstpFrame {
+  bytes tunnel_id = 1;
+  uint64 sequence = 2;
+  bytes nonce = 3;
+  bytes ciphertext = 4;
+  bytes route_hash = 5;
+  uint64 route_epoch = 6;
+  string topic = 7;
+}
+
+message QaceSignal {
+  uint32 latency_ms = 1;
+  uint32 loss_bps = 2;
+  uint32 threat_score = 3;
+  uint32 route_changes = 4;
+}
+
+message QaceDecision {
+  QaceAction action = 1;
+  MeshRoutePlan new_route = 2;
+  uint32 score = 3;
+  string rationale = 4;
+}
+
+message OpenTunnelRequest {
+  bytes client_request = 1;
+  MeshRoutePlan preferred_route = 2;
+  bytes peer_id = 3;
+}
+
+message OpenTunnelResponse {
+  HandshakeEnvelope envelope = 1;
+  TupleMetadata metadata = 2;
+  bytes session_secret_hint = 3;
+}
+
+message PublishFrameRequest {
+  QstpFrame frame = 1;
+}
+
+message FrameAck {
+  bytes tunnel_id = 1;
+  uint64 sequence = 2;
+}
+
+message QaceReport {
+  bytes tunnel_id = 1;
+  QaceSignal signal = 2;
+}
+
+service QstpMesh {
+  rpc OpenTunnel(OpenTunnelRequest) returns (OpenTunnelResponse);
+  rpc PublishFrame(PublishFrameRequest) returns (FrameAck);
+  rpc ReportQace(QaceReport) returns (QaceDecision);
+}
