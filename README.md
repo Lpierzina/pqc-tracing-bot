@@ -404,6 +404,7 @@ Quick start:
 ```
 cargo run -p autheo-pqc-core --example qstp_mesh_sim
 cargo run -p autheo-pqc-core --example qstp_performance
+cargo run -p autheo-pqc-core --example handshake_demo
 ```
 
 ### Example: QSTP Tunnels for PQCNet Applications
@@ -434,6 +435,35 @@ cargo run -p autheo-pqc-core --example qstp_performance
 ```
 
 This benchmark logs average handshake and payload times for both QSTP tunnels and a TLS 1.3 baseline, plus the percentage overhead. Capture the table when you need to prove that PQCNet stays within the “< 10% end-to-end overhead” target for high-frequency swaps.
+
+#### Rust Handshake API
+
+For hosts that want to drive Kyber/Dilithium handshakes outside the WASM ABI, the
+`handshake` module now exposes a three-function API:
+
+- `init_handshake(InitHandshakeConfig)` – encapsulate to the responder’s ML-KEM
+  key and sign the initiator transcript.
+- `respond_handshake(RespondHandshakeConfig, HandshakeInit)` – verify, decapsulate,
+  and sign the responder transcript.
+- `derive_session_keys(DeriveSessionInput)` – finish both roles (the responder
+  derives AES/TupleChain material immediately; the initiator verifies the
+  response before deriving the same bytes).
+
+Run the demo with deterministic adapters:
+
+```
+cargo run -p autheo-pqc-core --example handshake_demo
+```
+
+Swap in liboqs Kyber/Dilithium with:
+
+```
+cargo run -p autheo-pqc-core --example handshake_demo --features liboqs
+```
+
+Both modes print the shared session id, prove that AES-256-GCM payloads round
+trip, and dump the tuple key so you can integrate directly with the protobuf
+handshake envelopes (`HandshakeInit`, `HandshakeResponse`, `SessionKeyMaterial`).
 
 #### Targeted tests
 
