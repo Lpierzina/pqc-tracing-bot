@@ -61,13 +61,28 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 
 ## QACE (Adaptive Routing)
 
-- `GeneticQace` is a pluggable controller that evaluates latency/loss/threat
-  metrics and emits `QaceDecision`s.
-- `QstpTunnel::apply_qace` consumes the decision, rotates directional nonces,
-  updates the current `MeshRoutePlan`, and records the last action.
-- When the threat score crosses the high watermark, the tunnel immediately
-  switches to the next registered alternate route (and re-derives AES bases
-  without rekeying ML-KEM / ML-DSA).
+- `GaQace` (genetic algorithm) and `SimpleQace` (deterministic fallback) are the
+  pluggable controllers that evaluate telemetry and emit new `PathSet`s.
+- `QstpTunnel::apply_qace(qace.evaluate(paths, metrics))` consumes the decision,
+  rotates directional nonces, updates the active `MeshRoutePlan`, and records
+  the last action for observability.
+- The GA controller ingests multi-metric state (latency, loss, jitter,
+  bandwidth, threat, chaos-level) and evolves a high-fitness ordering of routes.
+  The recommended configuration mirrors the defaults in `QaceGaConfig`:
+  - `population_size = 48` chromosomes, `max_generations = 64`,
+    `max_stale_generations = 16`
+  - `mutation_probability = 0.18`, `selection_rate = 0.6`, `crossover_rate = 0.75`
+  - `replacement_rate = 0.65`, `elitism_rate = 0.04`, `tournament_size = 7`
+  - `QaceWeights` bias low-latency and control QoS paths while penalising hop
+    count and congestion. Adjust `hop_penalty` and `qos_gain` to match your mesh.
+- `PathSet` captures the primary + alternates returned by the controller, making
+  it easy to replicate the decision on the responder or log it in control-plane
+  telemetry.
+- Run `cargo run -p autheo-pqc-core --example qace_sim` to benchmark GA behaviour
+  across steady, congested, and threat-injection scenarios. The harness prints
+  the chosen primary path, GA fitness score, and convergence confidence so you
+  can validate the <50 ms / <10% overhead target from User Story 2 across chaos
+  inputs.
 
 ## TupleChain Storage
 
