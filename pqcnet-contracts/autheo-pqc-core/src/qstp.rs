@@ -6,6 +6,7 @@ use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use blake2::Blake2s256;
 use core::cmp;
