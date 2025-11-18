@@ -1,0 +1,23 @@
+relayer:
+  mode: bidirectional
+  batch-size: 4
+  max-queue-depth: 512
+  retry-backoff-ms: 250
+
+crypto:
+  node-id: relayer-a
+  secret-seed: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+networking:
+  listen: 0.0.0.0:7200
+  peers:
+    - id: sentry-a
+      address: 127.0.0.1:7101
+    - id: sentry-b
+      address: 127.0.0.1:7102
+
+telemetry:
+  endpoint: http://localhost:4318
+  labels:
+    role: relayer
+    environment: dev

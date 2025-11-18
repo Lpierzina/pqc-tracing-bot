@@ -1,0 +1,27 @@
+sentry:
+  watchers:
+    - relayer-a
+    - relayer-b
+  poll-interval-ms: 1500
+  quorum-threshold: 2
+
+crypto:
+  node-id: sentry-a
+  secret-seed: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+networking:
+  listen: 0.0.0.0:7100
+  max-inflight: 64
+  jitter-ms: 50
+  peers:
+    - id: relayer-a
+      address: 127.0.0.1:7201
+    - id: relayer-b
+      address: 127.0.0.1:7202
+
+telemetry:
+  endpoint: http://localhost:4318
+  flush-interval-ms: 1000
+  labels:
+    role: sentry
+    environment: dev
