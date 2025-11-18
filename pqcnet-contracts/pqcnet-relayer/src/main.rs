@@ -1,15 +1,12 @@
-mod config;
-mod service;
-
 use std::path::PathBuf;
 
 use clap::Parser;
 use color_eyre::Result;
-use config::{load_config, ConfigError, ConfigFormat, RelayerMode};
 use pqcnet_crypto::CryptoProvider;
 use pqcnet_networking::NetworkClient;
+use pqcnet_relayer::config::{load_config, ConfigError, ConfigFormat, RelayerMode};
+use pqcnet_relayer::service::RelayerService;
 use pqcnet_telemetry::TelemetryHandle;
-use service::RelayerService;
 
 #[cfg(any(
     all(feature = "dev", feature = "test"),

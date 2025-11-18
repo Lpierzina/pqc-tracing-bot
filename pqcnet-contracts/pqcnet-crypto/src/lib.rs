@@ -2,6 +2,17 @@
 //! Provides deterministic key derivation, signing, and verification built
 //! on top of SHA-256 so integration tests can exercise higher-level logic
 //! without depending on external HSMs.
+//!
+//! # Quickstart
+//! ```
+//! use pqcnet_crypto::{CryptoConfig, CryptoProvider};
+//!
+//! let provider =
+//!     CryptoProvider::from_config(&CryptoConfig::sample("demo-sentry")).unwrap();
+//! let payload = b"doc-test";
+//! let signature = provider.sign(payload);
+//! assert!(provider.verify(payload, &signature));
+//! ```
 
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};

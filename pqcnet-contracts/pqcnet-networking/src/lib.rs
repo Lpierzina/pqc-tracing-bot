@@ -1,6 +1,17 @@
 //! Deterministic, in-memory networking façade that mimics message passing
 //! semantics required by the pqcnet binaries. The implementation focuses on
 //! debuggability and deterministic tests rather than real sockets.
+//!
+//! # Quickstart
+//! ```
+//! use pqcnet_networking::{NetworkClient, NetworkingConfig};
+//!
+//! let config = NetworkingConfig::sample("127.0.0.1:7100");
+//! let client = NetworkClient::from_config("node-a", config);
+//! let receipts = client.broadcast("ping");
+//! assert_eq!(receipts.len(), 2);
+//! assert_eq!(client.drain_inflight().len(), 2);
+//! ```
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
