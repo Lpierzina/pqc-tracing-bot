@@ -1,3 +1,23 @@
+//! Simplified relayer queue that batches PQC messages before broadcasting.
+//!
+//! # Example
+//! ```
+//! use pqcnet_crypto::CryptoProvider;
+//! use pqcnet_networking::NetworkClient;
+//! use pqcnet_relayer::config::{Config, RelayerMode};
+//! use pqcnet_relayer::service::RelayerService;
+//! use pqcnet_telemetry::TelemetryHandle;
+//!
+//! let mut cfg = Config::sample();
+//! cfg.relayer.mode = RelayerMode::Egress;
+//! let crypto = CryptoProvider::from_config(&cfg.crypto).unwrap();
+//! let network = NetworkClient::from_config(&cfg.crypto.node_id, cfg.networking.clone());
+//! let telemetry = TelemetryHandle::from_config(cfg.telemetry.clone());
+//! let mut service = RelayerService::new(&cfg, crypto, network, telemetry);
+//! let report = service.relay_once().unwrap();
+//! assert!(report.delivered > 0);
+//! ```
+
 use std::collections::VecDeque;
 
 use pqcnet_crypto::CryptoProvider;

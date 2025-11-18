@@ -1,3 +1,22 @@
+//! Core sentry loop that watches configured relayers and records telemetry.
+//!
+//! # Example
+//! ```
+//! use pqcnet_crypto::CryptoProvider;
+//! use pqcnet_networking::NetworkClient;
+//! use pqcnet_sentry::config::Config;
+//! use pqcnet_sentry::service::SentryService;
+//! use pqcnet_telemetry::TelemetryHandle;
+//!
+//! let cfg = Config::sample();
+//! let crypto = CryptoProvider::from_config(&cfg.crypto).unwrap();
+//! let network = NetworkClient::from_config(&cfg.crypto.node_id, cfg.networking.clone());
+//! let telemetry = TelemetryHandle::from_config(cfg.telemetry.clone());
+//! let mut service = SentryService::new(&cfg, crypto, network, telemetry);
+//! let report = service.run_iteration(true).unwrap();
+//! assert_eq!(report.processed_watchers, cfg.sentry.watchers.len());
+//! ```
+
 use pqcnet_crypto::CryptoProvider;
 use pqcnet_networking::{NetworkClient, NetworkingError};
 use pqcnet_telemetry::{TelemetryError, TelemetryHandle};

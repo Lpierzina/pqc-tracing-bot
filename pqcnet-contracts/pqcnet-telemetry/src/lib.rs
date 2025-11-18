@@ -1,6 +1,18 @@
 //! Lightweight telemetry facade for pqcnet binaries. The goal is to provide
 //! structured counters/latencies without requiring external exporters so tests
 //! can assert instrumentation behavior.
+//!
+//! # Quickstart
+//! ```
+//! use pqcnet_telemetry::{TelemetryConfig, TelemetryHandle};
+//!
+//! let handle = TelemetryHandle::from_config(TelemetryConfig::sample("http://localhost:4318"));
+//! handle.record_counter("ingest.success", 1).unwrap();
+//! handle.record_latency_ms("pipeline", 42);
+//! let snapshot = handle.flush();
+//! assert_eq!(snapshot.counters["ingest.success"], 1);
+//! assert_eq!(snapshot.latencies_ms["pipeline"], vec![42]);
+//! ```
 
 use serde::{Deserialize, Serialize};
 use std::{

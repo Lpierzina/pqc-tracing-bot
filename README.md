@@ -29,6 +29,41 @@ Add new algorithm crates (e.g., future NIST picks) by following the same pattern
 
 ---
 
+## PQCNet Service Simulators
+
+The workspace also ships lightweight binaries and libraries that mimic the PQCNet
+node stack. Each crate now includes README instructions, config schemas, doc
+tests, and runnable examples so you can demo behavior quickly:
+
+- `pqcnet-crypto/` – deterministic key derivation + signing. Example:
+  `cargo run -p pqcnet-crypto --example key_rotation`
+- `pqcnet-networking/` – in-memory message bus. Example:
+  `cargo run -p pqcnet-networking --example in_memory_bus`
+- `pqcnet-telemetry/` – structured counters/latencies. Example:
+  `cargo run -p pqcnet-telemetry --example flush_snapshot`
+- `pqcnet-sentry/` – watcher quorum simulator. Example:
+  `cargo run -p pqcnet-sentry --example quorum_demo`
+- `pqcnet-relayer/` – batch relay queue. Example:
+  `cargo run -p pqcnet-relayer --example pipeline`
+
+Each crate has an embedded doctest (see the top-level module docs) so `cargo test
+--doc` reports real coverage instead of zero cases. Run the full component test
+suite with:
+
+```
+cargo test \
+  -p pqcnet-crypto \
+  -p pqcnet-networking \
+  -p pqcnet-telemetry \
+  -p pqcnet-sentry \
+  -p pqcnet-relayer
+```
+
+Refer to the `pqcnet-*/README.md` files for config snippets that match the
+sample TOML/YAML files under `configs/`.
+
+---
+
 ## High-Level Architecture (`autheo-pqc-core`)
 
 ### Modules

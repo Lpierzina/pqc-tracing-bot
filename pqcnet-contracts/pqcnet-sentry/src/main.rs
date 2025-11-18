@@ -1,15 +1,12 @@
-mod config;
-mod service;
-
 use std::path::PathBuf;
 
 use clap::Parser;
 use color_eyre::Result;
-use config::{load_config, ConfigFormat};
 use pqcnet_crypto::CryptoProvider;
 use pqcnet_networking::NetworkClient;
+use pqcnet_sentry::config::{load_config, ConfigFormat};
+use pqcnet_sentry::service::SentryService;
 use pqcnet_telemetry::TelemetryHandle;
-use service::SentryService;
 
 #[cfg(any(
     all(feature = "dev", feature = "test"),
