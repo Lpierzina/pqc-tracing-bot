@@ -5,6 +5,11 @@ members = [
     "autheo-mldsa-falcon",
     "autheo-pqc-core",
     "autheo-pqc-wasm",
+    "pqcnet-crypto",
+    "pqcnet-networking",
+    "pqcnet-telemetry",
+    "pqcnet-sentry",
+    "pqcnet-relayer",
 ]
 resolver = "2"
 

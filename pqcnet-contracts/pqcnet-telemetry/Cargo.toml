@@ -1,0 +1,18 @@
+[package]
+name = "pqcnet-telemetry"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+description = "Minimal telemetry facade shared by pqcnet binaries"
+homepage = "https://example.com/pqcnet"
+repository = "https://example.com/pqcnet/repo"
+
+[features]
+dev = []
+test = []
+prod = []
+default = ["prod"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1"
