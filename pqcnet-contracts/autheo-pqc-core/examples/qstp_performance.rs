@@ -12,9 +12,10 @@ use std::io::{self, Read, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const ITERATIONS: usize = 200;
+const DEFAULT_ITERATIONS: usize = 200;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let iterations = iterations_from_env();
     let server_id = MeshPeerId::derive("perf-node-a");
     let client_id = MeshPeerId::derive("perf-node-b");
     let payload = vec![0u8; 512];
@@ -29,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tls_handshakes = Duration::ZERO;
     let mut tls_payload = Duration::ZERO;
 
-    for i in 0..ITERATIONS {
+    for i in 0..iterations {
         let route = MeshRoutePlan {
             topic: "waku/perf".into(),
             hops: vec![MeshPeerId::derive("hop-perf")],
@@ -79,10 +80,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tls_payload += tls_payload_start.elapsed();
     }
 
-    let qstp_handshake_ms = as_ms(qstp_handshakes) / ITERATIONS as f64;
-    let qstp_payload_ms = as_ms(qstp_payload) / ITERATIONS as f64;
-    let tls_handshake_ms = as_ms(tls_handshakes) / ITERATIONS as f64;
-    let tls_payload_ms = as_ms(tls_payload) / ITERATIONS as f64;
+    let qstp_handshake_ms = as_ms(qstp_handshakes) / iterations as f64;
+    let qstp_payload_ms = as_ms(qstp_payload) / iterations as f64;
+    let tls_handshake_ms = as_ms(tls_handshakes) / iterations as f64;
+    let tls_payload_ms = as_ms(tls_payload) / iterations as f64;
 
     let handshake_overhead = percent_overhead(qstp_handshake_ms, tls_handshake_ms);
     let payload_overhead = percent_overhead(qstp_payload_ms, tls_payload_ms);
@@ -90,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tls_total = tls_handshake_ms + tls_payload_ms;
     let end_to_end_overhead = percent_overhead(qstp_total, tls_total);
 
-    println!("== QSTP vs TLS performance ({ITERATIONS} iters) ==");
+    println!("== QSTP vs TLS performance ({iterations} iters) ==");
     println!("QSTP handshake avg : {:.3} ms", qstp_handshake_ms);
     println!("TLS  handshake avg : {:.3} ms", tls_handshake_ms);
     println!("QSTP payload avg   : {:.3} ms", qstp_payload_ms);
@@ -111,6 +112,15 @@ fn percent_overhead(qstp_ms: f64, tls_ms: f64) -> f64 {
 
 fn as_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+fn iterations_from_env() -> usize {
+    const ENV_KEY: &str = "QSTP_PERF_ITERS";
+    std::env::var(ENV_KEY)
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .filter(|value: &usize| *value > 0)
+        .unwrap_or(DEFAULT_ITERATIONS)
 }
 
 fn build_tls_configs() -> Result<(ClientConfig, ServerConfig), Box<dyn std::error::Error>> {
