@@ -19,6 +19,17 @@ mod qace_sim {
     }
 }
 
+mod secret_sharing_demo {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/secret_sharing_demo.rs"
+    ));
+
+    pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+        main().map_err(|err| -> Box<dyn std::error::Error> { Box::new(err) })
+    }
+}
+
 mod qstp_mesh_sim {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -71,6 +82,11 @@ fn qace_simulation_executes() {
 #[test]
 fn qstp_mesh_simulation_executes() {
     qstp_mesh_sim::run().expect("qstp mesh simulation should complete");
+}
+
+#[test]
+fn secret_sharing_demo_executes() {
+    secret_sharing_demo::run().expect("secret sharing demo should complete");
 }
 
 #[test]
