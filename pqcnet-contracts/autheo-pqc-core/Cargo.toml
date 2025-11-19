@@ -13,6 +13,7 @@ autheo-mlkem-kyber = { path = "../autheo-mlkem-kyber" }
 autheo-mldsa-dilithium = { path = "../autheo-mldsa-dilithium" }
 autheo-mldsa-falcon = { path = "../autheo-mldsa-falcon" }
 pqcnet-qace = { path = "../pqcnet-qace" }
+pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 blake2 = { version = "0.10", default-features = false }
 digest = { version = "0.10", default-features = false }
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }

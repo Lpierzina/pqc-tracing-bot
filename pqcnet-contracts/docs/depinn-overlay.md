@@ -44,7 +44,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
    - Node announcements (role, capabilities, software hash, staking address)
    - Route advertisements / QACE telemetry updates
    - Governance directives (rate limit updates, forced rekeys, slashing notices)
-3. **State Sync via QS-DAG** – `qs_dag.rs` extended with:
+3. **State Sync via QS-DAG** – `pqcnet-qs-dag` extended with:
    - Ledger of relays (attestation hashes, stake, performance history)
    - Attestation record store with append-only edges
    - Meta-routing tables (per-topic shard owners, QoS hints)
@@ -117,7 +117,7 @@ Operator runbook | Covers onboarding (stake, attestation), upgrades (rolling wit
 
 Phase | Workstreams | Notes
 ---|---|---
-1. Overlay scaffolding | New crates `pqcnet-sentry`, `pqcnet-relayer`, Waku transport adapter for `MeshTransport`. Wire existing `autheo-pqc-core` modules into node runtimes. | Heavy reuse of `runtime.rs`, `qstp.rs`, `qs_dag.rs`.
+1. Overlay scaffolding | New crates `pqcnet-sentry`, `pqcnet-relayer`, Waku transport adapter for `MeshTransport`. Wire existing `autheo-pqc-core` modules into node runtimes. | Heavy reuse of `runtime.rs`, `qstp.rs`, `pqcnet-qs-dag`.
 2. Message bus & accounting | Kafka/Redis connectors, shard workers, volume metrics pipeline, Prometheus exporters, governance proto for volume proofs. | Add integration tests + `cargo test -p autheo-pqc-core relayer::*`.
 3. Security hardening | Attestation collector, QS-DAG ledger extensions, slashing hooks, HSM adapters, Shamir share services. | Update `docs/qstp.md` + new `docs/attestation.md`.
 4. Throughput & resilience | Synthetic harness to hit 10,000 TPS, chaos tests for <5% packet loss, backpressure controls. | Extend `qstp_performance` and add `relayer_burst.rs` example.
