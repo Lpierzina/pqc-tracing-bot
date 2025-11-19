@@ -557,6 +557,14 @@ flowchart LR
         Proto["QSTP protobuf schema<br/>`protos/qstp.proto`"]
     end
 
+    subgraph Simulators["PQCNet Service Simulators"]
+        Crypto["pqcnet-crypto<br/>keygen / signing glue"]
+        Networking["pqcnet-networking<br/>message bus + overlay adapters"]
+        Telemetry["pqcnet-telemetry<br/>metrics + counters"]
+        Sentry["pqcnet-sentry<br/>watcher quorum"]
+        Relayer["pqcnet-relayer<br/>batch relay queue"]
+    end
+
     subgraph Transport["QSTP Runtime + Mesh"]
         Tunnel["QSTP tunnels<br/>AES-256-GCM secure transport"]
         Tuple["TupleChain Store<br/>encrypted metadata"]
@@ -582,6 +590,16 @@ flowchart LR
     Mesh --> Tunnel
     Tunnel --> QACE
     QACE --> Tunnel
+    Crypto --> Host
+    Host --> Relayer
+    Relayer --> Networking
+    Networking --> Mesh
+    Mesh --> Relayer
+    Host --> Telemetry
+    Tunnel --> Telemetry
+    Sentry --> Dag
+    Dag --> Sentry
+    Networking --> QACE
 ```
 
 #### Component roles
@@ -592,6 +610,11 @@ flowchart LR
 - **liboqs wrappers** – Optional providers in `src/liboqs.rs` that swap the deterministic demo engines for audited Kyber/Dilithium primitives when `--features liboqs` is set.
 - **QS-DAG validators** – `qs_dag.rs::QsDagPqc` verifies Dilithium signatures over DAG payloads and anchors them so tuple metadata inherits PQC guarantees.
 - **QSTP Runtime + Mesh** – `qstp.rs` (`QstpTunnel`, `MeshTransport`, `TupleChainStore`) and `qace.rs` (`GaQace`, `SimpleQace`) turn handshake outputs into AES-256-GCM tunnels, encrypted TupleChain metadata, and adaptive mesh routing.
+- **pqcnet-crypto** – Supplies deterministic keygen/signing flows that bind directly to `autheo-pqc-core`, mirroring how the host runtime sources ML-KEM/ML-DSA material inside the diagram.
+- **pqcnet-relayer** – Buffers handshake envelopes and QSTP payloads before they leave the host, modelling the batch queue that feeds the networking layer in the diagram.
+- **pqcnet-networking** – Provides the simulated message bus / overlay adapters that plug into Waku or THEO meshes; its edges to `Mesh` and `QACE` show how it transports and routes QSTP traffic.
+- **pqcnet-telemetry** – Streams counters/latencies from both the host runtime and active tunnels, capturing the dual arrows from `Host` and `Tunnel` into the telemetry sink.
+- **pqcnet-sentry** – Represents the watcher quorum that consumes QS-DAG anchors and feeds status back to `qs_dag::QsDagPqc`, closing the DAG loop in the flow.
 
 #### Flow walkthrough
 
