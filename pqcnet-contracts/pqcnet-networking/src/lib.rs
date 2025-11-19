@@ -13,6 +13,10 @@
 //! assert_eq!(client.drain_inflight().len(), 2);
 //! ```
 
+pub mod control_plane;
+pub mod pubsub;
+pub mod qs_dag;
+
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
