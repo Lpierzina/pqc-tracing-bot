@@ -14,7 +14,7 @@ pub mod error;
 pub mod handshake;
 pub mod kem;
 pub mod key_manager;
-pub mod qace;
+pub use pqcnet_qace as qace;
 pub mod qs_dag;
 pub mod qstp;
 pub(crate) mod runtime;
