@@ -1,0 +1,18 @@
+[package]
+name = "pqcnet-qstp"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+
+[dependencies]
+autheo-pqc-core = { path = "../autheo-pqc-core" }
+pqcnet-qace = { path = "../pqcnet-qace" }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+blake2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+rcgen = "0.11"
+rustls = "0.21"

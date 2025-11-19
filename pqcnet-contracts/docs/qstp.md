@@ -1,6 +1,6 @@
 # QSTP Tunnels
 
-The `autheo-pqc-core::qstp` module turns the Kyber + Dilithium handshake
+The `pqcnet_qstp` crate turns the Kyber + Dilithium handshake
 artifacts into long-lived quantum-secure data channels with Waku-compatible
 transport semantics, TupleChain storage hooks, and a programmable QACE
 (Quantum Adaptive Channel Engineering) controller.
@@ -104,9 +104,9 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 ## Examples & Tests
 
 ```
-cargo run -p autheo-pqc-core --example qstp_mesh_sim
-cargo run -p autheo-pqc-core --example qstp_performance
-cargo test -p autheo-pqc-core qstp::tests::qstp_rerouted_payload_decrypts
+cargo run -p pqcnet-qstp --example qstp_mesh_sim
+cargo run -p pqcnet-qstp --example qstp_performance
+cargo test -p pqcnet-qstp qstp_rerouted_payload_decrypts
 ```
 
 The mesh simulator wires two endpoints through the in-memory Waku harness,

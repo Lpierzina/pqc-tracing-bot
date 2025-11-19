@@ -69,7 +69,7 @@ sequenceDiagram
    - Together they carry the handshake to the remote PQCNode and into the PQCNet control plane.
 
 4. **Quantum tunnel = quantum VM for endpoints**  
-   - Once the envelope lands, the QSTP runtime (implemented inside `autheo-pqc-core::qstp`) spins up a “quantum tunnel.” Think of it as a quantum VM: endpoint A lives next to the initiating PQCNode, endpoint B lives near the counterparty validator.  
+   - Once the envelope lands, the QSTP runtime (implemented inside `pqcnet_qstp`) spins up a “quantum tunnel.” Think of it as a quantum VM: endpoint A lives next to the initiating PQCNode, endpoint B lives near the counterparty validator.  
    - The tunnel hydrates Quantum Endpoint B with the shared secret, enforces TupleChain policies, and gives us per-route AES-256-GCM channels.  
    - Because the tunnel can reroute via QACE (genetic algorithm controller), the endpoints behave like a live VM that follows the session wherever the network sends it, without re-running the PQC handshake.
 

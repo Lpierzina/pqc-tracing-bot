@@ -67,7 +67,6 @@ where
     f(guard.as_mut().unwrap())
 }
 
-#[cfg(test)]
 pub fn reset_state_for_tests() {
     let mut guard = STATE.lock();
     *guard = None;

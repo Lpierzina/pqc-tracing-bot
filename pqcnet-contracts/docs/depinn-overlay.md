@@ -40,7 +40,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
 ## 3. Mesh Formation & State Synchronization
 
 1. **Bootstrap** – Nodes receive an initial Waku topic map + QS-DAG peer list via config or onboarding API.
-2. **Control Plane (Waku Pub/Sub)** – `autheo-pqc-core::qstp::MeshTransport` gains a Waku adapter that exchanges:
+2. **Control Plane (Waku Pub/Sub)** – `pqcnet_qstp::MeshTransport` gains a Waku adapter that exchanges:
    - Node announcements (role, capabilities, software hash, staking address)
    - Route advertisements / QACE telemetry updates
    - Governance directives (rate limit updates, forced rekeys, slashing notices)
@@ -78,7 +78,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
 
 ## 6. Data Plane, Throughput & Resilience
 
-- **QSTP Everywhere** – All node-to-node communication stays on QSTP tunnels (`qstp.rs`). Control-plane Waku messages are sealed payloads, ensuring post-quantum transport even for gossip.
+- **QSTP Everywhere** – All node-to-node communication stays on QSTP tunnels (`pqcnet-qstp`). Control-plane Waku messages are sealed payloads, ensuring post-quantum transport even for gossip.
 - **Sharded Message Bus** – Kafka (preferred) or Redis Streams:
   - Configure ≥32 partitions per relayer cluster to reach 10,000 TPS aggregate.
   - Use idempotent producers and exactly-once consumers for ordering guarantees.
@@ -97,7 +97,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
   - Emits `IBCEnvelope { channel, sequence, payload_hash, signature }`.
   - Used by both sentries (RPC audit logs) and relayers (volume proofs).
 - **THEO Accounting** – Volume metrics exported via gRPC/JSON from relayers; governance or staking nodes consume them for reward calculation.
-- **QSTP Tunnels** – Remain the default data-plane interface; `autheo-pqc-core/examples/qstp_mesh_sim` updated to showcase sentry→relayer→client routing.
+- **QSTP Tunnels** – Remain the default data-plane interface; `pqcnet-qstp/examples/qstp_mesh_sim` updated to showcase sentry→relayer→client routing.
 
 ---
 
@@ -117,7 +117,7 @@ Operator runbook | Covers onboarding (stake, attestation), upgrades (rolling wit
 
 Phase | Workstreams | Notes
 ---|---|---
-1. Overlay scaffolding | New crates `pqcnet-sentry`, `pqcnet-relayer`, Waku transport adapter for `MeshTransport`. Wire existing `autheo-pqc-core` modules into node runtimes. | Heavy reuse of `runtime.rs`, `qstp.rs`, `pqcnet-qs-dag`.
+1. Overlay scaffolding | New crates `pqcnet-sentry`, `pqcnet-relayer`, Waku transport adapter for `MeshTransport`. Wire existing `autheo-pqc-core` modules into node runtimes. | Heavy reuse of `runtime.rs`, `pqcnet-qstp`, `pqcnet-qs-dag`.
 2. Message bus & accounting | Kafka/Redis connectors, shard workers, volume metrics pipeline, Prometheus exporters, governance proto for volume proofs. | Add integration tests + `cargo test -p autheo-pqc-core relayer::*`.
 3. Security hardening | Attestation collector, QS-DAG ledger extensions, slashing hooks, HSM adapters, Shamir share services. | Update `docs/qstp.md` + new `docs/attestation.md`.
 4. Throughput & resilience | Synthetic harness to hit 10,000 TPS, chaos tests for <5% packet loss, backpressure controls. | Extend `qstp_performance` and add `relayer_burst.rs` example.
