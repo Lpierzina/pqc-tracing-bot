@@ -10,6 +10,7 @@ members = [
     "pqcnet-telemetry",
     "pqcnet-sentry",
     "pqcnet-relayer",
+    "pqcnet-qace",
 ]
 resolver = "2"
 

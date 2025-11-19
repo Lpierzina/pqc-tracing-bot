@@ -76,7 +76,7 @@ sample TOML/YAML files under `configs/`.
 - `handshake.rs` – ML-KEM + Dilithium handshake orchestration and PQC1 envelope.
 - `qs_dag.rs` – QS-DAG integration shim for anchoring PQC signatures.
 - `qstp.rs` – QSTP tunnel establishment, hydration, sealing, and TupleChain metadata.
-- `qace.rs` – adaptive routing via GA-based controllers (QACE).
+- `qace` (`pqcnet-qace` crate) – adaptive routing via GA-based controllers (QACE).
 - `runtime.rs` – `pqc_handshake` ABI glue and host-side helpers.
 - `types.rs` / `error.rs` – strongly typed IDs, timestamps, and shared error handling.
 
@@ -444,22 +444,25 @@ The harness now:
 - A `MeshTransport` trait plus `InMemoryMesh` simulator for Waku-like pub-sub meshes.
 - TupleChain metadata encryption/retrieval (`TupleChainStore`) so the control plane
   can persist tunnel descriptors without leaking plaintext.
-- Adaptive routing via QACE hooks (`GaQace` + `SimpleQace`) that re-derive directional keys
+- Adaptive routing via QACE hooks (`pqcnet_qace::GaQace` + `pqcnet_qace::SimpleQace`) that re-derive directional keys
   whenever a reroute is triggered.
 
 Quick start:
 
 ```
 cargo run -p autheo-pqc-core --example qstp_mesh_sim
-cargo run -p autheo-pqc-core --example qace_sim
 cargo run -p autheo-pqc-core --example qstp_performance
 cargo run -p autheo-pqc-core --example handshake_demo
+cargo run -p pqcnet-qace --example ga_failover
+cargo run -p pqcnet-qace --example deterministic_guard
 ```
 
-`qace_sim` drives the new GA controller against synthetic meshes and prints the
-selected primary path, fitness score, and convergence confidence for steady,
-congested, and threat-injection scenarios, making it easy to tune `QaceGaConfig`
-and `QaceWeights` before deploying to a real mesh.
+`pqcnet-qace` examples drive the GA controller against synthetic meshes (see
+`ga_failover`) and show how the deterministic guard reacts to threats/loss
+(`deterministic_guard`). The GA run prints the selected primary path, fitness
+score, and convergence confidence for steady, congested, and threat-injection
+scenarios, making it easy to tune `QaceGaConfig` and `QaceWeights` before
+deploying to a real mesh.
 
 ### Example: QSTP Tunnels for PQCNet Applications
 
@@ -633,7 +636,7 @@ Key takeaways:
 2. **Threshold sharing with the `shamir` crate** – use `secret_sharing::split_secret` / `combine_secret` to distribute ML-KEM secrets according to each `ThresholdPolicy`.
 3. **QSTP protocol in protobuf + ML-KEM/Dilithium handshake** – `handshake.rs` emits PQC1 envelopes that map directly onto the messages in `protos/qstp.proto`.
 4. **QSTP tunnels for secure transport** – `qstp::establish_runtime_tunnel` converts handshake outputs into AES-256-GCM channels and TupleChain metadata for auditors.
-5. **Adaptive routing with QACE** – `qace::GaQace` ingests latency/threat metrics and mutates the active `MeshRoutePlan` without forcing another handshake.
+5. **Adaptive routing with QACE** – `pqcnet_qace::GaQace` ingests latency/threat metrics and mutates the active `MeshRoutePlan` without forcing another handshake.
 
 ---
 

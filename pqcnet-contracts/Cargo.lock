@@ -154,8 +154,8 @@ dependencies = [
  "autheo-mlkem-kyber",
  "blake2",
  "digest",
- "genetic_algorithm",
  "oqs",
+ "pqcnet-qace",
  "rcgen",
  "rustls",
  "shamir",
@@ -1064,6 +1064,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "pqcnet-qace"
+version = "0.1.0"
+dependencies = [
+ "genetic_algorithm",
 ]
 
 [[package]]

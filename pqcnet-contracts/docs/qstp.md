@@ -61,11 +61,14 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 
 ## QACE (Adaptive Routing)
 
-- `GaQace` (genetic algorithm) and `SimpleQace` (deterministic fallback) are the
-  pluggable controllers that evaluate telemetry and emit new `PathSet`s.
+- `pqcnet_qace::GaQace` (genetic algorithm) and `pqcnet_qace::SimpleQace`
+  (deterministic fallback) are the pluggable controllers that evaluate telemetry
+  and emit new `PathSet`s.
 - `QstpTunnel::apply_qace(qace.evaluate(paths, metrics))` consumes the decision,
   rotates directional nonces, updates the active `MeshRoutePlan`, and records
   the last action for observability.
+- `QaceRoute` is the trait implemented by `MeshRoutePlan`, so any transport that
+  exposes hop count, QoS bias, freshness, and viability can plug into QACE.
 - The GA controller ingests multi-metric state (latency, loss, jitter,
   bandwidth, threat, chaos-level) and evolves a high-fitness ordering of routes.
   The recommended configuration mirrors the defaults in `QaceGaConfig`:
@@ -78,11 +81,17 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 - `PathSet` captures the primary + alternates returned by the controller, making
   it easy to replicate the decision on the responder or log it in control-plane
   telemetry.
-- Run `cargo run -p autheo-pqc-core --example qace_sim` to benchmark GA behaviour
-  across steady, congested, and threat-injection scenarios. The harness prints
-  the chosen primary path, GA fitness score, and convergence confidence so you
-  can validate the <50 ms / <10% overhead target from User Story 2 across chaos
-  inputs.
+- Run the standalone examples to benchmark QACE behaviour:
+
+  ```
+  cargo run -p pqcnet-qace --example ga_failover
+  cargo run -p pqcnet-qace --example deterministic_guard
+  ```
+
+  `ga_failover` prints the chosen primary path, GA fitness score, and convergence
+  confidence for steady, congested, and threat-injection scenarios so you can
+  validate the <50 ms / <10% overhead target from User Story 2 across chaos
+  inputs, while `deterministic_guard` demonstrates the WASM-friendly fallback.
 
 ## TupleChain Storage
 

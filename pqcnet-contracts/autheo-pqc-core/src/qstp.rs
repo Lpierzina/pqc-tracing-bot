@@ -1,7 +1,9 @@
 use crate::error::{PqcError, PqcResult};
 use crate::handshake::{self, HandshakeArtifacts};
 use crate::key_manager::ThresholdPolicy;
-use crate::qace::{PathSet, QaceAction, QaceDecision, QaceEngine, QaceMetrics, QaceRequest};
+use crate::qace::{
+    PathSet, QaceAction, QaceDecision, QaceEngine, QaceMetrics, QaceRequest, QaceRoute,
+};
 use crate::types::{Bytes, KeyId, TimestampMs};
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -95,6 +97,28 @@ impl MeshRoutePlan {
         let mut out = [0u8; 32];
         out.copy_from_slice(&digest[..32]);
         out
+    }
+}
+
+impl QaceRoute for MeshRoutePlan {
+    fn hop_count(&self) -> u32 {
+        self.hops.len() as u32
+    }
+
+    fn qos_bias(&self) -> i64 {
+        match self.qos {
+            MeshQosClass::LowLatency => 5,
+            MeshQosClass::Control => 3,
+            MeshQosClass::Gossip => 1,
+        }
+    }
+
+    fn freshness(&self) -> i64 {
+        self.epoch as i64
+    }
+
+    fn is_viable(&self) -> bool {
+        !self.topic.is_empty()
     }
 }
 
@@ -273,7 +297,7 @@ pub struct QstpTunnel {
     rx: RxState,
     recv_watermark: u64,
     alternates: Vec<MeshRoutePlan>,
-    last_decision: Option<QaceDecision>,
+    last_decision: Option<QaceDecision<MeshRoutePlan>>,
 }
 
 impl QstpTunnel {
@@ -351,19 +375,21 @@ impl QstpTunnel {
     }
 
     /// Apply QACE metrics and enact any reroute/rekey decision that is returned.
-    pub fn apply_qace<E: QaceEngine>(
+    pub fn apply_qace<E>(
         &mut self,
         metrics: QaceMetrics,
         engine: &mut E,
-    ) -> PqcResult<QaceDecision> {
+    ) -> PqcResult<QaceDecision<MeshRoutePlan>>
+    where
+        E: QaceEngine<MeshRoutePlan>,
+    {
         let path_set = PathSet::new(self.route.clone(), self.alternates.clone());
         let request = QaceRequest {
-            tunnel_id: &self.metadata.tunnel_id,
             telemetry_epoch: self.route.epoch,
             metrics,
             path_set,
         };
-        let decision = engine.evaluate(request)?;
+        let decision = engine.evaluate(request).map_err(PqcError::from)?;
         let route_changed = self.route != decision.path_set.primary;
         if route_changed {
             self.install_route(decision.path_set.primary.clone());

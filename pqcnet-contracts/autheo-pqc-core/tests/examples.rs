@@ -11,14 +11,6 @@ mod handshake_demo {
     }
 }
 
-mod qace_sim {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/qace_sim.rs"));
-
-    pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-        main()
-    }
-}
-
 mod secret_sharing_demo {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -72,11 +64,6 @@ impl Drop for EnvVarGuard {
 #[test]
 fn handshake_demo_executes() {
     handshake_demo::run().expect("handshake demo should complete");
-}
-
-#[test]
-fn qace_simulation_executes() {
-    qace_sim::run().expect("qace simulation should complete");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use alloc::string::String;
 use core::fmt;
+use pqcnet_qace::QaceError;
 
 /// Unified error type for PQCNet contracts.
 ///
@@ -42,3 +43,12 @@ impl fmt::Display for PqcError {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl std::error::Error for PqcError {}
+
+impl From<QaceError> for PqcError {
+    fn from(err: QaceError) -> Self {
+        match err {
+            QaceError::InvalidInput(msg) => PqcError::InvalidInput(msg),
+            QaceError::IntegrationError(msg) => PqcError::IntegrationError(msg.into()),
+        }
+    }
+}
