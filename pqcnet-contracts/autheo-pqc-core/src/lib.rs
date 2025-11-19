@@ -15,7 +15,7 @@ pub mod handshake;
 pub mod kem;
 pub mod key_manager;
 pub use pqcnet_qace as qace;
-pub mod qs_dag;
+pub use pqcnet_qs_dag::anchor as qs_dag;
 pub mod qstp;
 pub(crate) mod runtime;
 pub mod secret_sharing;

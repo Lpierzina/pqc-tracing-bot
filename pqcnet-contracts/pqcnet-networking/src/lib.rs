@@ -15,7 +15,8 @@
 
 pub mod control_plane;
 pub mod pubsub;
-pub mod qs_dag;
+pub use pqcnet_qs_dag as qs_dag;
+pub use pqcnet_qs_dag::{DagError, QsDag, StateDiff, StateOp, StateSnapshot};
 
 pub use control_plane::{
     ControlCommand, ControlEvent, ControlPlane, ControlPlaneConfig, ControlPlaneError,
@@ -24,7 +25,6 @@ pub use control_plane::{
 pub use pubsub::{
     ContentTopic, PubSubEnvelope, PubSubMessage, PubSubRouter, PublishReceipt, Subscription, Topic,
 };
-pub use qs_dag::{DagError, QsDag, StateDiff, StateOp, StateSnapshot};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};

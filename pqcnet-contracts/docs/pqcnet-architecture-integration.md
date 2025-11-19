@@ -74,7 +74,7 @@ sequenceDiagram
    - Because the tunnel can reroute via QACE (genetic algorithm controller), the endpoints behave like a live VM that follows the session wherever the network sends it, without re-running the PQC handshake.
 
 5. **QS-DAG anchoring & watcher quorum (`pqcnet-sentry`)**  
-   - `qs_dag::verify_and_anchor` (invoked by the tunnel) writes the Dilithium signature plus route hash to QS-DAG, giving us the tamper-proof breadcrumb.  
+   - `pqcnet-qs-dag::QsDagPqc::verify_and_anchor` (invoked by the tunnel) writes the Dilithium signature plus route hash to QS-DAG, giving us the tamper-proof breadcrumb.  
    - `pqcnet-sentry` listens to those anchors, replicates them to a watcher quorum, and feeds “all clear” / “threat detected” signals back to the PQCNode so it can rotate keys or re-home tunnels proactively.
 
 6. **Telemetry closes the loop**  

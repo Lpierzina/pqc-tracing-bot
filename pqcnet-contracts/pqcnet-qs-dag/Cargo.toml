@@ -1,0 +1,12 @@
+[package]
+name = "pqcnet-qs-dag"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+description = "QS-DAG primitives for PQCNet: DAG state machine + PQC anchoring facade"
+
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+
+[dev-dependencies]
+spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }

@@ -156,6 +156,7 @@ dependencies = [
  "digest",
  "oqs",
  "pqcnet-qace",
+ "pqcnet-qs-dag",
  "rcgen",
  "rustls",
  "shamir",
@@ -1060,6 +1061,7 @@ dependencies = [
 name = "pqcnet-networking"
 version = "0.1.0"
 dependencies = [
+ "pqcnet-qs-dag",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -1071,6 +1073,14 @@ name = "pqcnet-qace"
 version = "0.1.0"
 dependencies = [
  "genetic_algorithm",
+]
+
+[[package]]
+name = "pqcnet-qs-dag"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "spin 0.9.8",
 ]
 
 [[package]]

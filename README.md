@@ -74,7 +74,7 @@ sample TOML/YAML files under `configs/`.
 - `secret_sharing.rs` – `shamir`-crate backed split/combine helpers (non-WASM).
 - `signatures.rs` – ML-DSA signing, verifying, batch verification, transcript signing.
 - `handshake.rs` – ML-KEM + Dilithium handshake orchestration and PQC1 envelope.
-- `qs_dag.rs` – QS-DAG integration shim for anchoring PQC signatures.
+- `pqcnet-qs-dag` crate – QS-DAG anchoring façade (no_std) + DAG state machine.
 - `qstp.rs` – QSTP tunnel establishment, hydration, sealing, and TupleChain metadata.
 - `qace` (`pqcnet-qace` crate) – adaptive routing via GA-based controllers (QACE).
 - `runtime.rs` – `pqc_handshake` ABI glue and host-side helpers.
@@ -176,7 +176,8 @@ This addresses the “signing a key exchange with no intermediate data exposure�
 
 ### 4. QS-DAG Integration
 
-`qs_dag.rs` defines a `QsDagHost` trait that your consensus layer implements:
+The dedicated `pqcnet-qs-dag` crate defines a `QsDagHost` trait that your consensus
+layer implements:
 
 - `attach_pqc_signature(edge_id, signer, signature)`
 - `get_edge_payload(edge_id)`
@@ -334,7 +335,7 @@ DAG integration tests with a mocked QsDagHost
 - `autheo-mldsa-dilithium`: 5 unit tests covering ML-DSA key/sig sizing, tamper detection, and failure cases.
 - `autheo-mldsa-falcon`: 4 unit tests that exercise Falcon-style ML-DSA signing and verification edge cases.
 - `autheo-mlkem-kyber`: 4 ML-KEM tests validating keypair levels plus encapsulation/decapsulation error paths.
-- `autheo-pqc-core`: 15 contract-level tests spanning `KeyManager`, `SignatureManager`, `qs_dag::verify_and_anchor`, `runtime`, and the full `handshake::execute_handshake` record serialization.
+- `autheo-pqc-core`: 15 contract-level tests spanning `KeyManager`, `SignatureManager`, `pqcnet-qs-dag::QsDagPqc::verify_and_anchor`, `runtime`, and the full `handshake::execute_handshake` record serialization.
 - `autheo-pqc-wasm`: ABI crate builds cleanly (0 intrinsic tests) to ensure the WASM surface stays lean and host-driven.
 - Doc-tests: 2 illustrative examples (`key_manager.rs`, `signatures.rs`) compile but are ignored because they depend on host engines.
 
@@ -611,13 +612,13 @@ flowchart LR
 - **PQCNet Host Runtime** – `autheo-pqc-core/src/runtime.rs` plus `autheo_pqc_wasm::pqc_handshake`. It owns the active ML-KEM/ML-DSA material, orchestrates rotations, and prepares the handshake envelope.
 - **secret_sharing.rs** – Hosts that enforce threshold custody reconstruct ML-KEM secrets with `combine_secret`, run the handshake, and immediately re-split with `split_secret` so private keys only exist in-memory for a single call.
 - **liboqs wrappers** – Optional providers in `src/liboqs.rs` that swap the deterministic demo engines for audited Kyber/Dilithium primitives when `--features liboqs` is set.
-- **QS-DAG validators** – `qs_dag.rs::QsDagPqc` verifies Dilithium signatures over DAG payloads and anchors them so tuple metadata inherits PQC guarantees.
+- **QS-DAG validators** – `pqcnet-qs-dag::QsDagPqc` verifies Dilithium signatures over DAG payloads and anchors them so tuple metadata inherits PQC guarantees.
 - **QSTP Runtime + Mesh** – `qstp.rs` (`QstpTunnel`, `MeshTransport`, `TupleChainStore`) and `qace.rs` (`GaQace`, `SimpleQace`) turn handshake outputs into AES-256-GCM tunnels, encrypted TupleChain metadata, and adaptive mesh routing.
 - **pqcnet-crypto** – Supplies deterministic keygen/signing flows that bind directly to `autheo-pqc-core`, mirroring how the host runtime sources ML-KEM/ML-DSA material inside the diagram.
 - **pqcnet-relayer** – Buffers handshake envelopes and QSTP payloads before they leave the host, modelling the batch queue that feeds the networking layer in the diagram.
 - **pqcnet-networking** – Provides the simulated message bus / overlay adapters that plug into Waku or THEO meshes; its edges to `Mesh` and `QACE` show how it transports and routes QSTP traffic.
 - **pqcnet-telemetry** – Streams counters/latencies from both the host runtime and active tunnels, capturing the dual arrows from `Host` and `Tunnel` into the telemetry sink.
-- **pqcnet-sentry** – Represents the watcher quorum that consumes QS-DAG anchors and feeds status back to `qs_dag::QsDagPqc`, closing the DAG loop in the flow.
+- **pqcnet-sentry** – Represents the watcher quorum that consumes QS-DAG anchors and feeds status back to `pqcnet-qs-dag::QsDagPqc`, closing the DAG loop in the flow.
 
 #### Flow walkthrough
 
@@ -628,7 +629,7 @@ flowchart LR
 5. **Tunnel hydration** – `qstp::establish_runtime_tunnel` ingests the handshake artifacts, derives AES-256-GCM keys, binds them to a `MeshRoutePlan`, and emits TupleChain metadata so auditors can trace the session.
 6. **Transport + TupleChain** – `QstpTunnel::seal` wraps application payloads while `TupleChainStore` persists encrypted descriptors (key ids, route hashes, rotation window) for later verification.
 7. **Mesh routing** – Each payload travels over Waku/THEO adapters implementing `MeshTransport`. Telemetry feeds `qace::GaQace`, which mutates the active route without re-running the ML-KEM/Dilithium handshake.
-8. **DAG anchoring** – When required, `qs_dag::verify_and_anchor` reloads the stored payload, re-verifies the Dilithium signature, and anchors it on QS-DAG so TupleChain pointers inherit consensus-level integrity.
+8. **DAG anchoring** – When required, `QsDagPqc::verify_and_anchor` reloads the stored payload, re-verifies the Dilithium signature, and anchors it on QS-DAG so TupleChain pointers inherit consensus-level integrity.
 
 Key takeaways:
 

@@ -27,8 +27,8 @@ state snapshots.
   mimic Waku topic/content-topic semantics.
 - `pubsub`: deterministic in-memory pub/sub router mirroring `pubsubTopic` and
   `contentTopic` layers for discovery/control traffic.
-- `qs_dag`: append-only DAG with Lamport clocks and a light scoring rule so
-  nodes can rebuild state from diffs.
+- `qs_dag` (re-exported from `pqcnet-qs-dag`): append-only DAG with Lamport
+  clocks and a light scoring rule so nodes can rebuild state from diffs.
 
 The crate re-exports each module so it can be promoted to a standalone
 “configurable control plane” repository without reshuffling APIs.
