@@ -46,7 +46,7 @@ pub fn execute_handshake(request: &[u8], response: &mut [u8]) -> PqcResult<usize
     serialize_handshake(&artifacts, response)
 }
 
-pub(crate) fn build_handshake_artifacts(request: &[u8]) -> PqcResult<HandshakeArtifacts> {
+pub fn build_handshake_artifacts(request: &[u8]) -> PqcResult<HandshakeArtifacts> {
     build_handshake_artifacts_with_hint(request, parse_timestamp_hint(request))
 }
 
@@ -79,7 +79,7 @@ fn build_handshake_artifacts_with_hint(
     })
 }
 
-pub(crate) fn serialize_handshake(
+pub fn serialize_handshake(
     artifacts: &HandshakeArtifacts,
     out: &mut [u8],
 ) -> PqcResult<usize> {
@@ -146,7 +146,7 @@ pub(crate) fn serialize_handshake(
     Ok(offset)
 }
 
-pub(crate) fn compute_handshake_len(artifacts: &HandshakeArtifacts) -> usize {
+pub fn compute_handshake_len(artifacts: &HandshakeArtifacts) -> usize {
     HANDSHAKE_HEADER_LEN
         + artifacts.ciphertext.len()
         + artifacts.shared_secret.len()
@@ -204,7 +204,7 @@ fn parse_timestamp_hint(request: &[u8]) -> Option<TimestampMs> {
     None
 }
 
-pub(crate) struct HandshakeArtifacts {
+pub struct HandshakeArtifacts {
     pub threshold: ThresholdPolicy,
     pub kem_state: KemKeyState,
     pub signing_state: DsaKeyState,

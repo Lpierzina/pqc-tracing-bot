@@ -157,8 +157,6 @@ dependencies = [
  "oqs",
  "pqcnet-qace",
  "pqcnet-qs-dag",
- "rcgen",
- "rustls",
  "shamir",
  "spin 0.9.8",
 ]
@@ -1081,6 +1079,19 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "spin 0.9.8",
+]
+
+[[package]]
+name = "pqcnet-qstp"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "autheo-pqc-core",
+ "blake2",
+ "digest",
+ "pqcnet-qace",
+ "rcgen",
+ "rustls",
 ]
 
 [[package]]
