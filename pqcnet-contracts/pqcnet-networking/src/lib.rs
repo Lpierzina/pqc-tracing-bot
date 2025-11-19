@@ -13,6 +13,19 @@
 //! assert_eq!(client.drain_inflight().len(), 2);
 //! ```
 
+pub mod control_plane;
+pub mod pubsub;
+pub mod qs_dag;
+
+pub use control_plane::{
+    ControlCommand, ControlEvent, ControlPlane, ControlPlaneConfig, ControlPlaneError,
+    NodeAnnouncement,
+};
+pub use pubsub::{
+    ContentTopic, PubSubEnvelope, PubSubMessage, PubSubRouter, PublishReceipt, Subscription, Topic,
+};
+pub use qs_dag::{DagError, QsDag, StateDiff, StateOp, StateSnapshot};
+
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
