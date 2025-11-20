@@ -201,6 +201,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "autheo-pqcnet-icosuple"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "autheo-pqcnet-tuplechain"
 version = "0.1.0"
 dependencies = [
