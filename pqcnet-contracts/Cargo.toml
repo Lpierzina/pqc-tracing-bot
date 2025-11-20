@@ -5,6 +5,7 @@ members = [
     "autheo-mldsa-falcon",
     "autheo-pqc-core",
     "autheo-pqc-wasm",
+    "autheo-pqcnet-tuplechain",
     "pqcnet-crypto",
     "pqcnet-networking",
     "pqcnet-telemetry",
