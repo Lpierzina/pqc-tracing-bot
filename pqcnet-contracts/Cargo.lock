@@ -1074,6 +1074,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pqcnet-qfkh"
+version = "0.1.0"
+dependencies = [
+ "autheo-pqc-core",
+ "blake2",
+ "digest",
+]
+
+[[package]]
 name = "pqcnet-qs-dag"
 version = "0.1.0"
 dependencies = [
