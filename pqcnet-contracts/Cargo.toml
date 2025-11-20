@@ -8,6 +8,7 @@ members = [
     "autheo-pqcnet-tuplechain",
     "autheo-pqcnet-chronosync",
     "autheo-pqcnet-icosuple",
+    "autheo-pqcnet-qrng",
     "autheo-pqcnet-5dqeh",
     "pqcnet-crypto",
     "pqcnet-networking",

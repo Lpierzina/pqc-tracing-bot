@@ -1,0 +1,13 @@
+[package]
+name = "autheo-pqcnet-qrng"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Quantum random number generator harness for the Autheo PQCNet stack"
+
+[dependencies]
+rand = { version = "0.8", features = ["std", "std_rng"] }
+rand_chacha = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha3 = "0.10"
