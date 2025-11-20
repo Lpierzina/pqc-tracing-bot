@@ -1,0 +1,17 @@
+[package]
+name = "pqcnet-qfkh"
+version = "0.1.0"
+edition = "2021"
+description = "Quantum-Forward Key Hopping orchestration for PQCNet"
+license = "Apache-2.0"
+
+[features]
+default = []
+
+[dependencies]
+autheo-pqc-core = { path = "../autheo-pqc-core" }
+blake2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+autheo-pqc-core = { path = "../autheo-pqc-core" }
