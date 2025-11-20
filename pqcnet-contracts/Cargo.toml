@@ -6,6 +6,7 @@ members = [
     "autheo-pqc-core",
     "autheo-pqc-wasm",
     "autheo-pqcnet-tuplechain",
+    "autheo-pqcnet-chronosync",
     "pqcnet-crypto",
     "pqcnet-networking",
     "pqcnet-telemetry",
