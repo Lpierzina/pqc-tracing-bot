@@ -79,10 +79,7 @@ fn build_handshake_artifacts_with_hint(
     })
 }
 
-pub fn serialize_handshake(
-    artifacts: &HandshakeArtifacts,
-    out: &mut [u8],
-) -> PqcResult<usize> {
+pub fn serialize_handshake(artifacts: &HandshakeArtifacts, out: &mut [u8]) -> PqcResult<usize> {
     let ciphertext_len = artifacts.ciphertext.len();
     let shared_secret_len = artifacts.shared_secret.len();
     let signature_len = artifacts.signature.len();
