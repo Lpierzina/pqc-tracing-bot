@@ -182,6 +182,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "autheo-pqcnet-5dqeh"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "rand 0.8.5",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "autheo-pqcnet-chronosync"
 version = "0.1.0"
 dependencies = [
