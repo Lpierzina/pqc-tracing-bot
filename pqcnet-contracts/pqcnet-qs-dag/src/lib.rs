@@ -6,4 +6,4 @@ pub mod anchor;
 pub mod state;
 
 pub use anchor::{QsDagHost, QsDagPqc};
-pub use state::{DagError, QsDag, StateDiff, StateOp, StateSnapshot};
+pub use state::{DagError, QsDag, StateDiff, StateOp, StateSnapshot, TemporalWeight};

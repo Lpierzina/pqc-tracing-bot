@@ -1,7 +1,8 @@
-use pqcnet_qs_dag::{DagError, QsDag, StateDiff, StateOp};
+use pqcnet_qs_dag::{DagError, QsDag, StateDiff, StateOp, TemporalWeight};
 
 fn main() -> Result<(), DagError> {
-    let mut dag = QsDag::new(StateDiff::genesis("genesis", "bootstrap"))?;
+    let genesis = StateDiff::genesis("genesis", "bootstrap");
+    let mut dag = QsDag::with_temporal_weight(genesis, TemporalWeight::new(16))?;
 
     let relayer_diff = StateDiff::new(
         "relayer-1",

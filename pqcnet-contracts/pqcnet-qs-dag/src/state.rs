@@ -6,6 +6,8 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
+const MAX_PARENT_REFERENCES: usize = 10;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StateOp {
     pub key: String,
@@ -76,6 +78,7 @@ pub enum DagError {
     Duplicate(String),
     UnknownParent(String),
     InvalidGenesis,
+    TooManyParents { diff_id: String, count: usize },
 }
 
 impl fmt::Display for DagError {
@@ -84,7 +87,38 @@ impl fmt::Display for DagError {
             DagError::Duplicate(id) => write!(f, "diff {id} already exists"),
             DagError::UnknownParent(parent) => write!(f, "unknown parent {parent}"),
             DagError::InvalidGenesis => write!(f, "genesis diff must not have parents"),
+            DagError::TooManyParents { diff_id, count } => write!(
+                f,
+                "diff {diff_id} references {count} parents which exceeds the {MAX_PARENT_REFERENCES} limit"
+            ),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TemporalWeight {
+    /// Scaling factor applied to the fan-out (number of parents).
+    pub alpha: u64,
+}
+
+impl TemporalWeight {
+    pub const fn new(alpha: u64) -> Self {
+        Self { alpha }
+    }
+
+    pub fn weight(&self, diff: &StateDiff) -> u64 {
+        let timestamp = diff.lamport;
+        let fan_out = diff.parents.len() as u64;
+        timestamp
+            .saturating_add(self.alpha.saturating_mul(fan_out))
+            .max(1)
+    }
+}
+
+impl Default for TemporalWeight {
+    fn default() -> Self {
+        // Tuned for control-plane convergence; governance can override as needed.
+        Self { alpha: 8 }
     }
 }
 
@@ -98,10 +132,18 @@ struct DiffNode {
 #[derive(Clone, Debug)]
 pub struct QsDag {
     nodes: BTreeMap<String, DiffNode>,
+    temporal_weight: TemporalWeight,
 }
 
 impl QsDag {
     pub fn new(genesis: StateDiff) -> Result<Self, DagError> {
+        Self::with_temporal_weight(genesis, TemporalWeight::default())
+    }
+
+    pub fn with_temporal_weight(
+        genesis: StateDiff,
+        temporal_weight: TemporalWeight,
+    ) -> Result<Self, DagError> {
         if !genesis.parents.is_empty() {
             return Err(DagError::InvalidGenesis);
         }
@@ -113,7 +155,10 @@ impl QsDag {
         };
         let mut nodes = BTreeMap::new();
         nodes.insert(diff_id, node);
-        Ok(Self { nodes })
+        Ok(Self {
+            nodes,
+            temporal_weight,
+        })
     }
 
     pub fn contains(&self, diff_id: &str) -> bool {
@@ -135,6 +180,12 @@ impl QsDag {
         if diff.parents.is_empty() {
             return Err(DagError::InvalidGenesis);
         }
+        if diff.parents.len() > MAX_PARENT_REFERENCES {
+            return Err(DagError::TooManyParents {
+                diff_id: diff.id.clone(),
+                count: diff.parents.len(),
+            });
+        }
         let mut max_parent_height = 0u64;
         let mut max_parent_score = 0u64;
         for parent in &diff.parents {
@@ -148,7 +199,7 @@ impl QsDag {
         let node = DiffNode {
             diff: diff.clone(),
             height: max_parent_height + 1,
-            score: max_parent_score + diff_weight(&diff),
+            score: max_parent_score.saturating_add(self.temporal_weight.weight(&diff)),
         };
         self.nodes.insert(diff.id.clone(), node);
         Ok(true)
@@ -218,10 +269,6 @@ impl QsDag {
     }
 }
 
-fn diff_weight(diff: &StateDiff) -> u64 {
-    (diff.ops.len() as u64).max(1)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +312,61 @@ mod tests {
         dag.insert(diff_b).unwrap();
         let snapshot = dag.snapshot().unwrap();
         assert_eq!(snapshot.values["foo"], "b");
+    }
+
+    #[test]
+    fn rejects_more_than_ten_parents() {
+        let mut dag = dag();
+        let mut parent_ids = Vec::new();
+        for idx in 0..MAX_PARENT_REFERENCES {
+            let id = format!("diff-{idx}");
+            let diff = StateDiff::new(
+                id.clone(),
+                format!("node-{idx}"),
+                vec!["genesis".into()],
+                idx as u64 + 1,
+                vec![StateOp::upsert(format!("key-{idx}"), "value")],
+            );
+            dag.insert(diff).unwrap();
+            parent_ids.push(id);
+        }
+        let overflow_diff = StateDiff::new(
+            "overflow",
+            "node-overflow",
+            parent_ids
+                .iter()
+                .cloned()
+                .chain(core::iter::once("genesis".into()))
+                .collect(),
+            42,
+            vec![StateOp::upsert("extra", "value")],
+        );
+        let err = dag.insert(overflow_diff).unwrap_err();
+        assert!(matches!(err, DagError::TooManyParents { .. }));
+    }
+
+    #[test]
+    fn temporal_weight_rewards_fan_out_and_recency() {
+        let mut dag = dag();
+        let early = StateDiff::new(
+            "early",
+            "node-a",
+            vec!["genesis".into()],
+            5,
+            vec![StateOp::upsert("foo", "early")],
+        );
+        dag.insert(early).unwrap();
+        let later = StateDiff::new(
+            "later",
+            "node-b",
+            vec!["genesis".into(), "early".into()],
+            50,
+            vec![StateOp::upsert("foo", "later")],
+        );
+        dag.insert(later).unwrap();
+
+        let early_score = dag.nodes.get("early").unwrap().score;
+        let later_score = dag.nodes.get("later").unwrap().score;
+        assert!(later_score > early_score);
     }
 }
