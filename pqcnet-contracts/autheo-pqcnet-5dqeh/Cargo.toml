@@ -5,9 +5,13 @@
  description = "5D-QEH hypergraph primitives, simulation harnesses, and entanglement guards for Autheo PQCNet"
  license = "Apache-2.0 OR MIT"
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
  [features]
  default = ["std"]
- std = []
+std = []
+wasm = []
 
  [dependencies]
  blake3 = "1.5"

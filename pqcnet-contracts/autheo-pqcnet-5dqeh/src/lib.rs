@@ -1,11 +1,11 @@
- //! 5D-QEH (Five-Dimensional Qubit-Enhanced Hypergraph) primitives for Autheo PQCNet.
- //!
- //! The crate models the core structures that make 5D-QEH distinct from classical DAGs:
- //! 4096-byte icosuples, temporal-weighted entanglement, and pulsed-laser propagation
- //! channels that bind TupleChain, QS-DAG and AI agents together. It also exposes a
- //! lightweight simulator so notebooks, demos, and sentry prototypes can reason about
- //! throughput, crystalline offloading, and QKD-protected laser meshes without bringing
- //! the entire Autheo-One stack into scope.
+//! 5D-QEH (Five-Dimensional Qubit-Enhanced Hypergraph) module primitives for Autheo PQCNet.
+//!
+//! The crate now targets chain-module embedding first and simulations second. It defines the
+//! deterministic hypergraph state machine, storage layout helpers (hot vs crystalline), and an
+//! `HypergraphModule` facade that can be dropped into the Autheo node runtime or compiled to
+//! `wasm32-unknown-unknown`. The legacy simulator still exists inside `examples/` so architects
+//! can benchmark epochs, but the primary API is now the module entry points (`MsgAnchorEdge`,
+//! `HypergraphModule::apply_anchor_edge`, and PQC bindings backed by `autheo-pqc-core`).
  
  use blake3::Hasher;
  use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -15,8 +15,8 @@
  /// Canonical byte size for 5D-QEH icosuples.
  pub const ICOSUPLE_BYTES: usize = 4096;
  
- /// Describes how many parents a vertex is allowed to entangle with.
- pub const MAX_SIM_PARENT_LINKS: usize = 100;
+/// Describes how many parents a vertex is allowed to entangle with.
+pub const MAX_PARENT_LINKS: usize = 100;
  
  /// High-level configuration shared by the hypergraph state machine and simulator.
  #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -32,7 +32,7 @@
  impl Default for QehConfig {
      fn default() -> Self {
          Self {
-             max_parent_links: MAX_SIM_PARENT_LINKS,
+            max_parent_links: MAX_PARENT_LINKS,
              ann_similarity_threshold: 0.78,
              crystalline_offload_after_ms: 2_592_000_000, // 30 days in milliseconds
              crystalline_payload_threshold: 3_584,
@@ -250,14 +250,14 @@
  }
  
  /// Storage placement for an icosuple.
- #[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
  pub enum StorageTarget {
      Hot,
      Crystalline,
  }
  
- /// Receipt returned after inserting a vertex.
- #[derive(Clone, Debug)]
+/// Receipt returned after inserting a vertex.
+#[derive(Clone, Debug, Serialize, Deserialize)]
  pub struct VertexReceipt {
      pub vertex_id: VertexId,
      pub tw_score: f64,
@@ -267,7 +267,7 @@
  }
  
  /// Materialized vertex information.
- #[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
  pub struct HyperVertex {
      pub receipt: VertexReceipt,
      pub label: String,
@@ -298,6 +298,10 @@
      pub fn len(&self) -> usize {
          self.vertices.len()
      }
+
+    pub fn get(&self, id: &VertexId) -> Option<&HyperVertex> {
+        self.vertices.get(id)
+    }
  
      pub fn insert(
          &mut self,
@@ -364,9 +368,135 @@
              || tw_input.ann_similarity < self.config.ann_similarity_threshold
      }
  }
+
+/// Storage counters exposed to the runtime so it can persist hot vs crystalline sets.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModuleStorageLayout {
+    pub hot_vertices: usize,
+    pub crystalline_vertices: usize,
+}
+
+impl ModuleStorageLayout {
+    pub fn register(&mut self, receipt: &VertexReceipt) {
+        match receipt.storage {
+            StorageTarget::Hot => self.hot_vertices += 1,
+            StorageTarget::Crystalline => self.crystalline_vertices += 1,
+        }
+    }
+
+    pub fn total_vertices(&self) -> usize {
+        self.hot_vertices + self.crystalline_vertices
+    }
+}
+
+/// Associates a hypergraph invocation with a PQC key / engine slot.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PqcBinding {
+    pub key_id: String,
+    pub scheme: PqcScheme,
+}
+
+impl PqcBinding {
+    pub fn new(key_id: impl Into<String>, scheme: PqcScheme) -> Self {
+        Self {
+            key_id: key_id.into(),
+            scheme,
+        }
+    }
+
+    pub fn simulated(label: impl Into<String>) -> Self {
+        Self::new(label, PqcScheme::Kyber)
+    }
+}
+
+/// RPC / ABCI entry-point for anchoring an entangled edge in 5D-QEH.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MsgAnchorEdge {
+    pub request_id: u64,
+    pub chain_epoch: u64,
+    pub parents: Vec<VertexId>,
+    pub parent_coherence: f64,
+    pub lamport: u64,
+    pub contribution_score: f64,
+    pub ann_similarity: f32,
+    pub qrng_entropy_bits: u16,
+    pub pqc_binding: PqcBinding,
+    pub icosuple: Icosuple,
+}
+
+impl MsgAnchorEdge {
+    pub fn weight_input(&self) -> TemporalWeightInput {
+        TemporalWeightInput::new(
+            self.lamport,
+            self.parent_coherence,
+            self.qrng_entropy_bits,
+            self.contribution_score,
+            self.ann_similarity,
+        )
+    }
+}
+
+/// Errors returned by the chain module.
+#[derive(thiserror::Error, Debug, PartialEq)]
+pub enum ModuleError {
+    #[error(transparent)]
+    Hypergraph(#[from] HypergraphError),
+    #[error("parent coherence must be within [0,1], got {0}")]
+    InvalidParentCoherence(f64),
+}
+
+/// Chain-ready facade that wraps the deterministic hypergraph state machine.
+pub struct HypergraphModule {
+    state: HypergraphState,
+    weight_model: TemporalWeightModel,
+    storage: ModuleStorageLayout,
+}
+
+impl HypergraphModule {
+    pub fn new(config: QehConfig, weight_model: TemporalWeightModel) -> Self {
+        Self {
+            state: HypergraphState::new(config),
+            weight_model,
+            storage: ModuleStorageLayout::default(),
+        }
+    }
+
+    pub fn config(&self) -> &QehConfig {
+        self.state.config()
+    }
+
+    pub fn weight_model(&self) -> &TemporalWeightModel {
+        &self.weight_model
+    }
+
+    pub fn storage_layout(&self) -> &ModuleStorageLayout {
+        &self.storage
+    }
+
+    pub fn state(&self) -> &HypergraphState {
+        &self.state
+    }
+
+    pub fn state_mut(&mut self) -> &mut HypergraphState {
+        &mut self.state
+    }
+
+    pub fn apply_anchor_edge(&mut self, msg: MsgAnchorEdge) -> Result<VertexReceipt, ModuleError> {
+        if !(0.0..=1.0).contains(&msg.parent_coherence) {
+            return Err(ModuleError::InvalidParentCoherence(msg.parent_coherence));
+        }
+        let weight_input = msg.weight_input();
+        let MsgAnchorEdge { icosuple, parents, .. } = msg;
+        let receipt = self
+            .state
+            .insert(icosuple, parents, &self.weight_model, weight_input)?;
+        self.storage.register(&receipt);
+        Ok(receipt)
+    }
+}
  
- /// Intent used by the simulation harness.
- #[derive(Clone, Debug)]
+/// Intent used by the developer simulation harness.
+#[derive(Clone, Debug)]
  pub struct SimulationIntent {
      pub label: String,
      pub parents: Vec<VertexId>,
@@ -397,6 +527,37 @@
              qrng_entropy_bits,
          }
      }
+
+    pub fn into_anchor_edge(self, config: &QehConfig, chain_epoch: u64) -> MsgAnchorEdge {
+        let parent_count = self.parents.len();
+        let parent_coherence = if parent_count == 0 {
+            0.1
+        } else {
+            (parent_count as f64 / config.max_parent_links as f64).min(1.0)
+        };
+        let request_id = chain_epoch
+            .wrapping_mul(1_000_000)
+            .wrapping_add(self.lamport)
+            .wrapping_add(parent_count as u64);
+        let icosuple = Icosuple::synthesize(
+            self.label,
+            self.payload_bytes,
+            config.vector_dimensions,
+            self.ann_similarity,
+        );
+        MsgAnchorEdge {
+            request_id,
+            chain_epoch,
+            parents: self.parents,
+            parent_coherence,
+            lamport: self.lamport,
+            contribution_score: self.contribution_score,
+            ann_similarity: self.ann_similarity,
+            qrng_entropy_bits: self.qrng_entropy_bits,
+            pqc_binding: PqcBinding::simulated("sim-harness"),
+            icosuple,
+        }
+    }
  }
  
  /// Pulsed laser telemetry emitted by the simulator.
@@ -408,8 +569,8 @@
      pub qkd_active: bool,
  }
  
- /// Output of a simulator epoch.
- #[derive(Clone, Debug)]
+/// Output of a simulator epoch.
+#[derive(Clone, Debug)]
  pub struct SimulationReport {
      pub epoch_index: u64,
      pub accepted_vertices: usize,
@@ -419,6 +580,7 @@
      pub crystalline_archives: usize,
      pub hot_set_vertices: usize,
      pub laser_paths: Vec<LaserPath>,
+    pub storage_layout: ModuleStorageLayout,
  }
  
  /// Deterministic simulator used by demos/tests.
@@ -439,17 +601,16 @@
          }
      }
  
-     pub fn drive_epoch<I>(
-         &mut self,
-         state: &mut HypergraphState,
-         intents: I,
-     ) -> SimulationReport
+    pub fn drive_epoch<I>(
+        &mut self,
+        module: &mut HypergraphModule,
+        intents: I,
+    ) -> SimulationReport
      where
          I: IntoIterator<Item = SimulationIntent>,
      {
-         debug_assert_eq!(self.config.vector_dimensions, state.config().vector_dimensions);
-         debug_assert_eq!(self.config.max_parent_links, state.config().max_parent_links);
- 
+        debug_assert_eq!(self.weight_model, *module.weight_model());
+
          let mut accepted = 0usize;
          let mut rejected = 0usize;
          let mut weight_sum = 0.0;
@@ -457,40 +618,22 @@
          let mut crystalline = 0usize;
          let mut hot = 0usize;
  
-         for intent in intents {
-             let parents = intent.parents;
-             let parent_coherence = if parents.is_empty() {
-                 0.1
-             } else {
-                 (parents.len() as f64 / self.config.max_parent_links as f64).min(1.0)
-             };
-             let icosuple = Icosuple::synthesize(
-                 intent.label,
-                 intent.payload_bytes,
-                 self.config.vector_dimensions,
-                 intent.ann_similarity,
-             );
-             let weight_input = TemporalWeightInput::new(
-                 intent.lamport,
-                 parent_coherence,
-                 intent.qrng_entropy_bits,
-                 intent.contribution_score,
-                 intent.ann_similarity,
-             );
-             match state.insert(icosuple, parents, &self.weight_model, weight_input) {
-                 Ok(receipt) => {
-                     accepted += 1;
-                     weight_sum += receipt.tw_score;
-                     coherence_sum += receipt.ann_similarity as f64;
-                     match receipt.storage {
-                         StorageTarget::Crystalline => crystalline += 1,
-                         StorageTarget::Hot => hot += 1,
-                     }
-                 }
-                 Err(_) => {
-                     rejected += 1;
-                 }
-             }
+        for intent in intents {
+            let msg = intent.into_anchor_edge(module.config(), self.epoch);
+            match module.apply_anchor_edge(msg) {
+                Ok(receipt) => {
+                    accepted += 1;
+                    weight_sum += receipt.tw_score;
+                    coherence_sum += receipt.ann_similarity as f64;
+                    match receipt.storage {
+                        StorageTarget::Crystalline => crystalline += 1,
+                        StorageTarget::Hot => hot += 1,
+                    }
+                }
+                Err(_) => {
+                    rejected += 1;
+                }
+            }
          }
  
          let avg_temporal_weight = if accepted > 0 {
@@ -514,6 +657,7 @@
              crystalline_archives: crystalline,
              hot_set_vertices: hot,
              laser_paths,
+            storage_layout: module.storage_layout().clone(),
          };
          self.epoch += 1;
          report
@@ -570,9 +714,9 @@
      #[test]
      fn simulator_reports_activity() {
          let config = QehConfig::default();
-         let mut state = HypergraphState::new(config.clone());
          let model = TemporalWeightModel::default();
-         let mut sim = FiveDqehSim::with_seed(42, config.clone(), model);
+        let mut module = HypergraphModule::new(config.clone(), model);
+        let mut sim = FiveDqehSim::with_seed(42, config.clone(), model);
          let intents = vec![
              SimulationIntent::entangle("genesis", vec![], 2_048, 1, 0.4, 0.82, 256),
              SimulationIntent::entangle(
@@ -585,11 +729,15 @@
                  384,
              ),
          ];
-         let report = sim.drive_epoch(&mut state, intents);
+        let report = sim.drive_epoch(&mut module, intents);
          assert!(report.accepted_vertices >= 1);
          assert_eq!(
              report.laser_paths.len(),
              config.laser_channels as usize
          );
+        assert_eq!(
+            report.storage_layout.total_vertices(),
+            report.accepted_vertices
+        );
      }
  }

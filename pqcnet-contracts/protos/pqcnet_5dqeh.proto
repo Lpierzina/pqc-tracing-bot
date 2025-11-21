@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package autheo.pqcnet.qeh.v1;
+
+option go_package = "github.com/autheo-one/pqcnet-contracts/gen/qeh";
+
+message MsgAnchorEdge {
+  uint64 request_id = 1;
+  uint64 chain_epoch = 2;
+  repeated bytes parents = 3; // 32-byte vertex IDs.
+  double parent_coherence = 4;
+  uint64 lamport = 5;
+  double contribution_score = 6;
+  float ann_similarity = 7;
+  uint32 qrng_entropy_bits = 8;
+  QehIcosuple icosuple = 9;
+  QehPqcBinding pqc_binding = 10;
+}
+
+message MsgAnchorEdgeResponse {
+  QehVertexReceipt receipt = 1;
+  QehStorageLayout storage = 2;
+}
+
+message QehIcosuple {
+  string label = 1;
+  uint32 payload_bytes = 2;
+  repeated QehPqcLayer pqc_layers = 3;
+  repeated float vector_signature = 4;
+}
+
+message QehPqcLayer {
+  string scheme = 1; // kyber, dilithium, falcon, hybrid/<label>
+  string metadata_tag = 2;
+  uint64 epoch = 3;
+}
+
+message QehPqcBinding {
+  string key_id = 1;
+  string scheme = 2;
+}
+
+message QehVertexReceipt {
+  bytes vertex_id = 1;
+  double tw_score = 2;
+  string storage = 3;
+  float ann_similarity = 4;
+  uint32 parents = 5;
+}
+
+message QehStorageLayout {
+  uint64 hot_vertices = 1;
+  uint64 crystalline_vertices = 2;
+}

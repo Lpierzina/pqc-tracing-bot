@@ -1,69 +1,80 @@
- # autheo-pqcnet-5dqeh
- 
- `autheo-pqcnet-5dqeh` packages the Five-Dimensional Qubit-Enhanced Hypergraph (5D-QEH) concept into a Rust module so it can graduate into its own repo when the Autheo-One roadmap demands it. The crate distills the primer below into tangible code: 4096-byte icosuples, temporal-weighted entanglement, pulsed laser propagation, and crystalline storage tiers that keep TupleChain, QS-DAG, and AI overlays in lockstep.
- 
- ## Design Principles · 5D Hypergraph vs Classical DAGs
- 
- - **Five-dimensional manifold** – vertices inhabit (x, y, z, t, q) space where `q` encodes superposition/entanglement metadata. The crate’s `HypergraphState` and `TemporalWeightModel` capture that extra axis as ANN similarity + TW scoring.
- - **Icosuple-first state** – each vertex is a 4096-byte icosuple bundling hashed payloads, multi-generational PQC (Kyber KEM + Dilithium/Falcon signatures), and 2048-dimensional (simulated) embeddings. The `Icosuple::synthesize` helper mirrors the icosuple build pipeline.
- - **Temporal Weight (TW) voting** – Lamport-style clocks blend with QRNG entropy, parent coherence, and ANN similarity so vertices entangle up to 100 parents without diverging. See `TemporalWeightModel::score` in `src/lib.rs`.
- - **Crystalline tiering** – anything exceeding payload/time/ANN thresholds is offloaded to Layer-0 crystalline storage, reflecting the femtosecond laser archival process described in the primer.
- 
- ## Architecture in Brief
- 
- | Layer | What happens in code | Primer reference |
- | --- | --- | --- |
- | Layer-0 Crystalline | `StorageTarget::Crystalline` toggles when icosuples exceed time/size/ANN guardrails; archival counts bubble up through `SimulationReport`. | Femtosecond laser voxels (360 TB/mm³) + delta compression (reducing 540 PB/h to 54 PB). |
- | Layer-1 QS-DAG evolution | `HypergraphState::insert` enforces ≤100 parents and replays TW scoring before persisting vertices. | Tuplechain → icosuple tiers with Lamport/TW ordering and hybrid PoS + TW consensus. |
- | Layer-2 Laser Mesh | `FiveDqehSim::emit_laser_paths` emits pulsed channels (1 Gbps–1 Tbps each) with QKD flags, echoing laser-pulsed paths and CHSH-driven sharding. | Pulsed femtosecond lasers + QKD overlays (≤10 ps intra-shard sync). |
- | Layer-3 THEO AI overlay | Simulator intents mimic THEO agents driving entanglement decisions (`SimulationIntent::entangle`), preparing hooks for THEO/QVM validation. | AI agents, Grapplang DSL, and THEO QVM formal verification. |
- 
- ## Integrations Across Autheo-One
- 
- - **AutheoID / SSI** – icosuples can anchor verifiable credentials; ANN similarity stands in for zero-knowledge disclosure windows per AIP-1/AIP-12.
- - **DevHub + Grapplang** – the crate’s public API (`HypergraphState`, `FiveDqehSim`, `SimulationIntent`) lines up with the DevHub SDK model so AI agents or CLI tooling can submit intents like “entangle transaction X with Y under Z constraints.”
- - **DePIN / Entropy nodes** – `SimulationIntent::entangle` accepts `qrng_entropy_bits`, allowing entropy feeds from hardware RNGs or entropy pools.
- - **RPCNet bridges** – `VertexReceipt` exposes storage placement so relay stacks know when to stream data over Dilithium-secured bridges into external DAGs or EVM shards.
- 
- ## Sequence Diagram · How 5D-QEH Flows
- 
- ```mermaid
- sequenceDiagram
-     participant Agent as THEO Agent / dApp
-     participant API as 5D-QEH API (`SimulationIntent`)
-     participant Hypergraph as Hypergraph Engine
-     participant Laser as Pulsed Laser Mesh
-     participant Crystal as Crystalline Layer
- 
-     Agent->>API: Build 4096B icosuple + entanglement request
-     API->>Hypergraph: TW score + ANN check (≤100 parents)
-     Hypergraph-->>Laser: Derive QKD-enabled pulse plan
-     Laser-->>Hypergraph: Gossip confirmations (<10 ps)
-     Hypergraph->>Crystal: Offload high-mass / stale tuples
-     Hypergraph-->>Agent: Receipt + tier placement
- ```
- 
- ## Demo / Simulation
- 
- 1. Run the coherence walkthrough example to simulate a small epoch with laser telemetry:
-    ```bash
-    cargo run -p autheo-pqcnet-5dqeh --example coherence_walkthrough
-    ```
-    You’ll see how many vertices were accepted, how many were pushed into crystalline storage, and the first few laser channels (Gbps, latency in picoseconds, QKD flag).
- 2. Embed the library into notebooks or sentry prototypes by wiring `FiveDqehSim`, `HypergraphState`, and `SimulationIntent::entangle` the same way the example does.
- 
- ## Tests
- 
- - Unit tests live alongside the library (`src/lib.rs`): `cargo test -p autheo-pqcnet-5dqeh`.
- - The suite covers TW scoring, parent-limit enforcement, and simulator telemetry to ensure regressions are caught before this module spins out into its own repository.
- 
- ## When You Need More
- 
- The primer sections (“Design Principles”, “Architectural Components”, “Integrations”, “Interfacing Mechanisms”, “Performance & Security”, “Broader Implications”) are intentionally mirrored in the API:
- 
- - `TemporalWeightModel` ↔ time-weighted voting (TW accrual + QRNG entropy)
- - `HypergraphState` ↔ tuplechain / icosuple tiers with ANN-driven parent capping
- - `LaserPath` + `SimulationReport` ↔ pulsed laser propagation + trillion TPS telemetry
- - `StorageTarget` ↔ crystalline vs hot tiers for DePIN, SCIF, and mission data
- 
- Use this crate as the nucleus for the eventual stand-alone 5D-QEH repo—contributions here will port cleanly once the Autheo-One mono-repo splits. 
+# autheo-pqcnet-5dqeh
+
+`autheo-pqcnet-5dqeh` is now treated as a chain module, not a simulation toy. The crate exposes the Five-Dimensional Qubit-Enhanced Hypergraph (5D-QEH) state machine, storage layout helpers, and RPC-friendly message types so Chronosync, TupleChain, and PQCNet runtimes can embed it directly (native or `wasm32-unknown-unknown`). The developer simulator remains in `examples/` solely as a diagnostic harness.
+
+## Module scope
+
+- **Consensus / QS-DAG hook** – `HypergraphModule::apply_anchor_edge` verifies 4096-byte icosuples, enforces ≤100 parents, and recomputes temporal weight before emitting receipts that Chronosync/QS-DAG can persist.
+- **Ledger affinity** – hot vs crystalline placement is tracked via `ModuleStorageLayout`, keeping TupleChain/Icosuple tiers aligned with Autheo’s storage policies.
+- **PQC plumbing** – `PqcBinding` records which Kyber/Dilithium/Falcon slot (backed by `autheo-pqc-core` or `autheo-pqc-wasm`) signed an edge, preparing the runtime for `pqc_handshake`, `pqc_sign`, and `pqc_rotate` ABI calls.
+- **RPC / ABCI shape** – `MsgAnchorEdge` and friends mirror the protobuf definitions in `protos/pqcnet_5dqeh.proto`, so relayers, CLI clients, and ABCI handlers speak the same language.
+
+## State machine + storage layout
+
+```rust
+use autheo_pqcnet_5dqeh::{
+    HypergraphModule, MsgAnchorEdge, PqcBinding, PqcScheme, QehConfig, TemporalWeightModel,
+};
+
+let config = QehConfig::default();
+let weight_model = TemporalWeightModel::default();
+let mut module = HypergraphModule::new(config.clone(), weight_model);
+
+let msg = MsgAnchorEdge {
+    request_id: 42,
+    chain_epoch: 7,
+    parents: vec![],
+    parent_coherence: 0.1,
+    lamport: 1,
+    contribution_score: 0.5,
+    ann_similarity: 0.92,
+    qrng_entropy_bits: 384,
+    pqc_binding: PqcBinding::new("did:autheo:node/validator-01", PqcScheme::Dilithium),
+    icosuple: build_icosuple_somewhere(),
+};
+
+let receipt = module.apply_anchor_edge(msg)?;
+println!("vertex={} storage={:?}", receipt.vertex_id, receipt.storage);
+println!(
+    "hot={} crystalline={}",
+    module.storage_layout().hot_vertices,
+    module.storage_layout().crystalline_vertices
+);
+```
+
+- `HypergraphModule` wraps the deterministic `HypergraphState` and enforces temporal-weight scoring for every edge.
+- `ModuleStorageLayout` tracks hot/crystalline counts so host runtimes can write to their preferred backends.
+- `VertexReceipt`/`HyperVertex` derive `serde` so receipts can be routed over RPC or persisted in telemetry logs.
+
+## RPC + schema
+
+- The protobuf contract for node/ABCI integrations lives in `protos/pqcnet_5dqeh.proto` (`MsgAnchorEdge`, `MsgAnchorEdgeResponse`, `QehVertexReceipt`, `QehStorageLayout`, etc.).
+- Each icosuple carries PQC metadata (`PqcLayer`, `PqcBinding`) so Autheo nodes can assert that Kyber/Dilithium/Falcon slots match the PQC engine active inside `autheo-pqc-core`/`autheo-pqc-wasm`.
+- RPC handlers wrap the Rust structs one-to-one, making it trivial to expose REST/gRPC endpoints such as `POST /pqcnet/5dqeh/v1/anchor_edge`.
+
+## Build targets
+
+| Command | Description |
+| --- | --- |
+| `cargo build -p autheo-pqcnet-5dqeh` | Native build used by Autheo nodes and integration tests. |
+| `cargo build -p autheo-pqcnet-5dqeh --target wasm32-unknown-unknown` | Produces the WASM artifact consumed by PQCNet runtime sandboxes or CosmWasm-like module hosts. |
+
+The crate stays `no_std` friendly whenever `std` is disabled so the same source can be embedded inside custom host environments.
+
+## Dev harness (examples/)
+
+Simulations are relegated to developer tooling. The `FiveDqehSim` helper drives `HypergraphModule` for telemetry but is not part of the production surface.
+
+- `cargo run -p autheo-pqcnet-5dqeh --example coherence_walkthrough`
+  - Prints per-epoch accept/archive counts, coherence, laser telemetry, and storage layout stats so you can validate parameter tweaks.
+
+## Tests
+
+- `cargo test -p autheo-pqcnet-5dqeh`
+  - Verifies temporal-weight math, parent-limit enforcement, simulator telemetry, and that storage-layout accounting matches accepted vertices.
+
+## Next steps
+
+- Wire `MsgAnchorEdge` into the Chronosync keeper so QS-DAG elections stream directly into this module.
+- Use the new protobuf definitions to scaffold RPCNet endpoints (`MsgAnchorEdge`, `MsgOpenTunnel`, etc.).
+- Once `autheo-pqc-core` finalises the `pqc_handshake/pqc_sign/pqc_rotate` ABI, surface those calls through `PqcBinding` so this crate can request signatures or key rotations during `apply_anchor_edge`.
