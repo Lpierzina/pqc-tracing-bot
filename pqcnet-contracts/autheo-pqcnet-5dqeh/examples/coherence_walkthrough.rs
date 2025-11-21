@@ -1,7 +1,7 @@
 use autheo_pqcnet_5dqeh::{
-    FiveDqehSim, HypergraphModule, QehConfig, SimulationIntent, TemporalWeightModel, VertexId,
+    FiveDqehSim, HypergraphModule, QehConfig, QrngEntropyRng, SimulationIntent,
+    TemporalWeightModel, VertexId,
 };
- use rand::{rngs::StdRng, SeedableRng};
  
  fn main() {
      let config = QehConfig::default();
@@ -9,8 +9,8 @@ use autheo_pqcnet_5dqeh::{
     let mut module = HypergraphModule::new(config.clone(), weight_model);
      let mut sim = FiveDqehSim::with_seed(7, config, weight_model);
  
-     let mut parent_rng = StdRng::seed_from_u64(9001);
-     let parent = VertexId::random(&mut parent_rng);
+    let mut parent_rng = QrngEntropyRng::with_seed(9_001);
+    let parent = VertexId::random(&mut parent_rng);
  
      let intents = vec![
          SimulationIntent::entangle("genesis-icosuple", vec![], 2_048, 1, 0.42, 0.88, 256),

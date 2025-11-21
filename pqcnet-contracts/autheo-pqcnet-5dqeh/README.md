@@ -57,9 +57,40 @@ println!(
 | Command | Description |
 | --- | --- |
 | `cargo build -p autheo-pqcnet-5dqeh` | Native build used by Autheo nodes and integration tests. |
-| `cargo build -p autheo-pqcnet-5dqeh --target wasm32-unknown-unknown` | Produces the WASM artifact consumed by PQCNet runtime sandboxes or CosmWasm-like module hosts. |
+| `cargo build -p autheo-pqcnet-5dqeh --target wasm32-unknown-unknown --no-default-features --features wasm` | Produces the WASM artifact that relies on the host-imported QRNG entropy feed. |
 
 The crate stays `no_std` friendly whenever `std` is disabled so the same source can be embedded inside custom host environments.
+
+## Host entropy + QRNG integration
+
+- A dedicated `QrngEntropyRng` now powers the simulator. On native targets (default `qrng-sim` feature) it streams entropy from the `autheo-pqcnet-qrng` crate so developers can replay deterministic test vectors.
+- When compiling for `wasm32-unknown-unknown`, disable default features and enable `wasm`. The crate will call a host import named `autheo_host_entropy(ptr, len)` to request raw bytes. The host should forward this call to its QRNG module (hardware or the Rust `autheo-pqcnet-qrng` harness).
+- Demo: `cargo run -p autheo-pqcnet-5dqeh --example host_entropy_demo` prints QRNG-derived vertex IDs and telemetry. The classic simulator example continues to work via `cargo run -p autheo-pqcnet-5dqeh --example coherence_walkthrough`.
+- Test guard: `cargo test -p autheo-pqcnet-5dqeh qrng_entropy_rng_is_deterministic_under_seed` asserts that the QRNG-backed RNG stays deterministic under a fixed seed.
+
+A minimal host stub that routes entropy to the module (e.g. inside a relayer) looks like:
+
+```rust
+#[no_mangle]
+pub extern "C" fn autheo_host_entropy(ptr: *mut u8, len: usize) -> i32 {
+    let mut sim = autheo_pqcnet_qrng::QrngSim::new(0x5d);
+    let request = autheo_pqcnet_qrng::EntropyRequest::new("5dqeh-host", (len * 8) as u16);
+    let mut frame = sim.run_epoch(&[request]).frames.remove(0);
+    unsafe {
+        let out = std::slice::from_raw_parts_mut(ptr, len);
+        if frame.entropy.is_empty() {
+            return -1;
+        }
+        for chunk in out.chunks_mut(frame.entropy.len()) {
+            let take = chunk.len();
+            chunk.copy_from_slice(&frame.entropy[..take]);
+        }
+    }
+    0
+}
+```
+
+Hosts can swap the simulator for their actual QRNG hardware so WASM builds never rely on `getrandom`.
 
 ## Dev harness (examples/)
 

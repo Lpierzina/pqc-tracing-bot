@@ -7,10 +7,12 @@
 //! can benchmark epochs, but the primary API is now the module entry points (`MsgAnchorEdge`,
 //! `HypergraphModule::apply_anchor_edge`, and PQC bindings backed by `autheo-pqc-core`).
  
- use blake3::Hasher;
- use rand::{rngs::StdRng, Rng, SeedableRng};
- use serde::{Deserialize, Serialize};
- use std::collections::BTreeMap;
+use blake3::Hasher;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+mod entropy;
+pub use entropy::{EntropyError, EntropySource, QrngEntropyRng};
  
  /// Canonical byte size for 5D-QEH icosuples.
  pub const ICOSUPLE_BYTES: usize = 4096;
@@ -126,11 +128,11 @@ pub const MAX_PARENT_LINKS: usize = 100;
  pub struct VertexId(pub [u8; 32]);
  
  impl VertexId {
-     pub fn random<R: Rng>(rng: &mut R) -> Self {
-         let mut bytes = [0u8; 32];
-         rng.fill(&mut bytes);
-         Self(bytes)
-     }
+    pub fn random<R: EntropySource>(rng: &mut R) -> Self {
+        let mut bytes = [0u8; 32];
+        rng.fill_entropy(&mut bytes);
+        Self(bytes)
+    }
  
      pub fn as_bytes(&self) -> &[u8; 32] {
          &self.0
@@ -583,23 +585,23 @@ impl HypergraphModule {
     pub storage_layout: ModuleStorageLayout,
  }
  
- /// Deterministic simulator used by demos/tests.
- pub struct FiveDqehSim {
-     config: QehConfig,
-     weight_model: TemporalWeightModel,
-     rng: StdRng,
-     epoch: u64,
- }
+/// Deterministic simulator used by demos/tests.
+pub struct FiveDqehSim {
+    config: QehConfig,
+    weight_model: TemporalWeightModel,
+    rng: QrngEntropyRng,
+    epoch: u64,
+}
  
  impl FiveDqehSim {
-     pub fn with_seed(seed: u64, config: QehConfig, weight_model: TemporalWeightModel) -> Self {
-         Self {
-             rng: StdRng::seed_from_u64(seed),
-             config,
-             weight_model,
-             epoch: 0,
-         }
-     }
+    pub fn with_seed(seed: u64, config: QehConfig, weight_model: TemporalWeightModel) -> Self {
+        Self {
+            rng: QrngEntropyRng::with_seed(seed),
+            config,
+            weight_model,
+            epoch: 0,
+        }
+    }
  
     pub fn drive_epoch<I>(
         &mut self,
@@ -663,21 +665,21 @@ impl HypergraphModule {
          report
      }
  
-     fn emit_laser_paths(&mut self) -> Vec<LaserPath> {
-         let mut paths = Vec::with_capacity(self.config.laser_channels as usize);
-         for channel in 0..self.config.laser_channels {
-             let throughput_gbps = self.rng.gen_range(1_000.0..=1_000_000.0);
-             let latency_ps = self.rng.gen_range(0.5..=10.0);
-             let qkd_active = self.rng.gen_bool(0.85);
-             paths.push(LaserPath {
-                 channel_id: channel,
-                 throughput_gbps,
-                 latency_ps,
-                 qkd_active,
-             });
-         }
-         paths
-     }
+    fn emit_laser_paths(&mut self) -> Vec<LaserPath> {
+        let mut paths = Vec::with_capacity(self.config.laser_channels as usize);
+        for channel in 0..self.config.laser_channels {
+            let throughput_gbps = self.rng.gen_range_f64(1_000.0..=1_000_000.0);
+            let latency_ps = self.rng.gen_range_f64(0.5..=10.0);
+            let qkd_active = self.rng.gen_bool(0.85);
+            paths.push(LaserPath {
+                channel_id: channel,
+                throughput_gbps,
+                latency_ps,
+                qkd_active,
+            });
+        }
+        paths
+    }
  }
  
  #[cfg(test)]
@@ -699,11 +701,12 @@ impl HypergraphModule {
          let mut state = HypergraphState::new(config.clone());
          let model = TemporalWeightModel::default();
          let icosuple = Icosuple::synthesize("demo", 1024, config.vector_dimensions, 0.9);
-         let parents = vec![
-             VertexId::random(&mut StdRng::seed_from_u64(1)),
-             VertexId::random(&mut StdRng::seed_from_u64(2)),
-             VertexId::random(&mut StdRng::seed_from_u64(3)),
-         ];
+        let mut parent_rng = QrngEntropyRng::with_seed(1);
+        let parents = vec![
+            VertexId::random(&mut parent_rng),
+            VertexId::random(&mut parent_rng),
+            VertexId::random(&mut parent_rng),
+        ];
          let input = TemporalWeightInput::new(5, 1.0, 256, 0.2, 0.9);
         let err = state
             .insert(icosuple, parents, &model, input)
@@ -717,11 +720,12 @@ impl HypergraphModule {
          let model = TemporalWeightModel::default();
         let mut module = HypergraphModule::new(config.clone(), model);
         let mut sim = FiveDqehSim::with_seed(42, config.clone(), model);
-         let intents = vec![
+        let mut parent_rng = QrngEntropyRng::with_seed(7);
+        let intents = vec![
              SimulationIntent::entangle("genesis", vec![], 2_048, 1, 0.4, 0.82, 256),
              SimulationIntent::entangle(
                  "edge-channel",
-                 vec![VertexId::random(&mut StdRng::seed_from_u64(7))],
+                vec![VertexId::random(&mut parent_rng)],
                  3_000,
                  2,
                  0.6,
