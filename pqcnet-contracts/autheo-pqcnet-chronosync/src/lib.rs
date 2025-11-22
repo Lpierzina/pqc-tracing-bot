@@ -404,7 +404,7 @@ impl ChronosyncSim {
     }
 }
 
-#[cfg(feature = "sim")]
+#[cfg(any(feature = "sim", test))]
 fn gini(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
