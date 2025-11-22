@@ -697,7 +697,7 @@ mod tests {
         let mut state = HypergraphState::new(config.clone());
         let model = TemporalWeightModel::default();
         let icosuple = Icosuple::synthesize("demo", 1024, config.vector_dimensions, 0.9);
-        let mut parent_rng = QrngEntropyRng::with_seed(1);
+        let mut parent_rng = HostEntropySource::new();
         let parents = vec![
             VertexId::random(&mut parent_rng),
             VertexId::random(&mut parent_rng),

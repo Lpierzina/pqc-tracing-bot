@@ -76,11 +76,10 @@ impl EntropySource for QrngEntropyRng {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sim"))]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "sim")]
     #[test]
     fn qrng_entropy_rng_is_deterministic_under_seed() {
         let mut rng = QrngEntropyRng::with_seed(0x5d0e);
