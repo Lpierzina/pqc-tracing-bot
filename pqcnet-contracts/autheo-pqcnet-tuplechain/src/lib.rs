@@ -1,12 +1,10 @@
 //! TupleChain semantic ledger primitives for Autheo PQCNet.
 //!
 //! The crate models the five-element tuple `(subject, predicate, object, proof, expiry)`
-//! together with shard assignments, versioned history, and a lightweight simulation harness
-//! that can be used by demos or Cosmos SDK keepers.
+//! together with shard assignments, versioned history, and keeper-friendly APIs that slot directly
+//! into Cosmos SDK, WASM, or native runtimes.
 
 use blake3::Hasher;
-#[cfg(feature = "sim")]
-use pqcnet_entropy::{EntropySource, SimEntropySource};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -560,147 +558,6 @@ impl TupleChainKeeper {
     }
 }
 
-/// Declarative intent used by the simulator/demo harness.
-#[cfg(feature = "sim")]
-#[derive(Clone, Debug)]
-pub struct TupleIntent {
-    pub creator: String,
-    pub subject: String,
-    pub predicate: String,
-    pub object: Value,
-    pub ttl_ms: u64,
-    pub proof_scheme: ProofScheme,
-    pub verifier_hint: String,
-}
-
-#[cfg(feature = "sim")]
-impl TupleIntent {
-    pub fn identity(
-        subject: impl Into<String>,
-        credential: impl Into<String>,
-        ttl_ms: u64,
-    ) -> Self {
-        Self {
-            creator: "did:autheo:l1/kernel".into(),
-            subject: subject.into(),
-            predicate: "owns".into(),
-            object: Value::String(credential.into()),
-            ttl_ms,
-            proof_scheme: ProofScheme::Zkp,
-            verifier_hint: "groth16:membership".into(),
-        }
-    }
-
-    pub fn with_predicate(mut self, predicate: impl Into<String>) -> Self {
-        self.predicate = predicate.into();
-        self
-    }
-
-    pub fn with_creator(mut self, creator: impl Into<String>) -> Self {
-        self.creator = creator.into();
-        self
-    }
-
-    pub fn with_proof(mut self, scheme: ProofScheme, verifier_hint: impl Into<String>) -> Self {
-        self.proof_scheme = scheme;
-        self.verifier_hint = verifier_hint.into();
-        self
-    }
-
-    pub fn with_object_json(mut self, value: Value) -> Self {
-        self.object = value;
-        self
-    }
-
-    pub fn into_payload(self, now_ms: u64) -> (String, TuplePayload) {
-        let creator = self.creator;
-        let payload = TuplePayload::builder(self.subject, self.predicate)
-            .object_value(self.object)
-            .proof(
-                self.proof_scheme,
-                self.verifier_hint.as_bytes(),
-                self.verifier_hint.clone(),
-            )
-            .expiry(now_ms + self.ttl_ms)
-            .build();
-        (creator, payload)
-    }
-}
-
-/// Simulation harness that mimics BeginBlocker/EndBlocker activity.
-#[cfg(feature = "sim")]
-pub struct TupleChainSim {
-    entropy: SimEntropySource,
-}
-
-#[cfg(feature = "sim")]
-impl TupleChainSim {
-    pub fn new(seed: u64) -> Self {
-        Self {
-            entropy: SimEntropySource::with_seed(seed),
-        }
-    }
-
-    pub fn drive_epoch<I>(
-        &mut self,
-        keeper: &mut TupleChainKeeper,
-        intents: I,
-        epoch_ms: u64,
-    ) -> SimulationReport
-    where
-        I: IntoIterator<Item = TupleIntent>,
-    {
-        let mut receipts = Vec::new();
-        let mut errors = Vec::new();
-
-        for (offset, intent) in intents.into_iter().enumerate() {
-            let jitter = self.gen_range_inclusive(0, 250);
-            let ts = epoch_ms + (offset as u64 * 7) + jitter;
-            let (creator, payload) = intent.into_payload(ts);
-            match keeper.store_tuple(&creator, payload, ts) {
-                Ok(receipt) => receipts.push(receipt),
-                Err(err) => errors.push(err),
-            }
-        }
-
-        let expired = keeper.ledger_mut().prune_expired(epoch_ms);
-        let shard_utilization = keeper.ledger().shard_utilization();
-
-        SimulationReport {
-            receipts,
-            shard_utilization,
-            expired,
-            errors,
-        }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut bytes = [0u8; 8];
-        self.entropy
-            .try_fill_bytes(&mut bytes)
-            .expect("tuplechain sim entropy");
-        u64::from_le_bytes(bytes)
-    }
-
-    fn gen_range_inclusive(&mut self, min: u64, max: u64) -> u64 {
-        if max <= min {
-            return min;
-        }
-        let span = max - min + 1;
-        let sample = self.next_u64() % span;
-        min + sample
-    }
-}
-
-/// Output of a simulator epoch.
-#[cfg(feature = "sim")]
-#[derive(Clone, Debug)]
-pub struct SimulationReport {
-    pub receipts: Vec<TupleReceipt>,
-    pub shard_utilization: Vec<ShardUtilization>,
-    pub expired: Vec<TupleId>,
-    pub errors: Vec<TupleChainError>,
-}
 
 #[cfg(test)]
 mod tests {
@@ -746,19 +603,4 @@ mod tests {
         assert!(matches!(err, TupleChainError::UnauthorizedCreator { .. }));
     }
 
-    #[cfg(feature = "sim")]
-    #[test]
-    fn simulator_runs_epoch() {
-        let mut keeper = TupleChainKeeper::new(TupleChainConfig::default())
-            .allow_creator("did:autheo:l1/kernel");
-        let mut sim = TupleChainSim::new(7);
-        let intents = vec![
-            TupleIntent::identity("did:autheo:alice", "passport", 1_000),
-            TupleIntent::identity("did:autheo:bob", "license", 1_000),
-        ];
-        let report = sim.drive_epoch(&mut keeper, intents, 1_700_000_000_000);
-        assert_eq!(report.errors.len(), 0);
-        assert_eq!(report.receipts.len(), 2);
-        assert!(!report.shard_utilization.is_empty());
-    }
 }

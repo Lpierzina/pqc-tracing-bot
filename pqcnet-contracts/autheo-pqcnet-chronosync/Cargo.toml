@@ -2,12 +2,8 @@
 name = "autheo-pqcnet-chronosync"
 version = "0.1.0"
 edition = "2021"
-description = "Chronosync QS-DAG consensus simulator for Autheo PQCNet"
+description = "Chronosync QS-DAG keeper and telemetry bridge for Autheo PQCNet"
 license = "Apache-2.0"
-
-[features]
-default = []
-sim = ["pqcnet-entropy/sim"]
 
 [dependencies]
 autheo-pqcnet-5dqeh = { path = "../autheo-pqcnet-5dqeh" }
@@ -15,11 +11,4 @@ blake3 = "1.5"
 pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 pqcnet-networking = { path = "../pqcnet-networking" }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-pqcnet-entropy = { path = "../pqcnet-entropy" }
 thiserror = "1.0"
-
-[[example]]
-name = "chronosync_sim"
-path = "examples/chronosync_sim.rs"
-required-features = ["sim"]

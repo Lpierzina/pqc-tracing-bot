@@ -46,14 +46,10 @@ sequenceDiagram
 
 ### Crate layout
 
-- `src/lib.rs` – Chronosync config, Temporal Weight math, deterministic QRNG pool elections, QS-DAG
-  witness generation, and a `ChronosyncSim` harness.
+- `src/lib.rs` – Chronosync config, Temporal Weight math, validator profiles, verification pool structs,
+  and the `EpochReport`/`DagWitness` interfaces exchanged with Tuplechain/Icosuple layers.
 - `src/keeper.rs` – `ChronosyncKeeper` + `ChronosyncKeeperReport`, wiring QS-DAG elections into the
   5D-QEH module and implementing the RPCNet `AnchorEdgeEndpoint` so `MsgAnchorEdge` can land over the new router.
-- `examples/chronosync_sim.rs` – runnable scenario that spins up validator profiles, drives an epoch,
-  and prints fairness + shard telemetry (ready for WASM or CLI demos).
-- `tests/chronosync.rs` – integration tests that lock in the TW formula, pool sizing, and QS-DAG
-  invariants so future repos can evolve safely.
 
 ### Keeper + RPCNet
 
@@ -64,14 +60,12 @@ sequenceDiagram
 - `ChronosyncKeeperReport` exposes applied receipts, missing-parent diagnostics, and the current DAG head,
   making it trivial to stream telemetry or trigger slashing hooks.
 
-### Demo / Sim / Tests
+### Tests & Keeper hooks
 
 | Command | Description |
 | --- | --- |
-| `cargo run -p autheo-pqcnet-chronosync --example chronosync_sim` | Runs the simulator with seeded QRNG entropy, prints elected pools, Gini fairness, QS-DAG witness, and shard loads for the epoch. |
-| `cargo test -p autheo-pqcnet-chronosync` | Executes unit + integration tests covering Temporal Weight math, pool sizing, DAG generation guarantees, and the keeper’s RPCNet hook (`keeper_handles_anchor_edge_requests_via_rpcnet_trait`). |
-| `cargo test -p autheo-pqcnet-chronosync -- --ignored` | Replays ignored/long-running fairness sweeps if you extend the crate with heavier sims later. |
+| `cargo test -p autheo-pqcnet-chronosync` | Executes the Temporal Weight math checks plus keeper integration tests (`keeper_streams_dag_witness_into_hypergraph`, `keeper_handles_anchor_edge_requests_via_rpcnet_trait`). |
 
-Use the README plus the simulator output to spin Chronosync into a standalone repo when the Autheo
+Use the README plus the keeper report output to spin Chronosync into a standalone repo when the Autheo
 DeOS roadmap calls for it—the API surface is already aligned with tuplechain/icosuple expectations and
-has the sequence diagram, demo, and tests requested by the architecture team.
+the keeper can be dropped directly into RPCNet routers or validators without any simulator glue.

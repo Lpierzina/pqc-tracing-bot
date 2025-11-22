@@ -37,40 +37,35 @@ sequenceDiagram
 
 ### Crate layout
 
-- `src/lib.rs`: TupleChain ledger, keeper façade, simulator (`TupleChainSim`) and helper builders.
-- `examples/tuplechain_sim.rs`: runnable scenario showing sharded inserts, expiry pruning, and telemetry.
+- `src/lib.rs`: TupleChain ledger, keeper façade, builder APIs, and unit tests.
 - `tests/ledger.rs`: integration tests that exercise keeper authorization, historical queries, and pruning.
 
 ### Usage
 
 ```rust
-use autheo_pqcnet_tuplechain::{
-    ProofScheme, TupleChainConfig, TupleChainKeeper, TupleChainSim, TupleIntent,
-};
+use autheo_pqcnet_tuplechain::{ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload};
 
 let mut keeper =
     TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
 
-let intents = vec![
-    TupleIntent::identity("did:autheo:alice", "autheoid-passport", 86_400_000),
-    TupleIntent::identity("did:autheo:bob", "kyc-proof", 43_200_000),
-];
-
-let mut sim = TupleChainSim::new(42);
-let report = sim.drive_epoch(&mut keeper, intents, 1_700_000_000_000);
-assert!(report.errors.is_empty());
-println!("active tuples: {}", report.receipts.len());
-for shard in report.shard_utilization.iter().take(3) {
-    println!("{} {:?} load={:.02}", shard.shard_id, shard.tier, shard.load_factor);
-}
+let receipt = keeper
+    .store_tuple(
+        "did:autheo:l1/kernel",
+        TuplePayload::builder("did:autheo:alice", "owns")
+            .object_text("autheoid-passport")
+            .proof(ProofScheme::Zkp, b"proof", "demo-zkp")
+            .expiry(1_700_000_000_000 + 86_400_000)
+            .build(),
+        1_700_000_000_000,
+    )
+    .expect("tuple stored");
+println!("tuple_id={} shard={} version={}", receipt.tuple_id, receipt.shard_id, receipt.version);
 ```
 
-### Demo / Sim / Tests
+### Tests
 
 | Command | Description |
 | --- | --- |
-| `cargo run -p autheo-pqcnet-tuplechain --example tuplechain_sim` | Runs the TupleChain simulator, showing shard utilization, QS-DAG summaries, and expiry pruning over a synthetic DID workload. |
-| `cargo test -p autheo-pqcnet-tuplechain` | Executes unit + integration tests covering keeper authZ, version history, and pruning semantics. |
-| `cargo test -p autheo-pqcnet-tuplechain -- --include-ignored` | Replays the same suite with ignored cases (useful for long-running state simulations). |
+| `cargo test -p autheo-pqcnet-tuplechain` | Executes unit + integration tests covering keeper authZ, version history, shard pruning, and shard utilization telemetry. |
 
-Use the README plus the example output to bootstrap a dedicated repo later—the crate already exposes keeper APIs, telemetry helpers, and a sequence diagram you can drop into Cosmos SDK module docs.
+Use the README plus the keeper APIs to bootstrap a dedicated repo later—the crate already exposes the ledger, builder, and sequence diagram you can drop into Cosmos SDK module docs.

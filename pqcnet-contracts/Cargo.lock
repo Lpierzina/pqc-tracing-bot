@@ -209,11 +209,9 @@ version = "0.1.0"
 dependencies = [
  "autheo-pqcnet-5dqeh",
  "blake3",
- "pqcnet-entropy",
  "pqcnet-networking",
  "pqcnet-qs-dag",
  "serde",
- "serde_json",
  "thiserror",
 ]
 
@@ -221,7 +219,10 @@ dependencies = [
 name = "autheo-pqcnet-icosuple"
 version = "0.1.0"
 dependencies = [
- "rand 0.8.5",
+ "autheo-pqcnet-5dqeh",
+ "autheo-pqcnet-chronosync",
+ "autheo-pqcnet-tuplechain",
+ "blake3",
  "serde",
  "serde_json",
 ]
@@ -242,7 +243,6 @@ name = "autheo-pqcnet-tuplechain"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "pqcnet-entropy",
  "pretty_assertions",
  "serde",
  "serde_json",

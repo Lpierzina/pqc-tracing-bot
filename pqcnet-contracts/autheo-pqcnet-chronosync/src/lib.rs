@@ -1,27 +1,20 @@
 //! Chronosync QS-DAG consensus primitives for Autheo PQCNet.
 //!
-//! The crate captures the essentials of the Chronosync design: time-weighted validator
-//! profiles, QRNG-driven verification pools, QS-DAG witnesses, and a lightweight simulator
-//! that surfaces throughput plus fairness metrics for future dedicated repos or Cosmos SDK
-//! modules. Everything is parameterized so downstream tooling can tune shard counts,
-//! subpool sizes, and TPS ceilings without rewriting the core heuristics.
+//! The crate captures the production entry points from the Chronosync design: time-weighted validator
+//! profiles, QRNG-driven verification pools, QS-DAG witnesses, and the keeper that hydrates 5D-QEH.
+//! Everything is parameterized so downstream tooling can tune shard counts, subpool sizes, and TPS
+//! ceilings without rewriting the core heuristics (simulators now live in higher-level repos).
 
-#[cfg(feature = "sim")]
-mod entropy;
 pub mod keeper;
-#[cfg(feature = "sim")]
-use entropy::ChronosyncEntropyRng;
 pub use keeper::{ChronosyncKeeper, ChronosyncKeeperError, ChronosyncKeeperReport};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
-#[cfg(feature = "sim")]
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 /// Chronosync DAG nodes reference at most 10 parents.
 pub const MAX_PARENT_REFERENCES: usize = 10;
 
-/// Tunable parameters for Chronosync simulations and demos.
+/// Tunable parameters for Chronosync deployments and diagnostics.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChronosyncConfig {
     pub shards: u16,
@@ -46,20 +39,6 @@ impl Default for ChronosyncConfig {
             global_tps: 50_000_000_000,
             qrng_entropy_bits: 256,
         }
-    }
-}
-
-impl ChronosyncConfig {
-    #[cfg(feature = "sim")]
-    fn validate(&self) {
-        assert!(self.shards > 0, "Chronosync requires at least one shard");
-        assert!(self.layers > 0, "Chronosync requires at least one layer");
-        assert!(
-            self.verification_pools > 0,
-            "At least one verification pool is required"
-        );
-        assert!(self.subpool_size > 0, "Subpool size must be non-zero");
-        assert!(self.max_parents > 0 && self.max_parents <= MAX_PARENT_REFERENCES);
     }
 }
 
@@ -226,205 +205,6 @@ pub struct EpochReport {
     pub rejected_transactions: u64,
 }
 
-/// Chronosync simulator used by demos, tests, and notebooks.
-#[cfg(feature = "sim")]
-pub struct ChronosyncSim {
-    config: ChronosyncConfig,
-    rng: ChronosyncEntropyRng,
-    epoch: u64,
-}
-
-#[cfg(feature = "sim")]
-impl ChronosyncSim {
-    /// Deterministic constructor used by examples/tests.
-    pub fn with_seed(seed: u64, config: ChronosyncConfig) -> Self {
-        Self::new(config, ChronosyncEntropyRng::with_seed(seed))
-    }
-
-    pub fn new(config: ChronosyncConfig, rng: ChronosyncEntropyRng) -> Self {
-        config.validate();
-        Self {
-            config,
-            rng,
-            epoch: 0,
-        }
-    }
-
-    pub fn config(&self) -> &ChronosyncConfig {
-        &self.config
-    }
-
-    /// Run a single epoch, returning pool elections, shard telemetry, and a DAG witness.
-    pub fn drive_epoch(
-        &mut self,
-        nodes: &[ChronosyncNodeProfile],
-        transactions: u64,
-    ) -> EpochReport {
-        assert!(
-            !nodes.is_empty(),
-            "ChronosyncSim requires at least one validator profile"
-        );
-
-        let epoch_index = self.epoch;
-        let capped_tps = transactions.min(self.config.global_tps) as f64;
-        let pools = self.elect_pools(nodes);
-        let fairness_gini = gini(
-            &nodes
-                .iter()
-                .map(|n| n.temporal_weight())
-                .collect::<Vec<_>>(),
-        );
-        let dag_witness = self.build_dag(nodes, transactions);
-        let shard_utilization = self.sample_shards(capped_tps, &pools);
-        let rejection_rate = (fairness_gini * 0.05).min(0.05);
-        let rejected_transactions = (capped_tps * rejection_rate).round() as u64;
-
-        self.epoch += 1;
-
-        EpochReport {
-            epoch_index,
-            aggregated_tps: capped_tps,
-            fairness_gini,
-            pools,
-            shard_utilization,
-            dag_witness,
-            rejected_transactions,
-        }
-    }
-
-    fn elect_pools(&mut self, nodes: &[ChronosyncNodeProfile]) -> Vec<VerificationPoolSnapshot> {
-        let weights: Vec<f64> = nodes
-            .iter()
-            .map(|node| node.temporal_weight().max(1e-6))
-            .collect();
-        let mut pools = Vec::with_capacity(self.config.verification_pools);
-
-        for pool_id in 0..self.config.verification_pools {
-            let mut selections = Vec::with_capacity(self.config.subpool_size);
-            let mut used_indexes = HashSet::new();
-            for _ in 0..self.config.subpool_size {
-                let mut attempts = 0usize;
-                let idx = loop {
-                    let candidate = self.rng.sample_weighted_index(&weights);
-                    attempts += 1;
-                    if used_indexes.insert(candidate) || attempts > nodes.len() * 2 {
-                        break candidate;
-                    }
-                };
-                let profile = &nodes[idx];
-                selections.push(NodeSelection {
-                    node_id: profile.node_id.clone(),
-                    time_weight: weights[idx],
-                    shard_affinity: profile.shard_affinity(self.config.shards),
-                    longevity_hours: profile.longevity_hours,
-                    proof_of_burn_tokens: profile.proof_of_burn_tokens,
-                    zkp_validations: profile.zkp_validations,
-                });
-            }
-            pools.push(VerificationPoolSnapshot {
-                pool_id: pool_id as u16,
-                selections,
-            });
-        }
-
-        pools
-    }
-
-    fn build_dag(&mut self, nodes: &[ChronosyncNodeProfile], transactions: u64) -> DagWitness {
-        let per_layer_txs = (transactions.min(self.config.global_tps) / self.config.layers as u64)
-            .max(1)
-            .min(self.config.max_layer_tps);
-        let mut history: Vec<String> = Vec::new();
-        let mut dag_nodes = Vec::with_capacity(self.config.layers as usize);
-
-        for layer in 0..self.config.layers {
-            let leader_index = self.rng.sample_index(nodes.len());
-            let leader_profile = &nodes[leader_index];
-            let leader = leader_profile.node_id.clone();
-
-            let parents = if history.is_empty() {
-                Vec::new()
-            } else {
-                let parent_count = usize::min(self.config.max_parents, history.len());
-                self.sample_parents(&history, parent_count)
-            };
-
-            let node_id = format!("epoch{}-layer{}-node{}", self.epoch, layer, history.len());
-            history.push(node_id.clone());
-
-            dag_nodes.push(DagNode {
-                node_id,
-                parents,
-                shard_affinity: leader_profile.shard_affinity(self.config.shards),
-                leader,
-                payload_bytes: 400,
-                transactions_carried: per_layer_txs,
-            });
-        }
-
-        DagWitness { nodes: dag_nodes }
-    }
-
-    fn sample_parents(&mut self, history: &[String], requested: usize) -> Vec<String> {
-        let take = requested.min(history.len());
-        if take == 0 {
-            return Vec::new();
-        }
-        let mut indexes: Vec<usize> = (0..history.len()).collect();
-        let mut parents = Vec::with_capacity(take);
-        for _ in 0..take {
-            let idx = self.rng.sample_index(indexes.len());
-            let selected = indexes.swap_remove(idx);
-            parents.push(history[selected].clone());
-        }
-        parents
-    }
-
-    fn sample_shards(
-        &mut self,
-        total_tps: f64,
-        pools: &[VerificationPoolSnapshot],
-    ) -> Vec<ShardLoad> {
-        let per_shard = total_tps / self.config.shards as f64;
-        let mut iter = pools.iter().flat_map(|pool| pool.selections.iter());
-        let mut shard_loads = Vec::with_capacity(self.config.shards as usize);
-
-        for shard_id in 0..self.config.shards {
-            let jitter = self.rng.range_f64(0.85, 1.15);
-            let leader = iter
-                .find(|selection| selection.shard_affinity == shard_id)
-                .map(|selection| selection.node_id.clone());
-            shard_loads.push(ShardLoad {
-                shard_id,
-                throughput_tps: per_shard * jitter,
-                tier_path: DEFAULT_TIER_PATH,
-                elected_leader: leader,
-            });
-        }
-
-        shard_loads
-    }
-}
-
-#[cfg(any(feature = "sim", test))]
-fn gini(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        return 0.0;
-    }
-    let mut sorted = values.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let n = sorted.len() as f64;
-    let sum: f64 = sorted.iter().sum();
-    if sum == 0.0 {
-        return 0.0;
-    }
-    let mut cumulative = 0.0;
-    for (i, value) in sorted.iter().enumerate() {
-        cumulative += (i as f64 + 1.0) * *value;
-    }
-    let g = (2.0 * cumulative) / (n * sum) - (n + 1.0) / n;
-    g.max(0.0)
-}
 
 #[cfg(test)]
 mod tests {
@@ -447,12 +227,6 @@ mod tests {
             + 0.1 * (input.zkp_validations as f64 / 1_000.0);
         let expected = expected * (1.0 - 0.05);
         assert!((score - expected.min(1.0)).abs() < 1e-6);
-    }
-
-    #[test]
-    fn gini_handles_zero_values() {
-        let values = vec![0.0, 0.0, 0.0];
-        assert_eq!(gini(&values), 0.0);
     }
 
     fn sample_report(nodes: Vec<DagNode>) -> EpochReport {

@@ -4,21 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "TupleChain semantic ledger primitives for Autheo PQCNet"
 
-[features]
-default = []
-sim = ["pqcnet-entropy/sim"]
-
 [dependencies]
 blake3 = "1.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-pqcnet-entropy = { path = "../pqcnet-entropy" }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
-
-[[example]]
-name = "tuplechain_sim"
-path = "examples/tuplechain_sim.rs"
-required-features = ["sim"]
