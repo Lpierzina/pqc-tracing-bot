@@ -12,16 +12,18 @@ pqcnet-entropy is the shared entropy bridge that every Autheo PQC module depends
 ```mermaid
 graph TD
     subgraph PQC_Modules
-        A[autheo-pqcnet-5dqeh]
-        B[autheo-pqcnet-tuplechain]
-        C[autheo-pqcnet-chronosync]
-        D[pqcnet-qstp]
-        E[pqcnet-qs-dag]
+        A["autheo-pqcnet-5dqeh"]
+        B["autheo-pqcnet-tuplechain"]
+        C["autheo-pqcnet-chronosync"]
+        D["pqcnet-qstp"]
+        E["pqcnet-qs-dag"]
     end
-    PQC_Modules --> F[pqcnet-entropy::HostEntropySource]
-    F --> G[autheo_host_entropy(ptr,len)]
-    G --> H[Standalone WASM entropy node]
-    H --> I[Hardware RNG / QRNG]
+
+    PQC_Modules --> F["pqcnet-entropy::HostEntropySource"]
+    F --> G["autheo_host_entropy(ptr, len)"]
+    G --> H["Standalone WASM entropy node"]
+    H --> I["Hardware RNG / QRNG"]
+
 ```
 
 ### Dev-only simulations
