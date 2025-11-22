@@ -1,6 +1,6 @@
-# PQCNet Contracts
+# PQCNet Suite
 
-**PQCNet** is a Rust contract library for NIST-compliant post-quantum cryptography, designed to plug into Autheo-One’s PQCNet node and QS-DAG consensus.
+**PQCNet Suite** is Autheo’s full production PQCNet enclave: Kyber/Dilithium/Falcon engines, WASM ABI, TupleChain → Icosuple → Chronosync → 5D-QEH data layers, and runtime services such as QSTP, QACE, QFKH, QRNG, telemetry, and relayers.
 
 It provides:
 
@@ -8,49 +8,91 @@ It provides:
 - **ML-DSA (Dilithium)** for digital signatures and batch verification  
 - **Rotating, threshold-protected KEM key management** (e.g. *t* = 3, *n* = 5)  
 - **Atomic sign-and-exchange flows** for securing key exchanges  
-- **QS-DAG integration hooks** for anchoring PQC signatures in the DAG
+- **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
+- **Full PQCNet enclave coverage** across `autheo-entropy-wasm`, `autheo-pqc-core`, `autheo-pqc-wasm`, `autheo-pqcnet-{tuplechain,icosuple,chronosync,5dqeh,qrng}`, `pqcnet-{entropy,qfkh,qstp,qace,crypto,networking,relayer,telemetry,qs-dag,sentry}`, plus configs, docs, and protos.
 
 > ⚠️ This workspace doesn’t ship production ML-KEM / ML-DSA code.  
 > `autheo-pqc-core` only defines traits and contract logic, and the sibling `autheo-mlkem-*` / `autheo-mldsa-*` crates are deterministic BLAKE2s-based stubs for demos/tests.  
 > Real deployments point those traits at audited engines—Autheo’s Kyber/Dilithium WASM builds, PQClean, or the `liboqs` feature that wires in liboqs-rs’ primitives.
 
+## Production Enclave Snapshot
+
+- **Entropy + QRNG** – `autheo-entropy-wasm` runs alongside validators, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
+- **PQC engines** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` provide deterministic ML-KEM/ML-DSA adapters that can be swapped for audited engines.
+- **Core enclave + ABI** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the PQC contract logic, WASM surface, and Quantum-Forward Key Hopping controller that feed every tunnel.
+- **Tuple → Hypergraph pipeline** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` form the production data plane before anchoring in `pqcnet-qs-dag`.
+- **Runtime services** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` operationalize tunnels, routing, relays, and observability.
+- **Reference assets** – `configs/`, `docs/`, `protos/`, and `wazero-harness/` round out deployments with reproducible config, diagrams, schemas, and the wazero-based integration harness.
+
 ---
 
 ## Workspace Layout
 
+### Autheo PQC engines & entropy
+
 - `autheo-mlkem-kyber/` – deterministic Kyber (ML-KEM-768) adapter + browser WASM demo artifacts.
 - `autheo-mldsa-dilithium/` – deterministic Dilithium3 (ML-DSA-65) adapter + demo artifacts.
 - `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
+- `autheo-entropy-wasm/` – standalone WASM module that responds to `autheo_host_entropy` imports for validators, relayers, or RPi entropy nodes.
+- `pqcnet-entropy/` – no_std entropy trait + host import bridge used by every PQC module, with deterministic dev-only sources for tests.
+- `autheo-pqcnet-qrng/` – quantum RNG harness that mixes photon/vacuum telemetry, Shake256 whitening, and Kyber/Dilithium envelopes (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
+
+### Core enclave & ABI
+
 - `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue.
-- `autheo-pqc-wasm/` – `cdylib` that exposes the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for hosts.
-- `pqcnet-entropy/` – no_std entropy trait + host import bridge (`autheo_host_entropy`) plus deterministic dev-only sources.
-- `autheo-entropy-wasm/` – standalone WASM module that runs on validators/RPi to service entropy requests from PQC modules.
-- `wazero-harness/` – Go harness used to exercise the WASM ABI end-to-end (now instantiates the entropy node and bridges the `autheo_host_entropy` import automatically).
+- `autheo-pqc-wasm/` – `cdylib` exposing the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for host runtimes.
+- `pqcnet-qfkh/` – Quantum-Forward Key Hopping controller that deterministically hops ML-KEM key pairs and derived session material (`cargo run -p pqcnet-qfkh --example qfkh_sim`).
+
+### Tuplechain • Chronosync • Hypergraph
+
+- `autheo-pqcnet-tuplechain/` – production TupleChain keeper/ledger that emits receipts consumed by Chronosync/5D-QEH.
+- `autheo-pqcnet-icosuple/` – HyperTuple builder that inflates TupleChain receipts + Chronosync telemetry into canonical 4,096-byte payloads.
+- `autheo-pqcnet-chronosync/` – Chronosync consensus primer + keeper that feeds QS-DAG elections, verification pools, and RPCNet endpoints.
+- `autheo-pqcnet-5dqeh/` – Five-Dimensional Qubit-Enhanced Hypergraph state machine, storage layout helpers, and RPC-friendly anchor edge types.
+
+### PQCNet runtime & ops
+
+- `pqcnet-crypto/` – deterministic key derivation/signing glue (`cargo run -p pqcnet-crypto --example key_rotation`).
+- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels (`cargo run -p pqcnet-qstp --example qstp_mesh_sim`).
+- `pqcnet-qace/` – GA-based routing controllers that mutate active mesh routes (`cargo run -p pqcnet-qace --example ga_failover`).
+- `pqcnet-networking/` – RPCNet message bus + overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
+- `pqcnet-relayer/` – batch relay queue + pipeline CLI (`cargo run -p pqcnet-relayer --example pipeline`).
+- `pqcnet-telemetry/` – structured counters/latencies with snapshot exporters (`cargo run -p pqcnet-telemetry --example flush_snapshot`).
+- `pqcnet-qs-dag/` – QS-DAG anchoring façade, DAG state machine, and host trait definitions.
+- `pqcnet-sentry/` – watcher quorum simulator wiring DAG receipts into alerting (`cargo run -p pqcnet-sentry --example quorum_demo`).
+
+### Shared assets & harnesses
+
+- `configs/` – production-aligned TOML/YAML for relayers, sentries, and entropy hosts.
+- `docs/` – deep dives covering architecture (`pqcnet-architecture-integration.md`), QSTP, DepIN overlays, and performance snapshots.
+- `protos/` – protobuf contracts (`qstp.proto`, `pqcnet_5dqeh.proto`) for RPCNet clients, relayers, and host runtimes.
+- `wazero-harness/` – Go harness that instantiates `autheo-entropy-wasm`, loads `autheo_pqc_wasm.wasm`, and drives the ABI end-to-end.
 
 Add new algorithm crates (e.g., future NIST picks) by following the same pattern and letting `autheo-pqc-core` compose them.
 
 ---
 
-## PQCNet Service Simulators
+## Runtime Services & Controllers
 
-The workspace also ships lightweight binaries and libraries that mimic the PQCNet
-node stack. Each crate now includes README instructions, config schemas, doc
-tests, and runnable examples so you can demo behavior quickly:
+The workspace also ships production-grade controllers, keepers, and simulators so you can exercise the full PQCNet node stack—tunnels, routing, tuple storage, hypergraph anchoring, relays, QRNG feeds, and telemetry. Each crate documents its config schema, doctests, and runnable examples:
 
-- `pqcnet-crypto/` – deterministic key derivation + signing. Example:
-  `cargo run -p pqcnet-crypto --example key_rotation`
-- `pqcnet-networking/` – in-memory message bus. Example:
-  `cargo run -p pqcnet-networking --example in_memory_bus`
-- `pqcnet-telemetry/` – structured counters/latencies. Example:
-  `cargo run -p pqcnet-telemetry --example flush_snapshot`
-- `pqcnet-sentry/` – watcher quorum simulator. Example:
-  `cargo run -p pqcnet-sentry --example quorum_demo`
-- `pqcnet-relayer/` – batch relay queue. Example:
-  `cargo run -p pqcnet-relayer --example pipeline`
+- `pqcnet-crypto/` – deterministic key derivation + signing (`cargo run -p pqcnet-crypto --example key_rotation`).
+- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels, tuple metadata sealing, and mesh simulators (`cargo run -p pqcnet-qstp --example qstp_mesh_sim`).
+- `pqcnet-qace/` – GA-based adaptive routing guards that mutate mesh route plans without renegotiating KEM material (`cargo run -p pqcnet-qace --example ga_failover`).
+- `pqcnet-qfkh/` – epoch-based Quantum-Forward Key Hopping (`cargo run -p pqcnet-qfkh --example qfkh_sim`).
+- `pqcnet-networking/` – RPCNet routers, in-memory bus, and overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
+- `pqcnet-relayer/` – batch queue + service that ferries PQC envelopes and hypergraph receipts to external chains (`cargo run -p pqcnet-relayer --example pipeline`).
+- `pqcnet-telemetry/` – metrics snapshots for host runtimes, tunnels, and Chronosync keepers (`cargo run -p pqcnet-telemetry --example flush_snapshot`).
+- `pqcnet-qs-dag/` – QS-DAG anchoring façade, DAG state machine, and host traits (`cargo test -p pqcnet-qs-dag`).
+- `pqcnet-sentry/` – watcher quorum simulators consuming DAG receipts and mirroring validator alerts (`cargo run -p pqcnet-sentry --example quorum_demo`).
+- `autheo-pqcnet-tuplechain/` – production TupleChain keeper/ledger with integration tests mirroring Cosmos SDK deployments (`cargo test -p autheo-pqcnet-tuplechain`).
+- `autheo-pqcnet-icosuple/` – HyperTuple builder + tests that validate the 4,096-byte PQC envelope (`cargo test -p autheo-pqcnet-icosuple`).
+- `autheo-pqcnet-chronosync/` – Chronosync keeper, Temporal Weight math, and RPCNet glue (`cargo test -p autheo-pqcnet-chronosync`).
+- `autheo-pqcnet-5dqeh/` – Five-Dimensional QEH module, storage layout helpers, and anchor-edge RPC (`cargo test -p autheo-pqcnet-5dqeh`).
+- `autheo-pqcnet-qrng/` – QRNG simulator + CLI harness mixing photon/vacuum sources (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
+- `autheo-entropy-wasm/` – entropy node that satisfies the `autheo_host_entropy` import for PQC engines (`cargo build -p autheo-entropy-wasm --target wasm32-unknown-unknown`).
 
-Each crate has an embedded doctest (see the top-level module docs) so `cargo test
---doc` reports real coverage instead of zero cases. Run the full component test
-suite with:
+Each crate ships doctests (see module docs) so `cargo test --doc` produces real coverage instead of zero cases. Run a representative slice of the runtime controllers with:
 
 ```
 cargo test \
@@ -58,11 +100,14 @@ cargo test \
   -p pqcnet-networking \
   -p pqcnet-telemetry \
   -p pqcnet-sentry \
-  -p pqcnet-relayer
+  -p pqcnet-relayer \
+  -p autheo-pqcnet-tuplechain \
+  -p autheo-pqcnet-icosuple \
+  -p autheo-pqcnet-chronosync \
+  -p autheo-pqcnet-5dqeh
 ```
 
-Refer to the `pqcnet-*/README.md` files for config snippets that match the
-sample TOML/YAML files under `configs/`.
+Refer to the crate-level READMEs plus the sample TOML/YAML files under `configs/` when wiring relayers, sentries, entropy hosts, or RPCNet routers.
 
 ---
 
@@ -540,9 +585,9 @@ See `docs/qstp.md` for the design overview, `docs/qstp-performance.md` for the T
 comparison (< 10% end-to-end overhead), and `protos/qstp.proto` for the protobuf
 contract that external clients can bind to.
 
-### Code Flow Diagram (Handshake → QSTP Runtime)
+### Full Suite Diagram (2025 update)
 
-The flow below replaces the previous sequence diagram and highlights every contract component the host touches—liboqs-rs wrappers for ML-KEM/ML-DSA, Shamir-based threshold sharing, protobuf-backed QSTP control messages, AES-256-GCM tunnels, and GA-powered QACE routing.
+The flow below captures the full production PQCNet suite—from entropy and QRNG sources through the Autheo PQC enclave, TupleChain/Chronosync/5D-QEH data plane, and the runtime services that keep QSTP tunnels, relayers, telemetry, and watchers in sync.
 
 ```mermaid
 ---
@@ -551,95 +596,109 @@ config:
   theme: default
 ---
 flowchart LR
-    subgraph ClientSurface["Client / Mesh Apps"]
-        App["Client App / THEO swap / Waku node"]
+    subgraph Engines["PQC Engines & Entropy"]
+        Kyber["autheo-mlkem-kyber"]
+        Dilithium["autheo-mldsa-dilithium"]
+        Falcon["autheo-mldsa-falcon"]
+        EntropyWasm["autheo-entropy-wasm"]
+        Qrng["autheo-pqcnet-qrng"]
+        EntropyTrait["pqcnet-entropy"]
     end
 
-    subgraph HostStack["PQCNet Host Runtime"]
-        Host["PQCNet Host Runtime"]
-        Wasm["pqc_handshake()<br/>handshake::execute_handshake"]
-        Threshold["secret_sharing.rs<br/>Shamir key distribution"]
-        Dag["QS-DAG validators<br/>QsDagPqc"]
-        Proto["QSTP protobuf schema<br/>`protos/qstp.proto`"]
+    subgraph Enclave["Autheo PQC Enclave"]
+        CoreCrate["autheo-pqc-core"]
+        Wasm["autheo-pqc-wasm"]
+        Qfkh["pqcnet-qfkh"]
     end
 
-    subgraph Simulators["PQCNet Service Simulators"]
-        Crypto["pqcnet-crypto<br/>keygen / signing glue"]
-        Networking["pqcnet-networking<br/>message bus + overlay adapters"]
-        Telemetry["pqcnet-telemetry<br/>metrics + counters"]
-        Sentry["pqcnet-sentry<br/>watcher quorum"]
-        Relayer["pqcnet-relayer<br/>batch relay queue"]
+    subgraph DataPlane["TupleChain → Chronosync → 5D-QEH"]
+        Tuplechain["autheo-pqcnet-tuplechain"]
+        Icosuple["autheo-pqcnet-icosuple"]
+        Chronosync["autheo-pqcnet-chronosync"]
+        FiveDQeh["autheo-pqcnet-5dqeh"]
     end
 
-    subgraph Transport["QSTP Runtime + Mesh"]
-        Tunnel["QSTP tunnels<br/>AES-256-GCM secure transport"]
-        Tuple["TupleChain Store<br/>encrypted metadata"]
-        Mesh["Mesh transport adapters<br/>Waku / THEO overlays"]
-        QACE["QACE adaptive routing<br/>genetic algorithms"]
+    subgraph Runtime["PQCNet Runtime & Ops"]
+        Qstp["pqcnet-qstp"]
+        Qace["pqcnet-qace"]
+        Networking["pqcnet-networking"]
+        Relayer["pqcnet-relayer"]
+        Telemetry["pqcnet-telemetry"]
+        Crypto["pqcnet-crypto"]
+        QsDag["pqcnet-qs-dag"]
+        Sentry["pqcnet-sentry"]
     end
 
-    LibOQS["liboqs-rs wrappers<br/>(feature flag `liboqs`)"]
+    subgraph Assets["Shared Assets"]
+        Configs["configs/"]
+        Docs["docs/"]
+        Protos["protos/"]
+    end
 
-    App --> Host
-    Host --> Wasm
-    Host --> Threshold
-    Threshold --> Host
-    LibOQS --> Wasm
-    Wasm --> Dag
-    Dag --> Host
-    Wasm -- "ML-KEM + Dilithium handshake" --> Proto
-    Host --> Tunnel
-    Proto --> Tunnel
-    Tunnel --> App
-    Tunnel --> Tuple
-    Tunnel --> Mesh
-    Mesh --> Tunnel
-    Tunnel --> QACE
-    QACE --> Tunnel
-    Crypto --> Host
-    Host --> Relayer
+    Kyber --> CoreCrate
+    Dilithium --> CoreCrate
+    Falcon --> CoreCrate
+    EntropyWasm --> EntropyTrait
+    Qrng --> EntropyTrait
+    EntropyTrait --> CoreCrate
+    EntropyTrait --> Chronosync
+    CoreCrate --> Wasm
+    CoreCrate --> Qfkh
+    CoreCrate --> Tuplechain
+    CoreCrate --> Crypto
+    Wasm --> Qstp
+    Qfkh --> Qstp
+    Crypto --> Qstp
+    Tuplechain --> Icosuple
+    Icosuple --> Chronosync
+    Chronosync --> FiveDQeh
+    FiveDQeh --> QsDag
+    QsDag --> Sentry
+    Qstp --> Networking
+    Networking --> Qace
+    Qace --> Qstp
+    Qstp --> Telemetry
+    Chronosync --> Telemetry
+    FiveDQeh --> Relayer
     Relayer --> Networking
-    Networking --> Mesh
-    Mesh --> Relayer
-    Host --> Telemetry
-    Tunnel --> Telemetry
-    Sentry --> Dag
-    Dag --> Sentry
-    Networking --> QACE
+    Relayer --> Telemetry
+    QsDag --> Telemetry
+    Chronosync --> Qace
+    Relayer --> Configs
+    Sentry --> Configs
+    Docs --> Configs
+    Qstp --> Protos
+    FiveDQeh --> Protos
+    Protos --> Networking
+    Protos --> Relayer
+    Docs --> Protos
 ```
 
 #### Component roles
 
-- **ClientSurface** – Wallets, THEO swaps, and Waku relays that construct intents and call the WASM ABI exported by `autheo-pqc-wasm`.
-- **PQCNet Host Runtime** – `autheo-pqc-core/src/runtime.rs` plus `autheo_pqc_wasm::pqc_handshake`. It owns the active ML-KEM/ML-DSA material, orchestrates rotations, and prepares the handshake envelope.
-- **secret_sharing.rs** – Hosts that enforce threshold custody reconstruct ML-KEM secrets with `combine_secret`, run the handshake, and immediately re-split with `split_secret` so private keys only exist in-memory for a single call.
-- **liboqs wrappers** – Optional providers in `src/liboqs.rs` that swap the deterministic demo engines for audited Kyber/Dilithium primitives when `--features liboqs` is set.
-- **QS-DAG validators** – `pqcnet-qs-dag::QsDagPqc` verifies Dilithium signatures over DAG payloads and anchors them so tuple metadata inherits PQC guarantees.
-- **QSTP Runtime + Mesh** – `pqcnet_qstp` (`QstpTunnel`, `MeshTransport`, `TupleChainStore`) and `qace.rs` (`GaQace`, `SimpleQace`) turn handshake outputs into AES-256-GCM tunnels, encrypted TupleChain metadata, and adaptive mesh routing.
-- **pqcnet-crypto** – Supplies deterministic keygen/signing flows that bind directly to `autheo-pqc-core`, mirroring how the host runtime sources ML-KEM/ML-DSA material inside the diagram.
-- **pqcnet-relayer** – Buffers handshake envelopes and QSTP payloads before they leave the host, modelling the batch queue that feeds the networking layer in the diagram.
-- **pqcnet-networking** – Provides the simulated message bus / overlay adapters that plug into Waku or THEO meshes; its edges to `Mesh` and `QACE` show how it transports and routes QSTP traffic.
-- **pqcnet-telemetry** – Streams counters/latencies from both the host runtime and active tunnels, capturing the dual arrows from `Host` and `Tunnel` into the telemetry sink.
-- **pqcnet-sentry** – Represents the watcher quorum that consumes QS-DAG anchors and feeds status back to `pqcnet-qs-dag::QsDagPqc`, closing the DAG loop in the flow.
+- **PQC engines & entropy** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` deliver Kyber/Dilithium/Falcon fixtures plus host/QRNG entropy to every module that needs randomness.
+- **Autheo PQC enclave** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the WASM ABI, contract glue, and Quantum-Forward Key Hopping controller that feed QSTP tunnels and TupleChain receipts.
+- **Tuple → Hypergraph data plane** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` inflate tuples into hyper-tuples, run Chronosync elections, and anchor the resulting vertices inside `pqcnet-qs-dag`.
+- **Runtime & ops** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` keep tunnels, routing guards, relayers, telemetry feeds, and watcher quorums aligned with the PQC anchors.
+- **Shared assets** – `configs/`, `docs/`, and `protos/` provide reproducible configs, deep-dive documentation, and protobuf contracts for relayers, RPCNet routers, and downstream clients.
 
 #### Flow walkthrough
 
-1. **Handshake request** – The client calls `pqc_handshake` with a request buffer. `runtime.rs` deserializes it, fetches the active ML-KEM key from `KeyManager`, and checks whether a rotation or threshold rebuild is required.
-2. **Threshold enforcement** – If the host stores Shamir shares, `secret_sharing::combine_secret` rehydrates the ML-KEM key just for the handshake, then `split_secret` writes fresh shares back out once the call completes.
-3. **PQC engines** – `handshake::execute_handshake` invokes `MlKemEngine` + `MlDsaEngine` (deterministic adapters or liboqs-backed) to encapsulate, decapsulate, and sign the transcript (`SignatureManager::sign_kem_transcript`).
-4. **Handshake envelope** – The function emits the PQC1 binary layout, which is mapped directly onto `QstpHandshake*` messages in `protos/qstp.proto`. The host returns this buffer to the caller or forwards it across the mesh.
-5. **Tunnel hydration** – `pqcnet_qstp::establish_runtime_tunnel` ingests the handshake artifacts, derives AES-256-GCM keys, binds them to a `MeshRoutePlan`, and emits TupleChain metadata so auditors can trace the session.
-6. **Transport + TupleChain** – `pqcnet_qstp::QstpTunnel::seal` wraps application payloads while `TupleChainStore` persists encrypted descriptors (key ids, route hashes, rotation window) for later verification.
-7. **Mesh routing** – Each payload travels over Waku/THEO adapters implementing `MeshTransport`. Telemetry feeds `qace::GaQace`, which mutates the active route without re-running the ML-KEM/Dilithium handshake.
-8. **DAG anchoring** – When required, `QsDagPqc::verify_and_anchor` reloads the stored payload, re-verifies the Dilithium signature, and anchors it on QS-DAG so TupleChain pointers inherit consensus-level integrity.
+1. **Entropy & QRNG intake** – `autheo-entropy-wasm`, `pqcnet-entropy`, and `autheo-pqcnet-qrng` combine host entropy with photon/vacuum telemetry so Kyber/Dilithium keys, TupleChain pruning, and Chronosync elections all share the same randomness budget.
+2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule.
+3. **Tunnels & crypto glue** – `pqcnet-crypto` binds the enclave outputs to `pqcnet-qstp`, while QSTP frames inherit QFKh hops and TupleChain pointers for downstream auditors.
+4. **Tuple receipts** – `autheo-pqcnet-tuplechain` writes canonical receipts that `autheo-pqcnet-icosuple` inflates into hyper-tuples before Chronosync consumes them.
+5. **Chronosync + 5D-QEH** – `autheo-pqcnet-chronosync` applies Temporal Weight math, pumps QRNG entropy into `autheo-pqcnet-5dqeh`, and anchors each vertex through `pqcnet-qs-dag`.
+6. **Routing & mesh** – `pqcnet-networking` and `pqcnet-qace` transport QSTP payloads and mutate routes without forcing new ML-KEM handshakes.
+7. **Relays, telemetry, watchers** – `pqcnet-relayer` ferries PQC envelopes and QEH receipts outward, `pqcnet-telemetry` captures counters from tunnels + Chronosync, and `pqcnet-sentry` monitors DAG anchors for policy enforcement.
+8. **Configs & schemas** – `configs/`, `docs/`, and `protos/` keep relayers, sentries, RPCNet routers, and dashboards consistent across deployments (the wazero harness exercises the same artifacts end-to-end).
 
 Key takeaways:
 
-1. **Integrate liboqs-rs for ML-KEM/ML-DSA wrappers** – opt into the `liboqs` feature so `MlKemEngine`/`MlDsaEngine` pull from audited Kyber + Dilithium bindings before invoking `pqc_handshake`.
-2. **Threshold sharing with the `shamir` crate** – use `secret_sharing::split_secret` / `combine_secret` to distribute ML-KEM secrets according to each `ThresholdPolicy`.
-3. **QSTP protocol in protobuf + ML-KEM/Dilithium handshake** – `handshake.rs` emits PQC1 envelopes that map directly onto the messages in `protos/qstp.proto`.
-4. **QSTP tunnels for secure transport** – `pqcnet_qstp::establish_runtime_tunnel` converts handshake outputs into AES-256-GCM channels and TupleChain metadata for auditors.
-5. **Adaptive routing with QACE** – `pqcnet_qace::GaQace` ingests latency/threat metrics and mutates the active `MeshRoutePlan` without forcing another handshake.
+1. **Engines + entropy drive the enclave** – Kyber/Dilithium/Falcon adapters, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` keep `autheo-pqc-core`/`autheo-pqc-wasm` deterministic until you swap in audited liboqs engines.
+2. **TupleChain → Icosuple → Chronosync → 5D-QEH → `pqcnet-qs-dag`** – the production data path anchors every PQC envelope before it leaves the enclave, reusing the same receipts that validators run today.
+3. **Runtime controllers stay coordinated** – `pqcnet-qstp`, `pqcnet-qfkh`, `pqcnet-qace`, `pqcnet-crypto`, and `pqcnet-networking` keep tunnels live while `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` expose ops signals.
+4. **Configs, docs, and protos lock in reproducibility** – the artifacts under `configs/`, `docs/`, and `protos/` (plus the wazero harness) make the full PQCNet suite deployable as an enclave on validators, relayers, and lab clusters.
 
 ---
 
