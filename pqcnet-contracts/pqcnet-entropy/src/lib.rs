@@ -148,4 +148,33 @@ mod tests {
         host.try_fill_bytes(&mut buf).unwrap();
         assert!(buf.iter().any(|b| *b != 0));
     }
+
+    #[cfg(feature = "sim")]
+    #[test]
+    fn sim_entropy_reseed_resets_stream() {
+        let mut sim = SimEntropySource::with_seed(7);
+        let mut first = [0u8; 32];
+        let mut second = [0u8; 32];
+        sim.try_fill_bytes(&mut first).unwrap();
+        sim.reseed(99);
+        sim.try_fill_bytes(&mut second).unwrap();
+
+        let mut fresh = SimEntropySource::with_seed(99);
+        let mut expected = [0u8; 32];
+        fresh.try_fill_bytes(&mut expected).unwrap();
+
+        assert_ne!(first, second, "reseed should change output stream");
+        assert_eq!(second, expected, "reseeded stream should be deterministic");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn host_entropy_allows_empty_requests() {
+        let mut host = HostEntropySource::new();
+        let mut empty: [u8; 0] = [];
+        assert!(
+            host.try_fill_bytes(&mut empty).is_ok(),
+            "empty fills must be fast-path no-ops"
+        );
+    }
 }
