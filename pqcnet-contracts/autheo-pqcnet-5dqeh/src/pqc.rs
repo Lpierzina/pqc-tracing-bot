@@ -2,6 +2,7 @@ use autheo_pqc_core::error::PqcError;
 use autheo_pqc_core::handshake;
 use autheo_pqc_core::runtime;
 use autheo_pqc_core::types::TimestampMs;
+use core::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::PqcBinding;
@@ -34,12 +35,27 @@ pub struct PqcRotationOutcome {
 }
 
 /// Errors surfaced while invoking PQC runtime ABIs.
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PqcRuntimeError {
-    #[error("pqc runtime not configured")]
     Disabled,
-    #[error(transparent)]
-    Core(#[from] PqcError),
+    Core(PqcError),
+}
+
+impl fmt::Display for PqcRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PqcRuntimeError::Disabled => f.write_str("pqc runtime not configured"),
+            PqcRuntimeError::Core(err) => write!(f, "pqc core error: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for PqcRuntimeError {}
+
+impl From<PqcError> for PqcRuntimeError {
+    fn from(err: PqcError) -> Self {
+        PqcRuntimeError::Core(err)
+    }
 }
 
 /// Runtime contract used to call into `autheo-pqc-core` (native or wasm).
