@@ -7,10 +7,12 @@ license = "Apache-2.0"
 
 [dependencies]
 autheo-pqcnet-5dqeh = { path = "../autheo-pqcnet-5dqeh" }
+autheo-pqcnet-qrng = { path = "../autheo-pqcnet-qrng" }
 blake3 = "1.5"
-pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 pqcnet-networking = { path = "../pqcnet-networking" }
+pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 serde = { version = "1.0", features = ["derive"] }
+sha3 = "0.10"
 thiserror = "1.0"
 
 [dev-dependencies]

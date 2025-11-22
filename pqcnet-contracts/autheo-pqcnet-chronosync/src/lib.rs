@@ -3,13 +3,16 @@
 //! The crate captures the production entry points from the Chronosync design: time-weighted validator
 //! profiles, QRNG-driven verification pools, QS-DAG witnesses, and the keeper that hydrates 5D-QEH.
 //! Everything is parameterized so downstream tooling can tune shard counts, subpool sizes, and TPS
-//! ceilings without rewriting the core heuristics (simulators now live in higher-level repos).
+//! ceilings while operating directly on production telemetry.
 
 pub mod keeper;
+use autheo_pqcnet_qrng::QrngEntropyFrame;
 pub use keeper::{ChronosyncKeeper, ChronosyncKeeperError, ChronosyncKeeperReport};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use thiserror::Error;
 
 /// Chronosync DAG nodes reference at most 10 parents.
 pub const MAX_PARENT_REFERENCES: usize = 10;
@@ -31,7 +34,7 @@ impl Default for ChronosyncConfig {
     fn default() -> Self {
         Self {
             shards: 1_000,
-            layers: 3,
+            layers: 21,
             verification_pools: 10,
             subpool_size: 5,
             max_parents: MAX_PARENT_REFERENCES,
@@ -48,7 +51,7 @@ pub struct TemporalWeightInput {
     pub longevity_hours: u64,
     pub proof_of_burn_tokens: f64,
     pub zkp_validations: u64,
-    pub suspicious_events: u32,
+    pub suspicion_hours: u64,
 }
 
 impl TemporalWeightInput {
@@ -58,7 +61,7 @@ impl TemporalWeightInput {
         let longevity_term = ((self.longevity_hours as f64) / 24.0 + 1.0).ln();
         let pob_term = 0.2 * self.proof_of_burn_tokens.min(1.0);
         let zkp_term = 0.1 * ((self.zkp_validations as f64 / 1_000.0).min(1.0));
-        let suspicion_penalty = (self.suspicious_events as f64 * 0.05).min(0.5);
+        let suspicion_penalty = (self.suspicion_hours as f64 * 0.05).min(0.5);
         let decay = 1.0 - suspicion_penalty;
         let score = (longevity_term + pob_term + zkp_term) * decay;
         score.min(1.0).max(0.0)
@@ -71,7 +74,7 @@ impl Default for TemporalWeightInput {
             longevity_hours: 0,
             proof_of_burn_tokens: 0.0,
             zkp_validations: 0,
-            suspicious_events: 0,
+            suspicion_hours: 0,
         }
     }
 }
@@ -83,7 +86,7 @@ pub struct ChronosyncNodeProfile {
     pub longevity_hours: u64,
     pub proof_of_burn_tokens: f64,
     pub zkp_validations: u64,
-    pub suspicious_events: u32,
+    pub suspicion_hours: u64,
 }
 
 impl ChronosyncNodeProfile {
@@ -93,7 +96,7 @@ impl ChronosyncNodeProfile {
             longevity_hours: 0,
             proof_of_burn_tokens: 0.0,
             zkp_validations: 0,
-            suspicious_events: 0,
+            suspicion_hours: 0,
         }
     }
 
@@ -112,8 +115,8 @@ impl ChronosyncNodeProfile {
         self
     }
 
-    pub fn with_suspicion_events(mut self, events: u32) -> Self {
-        self.suspicious_events = events;
+    pub fn with_suspicion_hours(mut self, hours: u64) -> Self {
+        self.suspicion_hours = hours;
         self
     }
 
@@ -122,9 +125,14 @@ impl ChronosyncNodeProfile {
             longevity_hours: self.longevity_hours,
             proof_of_burn_tokens: self.proof_of_burn_tokens,
             zkp_validations: self.zkp_validations,
-            suspicious_events: self.suspicious_events,
+            suspicion_hours: self.suspicion_hours,
         }
         .compute()
+    }
+
+    /// Reputation decays by 0.05 per hour of suspicious behavior, capped at zero.
+    pub fn reputation_score(&self) -> f64 {
+        (1.0 - (self.suspicion_hours as f64 * 0.05)).clamp(0.0, 1.0)
     }
 
     pub fn shard_affinity(&self, shards: u16) -> u16 {
@@ -151,10 +159,11 @@ pub const DEFAULT_TIER_PATH: [TierDesignation; 3] = [
 ];
 
 /// Node assignment inside a verification sub-pool.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct NodeSelection {
     pub node_id: String,
     pub time_weight: f64,
+    pub reputation: f64,
     pub shard_affinity: u16,
     pub longevity_hours: u64,
     pub proof_of_burn_tokens: f64,
@@ -162,13 +171,13 @@ pub struct NodeSelection {
 }
 
 /// Snapshot of a verification pool with its sub-pool participants.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VerificationPoolSnapshot {
     pub pool_id: u16,
     pub selections: Vec<NodeSelection>,
 }
 
-/// Per-shard throughput telemetry emitted by the simulator.
+/// Per-shard throughput telemetry emitted by the Chronosync runtime.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ShardLoad {
     pub shard_id: u16,
@@ -205,6 +214,156 @@ pub struct EpochReport {
     pub rejected_transactions: u64,
 }
 
+/// Errors raised while electing Chronosync verification pools from QRNG data.
+#[derive(Debug, Error)]
+pub enum PoolElectionError {
+    #[error(
+        "verification pools require positive counts (pools={pools}, subpool_size={subpool_size})"
+    )]
+    InvalidTopology { pools: usize, subpool_size: usize },
+    #[error("insufficient validator profiles: required {required}, available {available}")]
+    InsufficientProfiles { required: usize, available: usize },
+    #[error("insufficient QRNG frames: required {required}, available: {available}")]
+    InsufficientQrngFrames { required: usize, available: usize },
+}
+
+/// Use QRNG entropy frames and Temporal Weight profiles to elect verification pools.
+///
+/// The selection process hashes real QRNG entropy (photonic, vacuum, chip) into per-pool seeds,
+/// weights candidates by their TW × reputation score, and deterministically chooses
+/// `config.subpool_size` members for each pool. The function errors if insufficient telemetry or
+/// profiles are supplied, guaranteeing parity with the Chronosync production spec.
+pub fn elect_verification_pools(
+    config: &ChronosyncConfig,
+    profiles: &[ChronosyncNodeProfile],
+    qrng_frames: &[QrngEntropyFrame],
+    epoch_index: u64,
+) -> Result<Vec<VerificationPoolSnapshot>, PoolElectionError> {
+    if config.verification_pools == 0 || config.subpool_size == 0 {
+        return Err(PoolElectionError::InvalidTopology {
+            pools: config.verification_pools,
+            subpool_size: config.subpool_size,
+        });
+    }
+
+    let required_profiles = config.verification_pools * config.subpool_size;
+    if profiles.len() < required_profiles {
+        return Err(PoolElectionError::InsufficientProfiles {
+            required: required_profiles,
+            available: profiles.len(),
+        });
+    }
+
+    let required_frames = 3.min(config.verification_pools.max(1));
+    if qrng_frames.len() < required_frames {
+        return Err(PoolElectionError::InsufficientQrngFrames {
+            required: required_frames,
+            available: qrng_frames.len(),
+        });
+    }
+
+    let seeds = derive_pool_seeds(config.verification_pools, qrng_frames, epoch_index);
+    let mut snapshots = Vec::with_capacity(config.verification_pools);
+    for (idx, seed) in seeds.into_iter().enumerate() {
+        snapshots.push(select_pool(idx as u16, seed, config, profiles));
+    }
+    Ok(snapshots)
+}
+
+fn derive_pool_seeds(
+    pool_count: usize,
+    frames: &[QrngEntropyFrame],
+    epoch_index: u64,
+) -> Vec<[u8; 32]> {
+    let shares = frames.len().min(5).max(1);
+    (0..pool_count)
+        .map(|pool_idx| {
+            let mut hasher = Sha3_256::new();
+            hasher.update(b"chronosync/pool_seed");
+            hasher.update(&epoch_index.to_le_bytes());
+            hasher.update(&(pool_idx as u64).to_le_bytes());
+            for share_idx in 0..shares {
+                let frame_index = (pool_idx + share_idx * pool_count) % frames.len();
+                let frame = &frames[frame_index];
+                mix_frame_into_hasher(&mut hasher, frame);
+            }
+            let digest: [u8; 32] = hasher.finalize().into();
+            digest
+        })
+        .collect()
+}
+
+fn mix_frame_into_hasher(hasher: &mut Sha3_256, frame: &QrngEntropyFrame) {
+    hasher.update(&frame.checksum);
+    hasher.update(&frame.timestamp_ps.to_le_bytes());
+    hasher.update(&frame.epoch.to_le_bytes());
+    hasher.update(&frame.sequence.to_le_bytes());
+    hasher.update(frame.request.label.as_bytes());
+    hasher.update(&frame.request.bits.to_le_bytes());
+    hasher.update(frame.request.icosuple_reference.as_bytes());
+    hasher.update(&frame.envelope.qrng_entropy_bits.to_le_bytes());
+    hasher.update(frame.envelope.icosuple_reference.as_bytes());
+    hasher.update(&frame.entropy);
+    for source in &frame.sources {
+        hasher.update(source.source.as_bytes());
+        hasher.update(&source.bits.to_le_bytes());
+        hasher.update(&source.shot_count.to_le_bytes());
+        hasher.update(&source.bias_ppm.to_le_bytes());
+        hasher.update(&source.drift_ppm.to_le_bytes());
+        hasher.update(&source.raw_entropy);
+    }
+}
+
+fn select_pool(
+    pool_id: u16,
+    seed: [u8; 32],
+    config: &ChronosyncConfig,
+    profiles: &[ChronosyncNodeProfile],
+) -> VerificationPoolSnapshot {
+    let mut candidates: Vec<(f64, NodeSelection)> = profiles
+        .iter()
+        .map(|profile| {
+            let time_weight = profile.temporal_weight();
+            let reputation = profile.reputation_score();
+            let priority = pool_priority(&seed, &profile.node_id, time_weight, reputation);
+            let node = NodeSelection {
+                node_id: profile.node_id.clone(),
+                time_weight,
+                reputation,
+                shard_affinity: profile.shard_affinity(config.shards),
+                longevity_hours: profile.longevity_hours,
+                proof_of_burn_tokens: profile.proof_of_burn_tokens,
+                zkp_validations: profile.zkp_validations,
+            };
+            (priority, node)
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let selections = candidates
+        .into_iter()
+        .take(config.subpool_size)
+        .map(|(_, node)| node)
+        .collect();
+
+    VerificationPoolSnapshot {
+        pool_id,
+        selections,
+    }
+}
+
+fn pool_priority(seed: &[u8; 32], node_id: &str, time_weight: f64, reputation: f64) -> f64 {
+    let mut hasher = Sha3_256::new();
+    hasher.update(seed);
+    hasher.update(node_id.as_bytes());
+    let digest = hasher.finalize();
+    let mut seed_bytes = [0u8; 8];
+    seed_bytes.copy_from_slice(&digest[..8]);
+    let raw = u64::from_le_bytes(seed_bytes) as f64 / u64::MAX as f64;
+    let weight = (time_weight * reputation).max(1e-9);
+    raw / weight
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,10 +372,54 @@ mod tests {
         PqcLayer, PqcScheme, PulsedLaserLink, QehConfig, QuantumCoordinates, TemporalWeightModel,
         VertexId, ICOSUPLE_BYTES,
     };
+    use autheo_pqcnet_qrng::{EntropyRequest, QrngMixer};
     use autheo_pqcnet_tuplechain::{
         ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload, TupleReceipt,
     };
     use pqcnet_networking::AnchorEdgeEndpoint;
+
+    #[test]
+    fn pool_election_requires_sufficient_profiles() {
+        let mut config = ChronosyncConfig::default();
+        config.verification_pools = 2;
+        config.subpool_size = 3;
+        let profiles = sample_profiles(4);
+        let frames = qrng_frames(3);
+        let err = elect_verification_pools(&config, &profiles, &frames, 11)
+            .expect_err("must reject insufficient profiles");
+        match err {
+            PoolElectionError::InsufficientProfiles {
+                required,
+                available,
+            } => {
+                assert_eq!(required, 6);
+                assert_eq!(available, 4);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pool_election_is_deterministic_with_shared_entropy() {
+        let mut config = ChronosyncConfig::default();
+        config.verification_pools = 3;
+        config.subpool_size = 4;
+        let profiles = sample_profiles(32);
+        let frames = qrng_frames(5);
+        let first = elect_verification_pools(&config, &profiles, &frames, 22).unwrap();
+        let second = elect_verification_pools(&config, &profiles, &frames, 22).unwrap();
+        assert_eq!(
+            first, second,
+            "deterministic seeds must yield identical selections"
+        );
+        for snapshot in &first {
+            assert_eq!(snapshot.selections.len(), config.subpool_size);
+            assert!(snapshot
+                .selections
+                .iter()
+                .all(|sel| sel.time_weight <= 1.0 && sel.reputation <= 1.0));
+        }
+    }
 
     #[test]
     fn temporal_weight_matches_formula() {
@@ -224,7 +427,7 @@ mod tests {
             longevity_hours: 24 * 30,
             proof_of_burn_tokens: 0.7,
             zkp_validations: 700,
-            suspicious_events: 1,
+            suspicion_hours: 1,
         };
         let score = input.compute();
         let expected = ((input.longevity_hours as f64) / 24.0 + 1.0).ln()
@@ -388,5 +591,31 @@ mod tests {
         keeper
             .store_tuple("did:autheo:l1/kernel", payload, 1_700_000_000_000)
             .expect("tuple receipt")
+    }
+
+    fn sample_profiles(count: usize) -> Vec<ChronosyncNodeProfile> {
+        (0..count)
+            .map(|idx| {
+                ChronosyncNodeProfile::new(format!("did:autheo:validator:{idx}"))
+                    .with_longevity_hours(24 * (idx as u64 + 1))
+                    .with_proof_of_burn(((idx + 1) as f64 / 50.0).min(1.0))
+                    .with_zkp_validations((idx as u64 + 1) * 100)
+                    .with_suspicion_hours((idx as u64 % 4) as u64)
+            })
+            .collect()
+    }
+
+    fn qrng_frames(count: usize) -> Vec<QrngEntropyFrame> {
+        let mut mixer = QrngMixer::new(0x5a5a_0420);
+        (0..count)
+            .map(|idx| {
+                let request = EntropyRequest::for_icosuple(
+                    "chronosync",
+                    512 + (idx as u16 * 16),
+                    format!("ico-{idx}"),
+                );
+                mixer.generate_frame(7, idx as u64, request)
+            })
+            .collect()
     }
 }
