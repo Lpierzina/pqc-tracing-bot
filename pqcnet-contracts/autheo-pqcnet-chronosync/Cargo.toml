@@ -12,3 +12,6 @@ pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 pqcnet-networking = { path = "../pqcnet-networking" }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
+
+[dev-dependencies]
+autheo-pqcnet-tuplechain = { path = "../autheo-pqcnet-tuplechain" }

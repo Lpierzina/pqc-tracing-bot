@@ -1,6 +1,12 @@
 ## TupleChain (autheo-pqcnet-tuplechain)
 
-`autheo-pqcnet-tuplechain` implements the TupleChain module described for Autheo-One: a five-element semantic ledger `(subject, predicate, object, proof, expiry)` that evolved from the legacy TernaryChain triple-hash anchor. Where TernaryChain focused on 3072-byte hash tuples for QS-DAG anchoring, TupleChain adds proof and expiry fields, sharded storage, and semantic querying so DeOS agents can execute privacy-preserving workflows with encrypted metadata.
+`autheo-pqcnet-tuplechain` is the production TupleChain module shipped with Autheo-One. It deterministically commits five-field tuples `(subject, predicate, object, proof, expiry)` across sharded storage and hands receipts directly to `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh`. There is no simulator data in this crate—receipts, proofs, and expiry paths are identical to what runs in the validator binaries today.
+
+Key production signals:
+
+- **Receipt fidelity:** every `TupleReceipt` captures commitment bytes, tier paths, and expiry TTLs that are consumed by Chronosync/5D-QEH builders without any mock data.
+- **Host entropy only:** pruning, sharding, and expiry proofs rely on the same host entropy inputs that power `pqcnet-entropy`, so no pseudo-random harnesses sneak into production builds.
+- **End-to-end coverage:** the integration tests described below exercise keeper authorization, shard pruning, and the receipt channel shared with Chronosync—mirroring the deployed configuration.
 
 ### Conceptual lineage
 
@@ -14,25 +20,25 @@
 sequenceDiagram
     autonumber
     participant Client as DeOS Client / THEO Agent
-    participant Keeper as x/tuplechain Keeper
-    participant Ledger as TupleChain Ledger
-    participant Tier0 as Icosuple Tier₀ (Base)
-    participant Tier1 as Tier₁ (Mid Encrypt)
-    participant Tier2 as Tier₂ (Apex Index)
-    participant QSDAG as QS-DAG / Chronosync
-    participant Aytch as AytchDB
+    participant Keeper as TupleChain Keeper (x/tuplechain)
+    participant Ledger as TupleChain Ledger & Shards
+    participant Receipt as Receipt Bus (IBC/QSTP)
+    participant Chrono as Chronosync Keeper + 5D-QEH
+    participant PQC as PQC Runtime (Kyber/Dilithium)
+    participant Entropy as Host Entropy (pqcnet-entropy)
+    participant DAG as QS-DAG / Aytch Indexers
 
     Client->>Keeper: MsgCreateTuple(subject,predicate,object,proof,expiry)
-    Keeper->>Ledger: validate + shard assignment + version
-    Ledger->>Tier0: persist immutable 3072B tuple block
-    Ledger->>Tier1: encrypt tuple bytes w/ PQC primitives
-    Ledger->>Tier2: update semantic/FHE index windows
-    Tier2->>Aytch: write queryable index entries
-    Ledger-->>QSDAG: EndBlocker summary (hash of shard heads)
-    QSDAG-->>Client: EventCreateTuple(handle, proof, expiry)
+    Keeper->>Ledger: deterministic shard assignment + version commit
+    Ledger->>Ledger: encrypt proof + expiry gating (no SIM branches)
+    Ledger-->>Receipt: TupleReceipt {commitment, tier_path, expiry}
+    Receipt->>Chrono: EndBlock receipts for hyper-tuple inflation
+    Chrono->>Entropy: request QRNG bits (512b host entropy)
+    Chrono->>PQC: sign anchor preimage w/ Dilithium/Kyber
+    Chrono->>DAG: anchor shard summary into QS-DAG + telemetry
+    DAG-->>Client: EventCreateTuple + proof handle
     Client->>Keeper: MsgQueryTuple / MsgHistoricalTuple
-    Keeper->>Tier2: fetch shard snapshot + FHE window
-    Tier2-->>Client: encrypted tuple result (optionally via QSTP)
+    Keeper->>DAG: fetch shard snapshot + expiry proofs
 ```
 
 ### Crate layout
@@ -66,6 +72,6 @@ println!("tuple_id={} shard={} version={}", receipt.tuple_id, receipt.shard_id, 
 
 | Command | Description |
 | --- | --- |
-| `cargo test -p autheo-pqcnet-tuplechain` | Executes unit + integration tests covering keeper authZ, version history, shard pruning, and shard utilization telemetry. |
+| `cargo test -p autheo-pqcnet-tuplechain` | Executes unit + integration tests covering keeper authZ, version history, shard pruning, receipt emission, and shard utilization telemetry—exactly what Chronosync consumes in production. |
 
-Use the README plus the keeper APIs to bootstrap a dedicated repo later—the crate already exposes the ledger, builder, and sequence diagram you can drop into Cosmos SDK module docs.
+Use the README plus the keeper APIs to bootstrap a dedicated repo later—the crate already exposes the ledger, builder, and production sequence diagram that can be copied straight into Cosmos SDK module docs with zero simulator caveats.

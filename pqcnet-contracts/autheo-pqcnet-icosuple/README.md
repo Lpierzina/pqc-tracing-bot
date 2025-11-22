@@ -1,10 +1,10 @@
 ## Autheo PQCNet Hyper-Tuples (`autheo-pqcnet-icosuple`)
 
-`autheo-pqcnet-icosuple` is now a production-first module: it deterministically expands TupleChain
-receipts plus Chronosync/QS-DAG telemetry into the canonical 4,096-byte hyper-tuple used by the
-`autheo-pqcnet-5dqeh` keeper. No stochastic simulators, no mock entropy—just the five segments defined
-in the primer (input hash, prev hash, current hash, layer metadata, PQC envelope) backed by live module
-state.
+`autheo-pqcnet-icosuple` is the production hyper-tuple module: it deterministically expands TupleChain
+receipts plus Chronosync/QS-DAG telemetry into the canonical 4,096-byte hyper-tuple consumed by the
+`autheo-pqcnet-5dqeh` keeper. No stochastic simulators, no mock entropy—only the five segments defined
+in the primer (input hash, prev hash, current hash, layer metadata, PQC envelope) wired to the live
+modules that validators run today.
 
 - **Deterministic builder:** `HyperTupleBuilder` consumes a `TupleReceipt`, a Chronosync `EpochReport`,
   and the `ChronosyncKeeperReport`, then emits the encoded 4,096-byte payload ready for 5D-QEH.
@@ -21,22 +21,24 @@ state.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Client as DeOS Client / THEO Agent
-    participant Tuple as Tuplechain Keeper
-    participant Ico as Icosuple Coordinator
-    participant Tiers as Icosuple Tier Pipeline (L2..Ln)
-    participant Chrono as Chronosync / QS-DAG
-    participant RPC as RPCNet / QSTP Telemetry
+    participant Tuple as TupleChain Keeper
+    participant Receipt as Tuple Receipts (EndBlock)
+    participant Ico as HyperTuple Builder (autheo-pqcnet-icosuple)
+    participant Chrono as Chronosync Keeper + 5D-QEH
+    participant Entropy as Host Entropy (pqcnet-entropy)
+    participant PQC as PQC Runtime (Kyber/Dilithium)
+    participant QSDAG as QS-DAG / Telemetry Bus
 
-    Client->>Tuple: Submit tuple intent (subject, predicate, proof)
-    Tuple->>Ico: Emit 3072B tuple summary + PQC envelope
-    Ico->>Tiers: Expand to 4096B icosuple + tier assignments
-    Tiers->>Chrono: Layer-specific attestations + shard telemetry
-    Chrono-->>Tiers: Temporal Weight + TW-ranked entanglement
-    Tiers-->>RPC: Publish sharding + TPS metrics (<=50B TPS global)
-    Chrono-->>Client: Finality + extension tier hints
-    RPC-->>Client: Sim dashboards (Gini, shard heatmaps, TLA+ checks)
-  ```
+    Tuple->>Receipt: Emit TupleReceipt {commitment,tier_path,expiry}
+    Receipt->>Ico: Provide receipt for inflation
+    Chrono->>Receipt: Fetch receipts for epoch N
+    Chrono->>Entropy: Request 512b QRNG for vertex sealing
+    Chrono->>Ico: Share keeper report + DAG head
+    Ico->>PQC: Embed Kyber/Dilithium envelope (no SIM data)
+    Ico->>Chrono: Deliver 4,096B hyper-tuple bytes
+    Chrono->>QSDAG: Apply vertex via 5D-QEH + shard telemetry
+    QSDAG-->>Tuple: Return tier hints + expiry proofs
+```
 
 ### Tier specialisations (first 20 layers)
 
@@ -87,8 +89,9 @@ let encoded_bytes = hyper_tuple.encode(); // [u8; 4096]
 
 | Command | Description |
 | --- | --- |
-| `cargo test -p autheo-pqcnet-icosuple` | Runs the integration tests that allocate TupleChain receipts, pump them through Chronosync/QS-DAG, and check byte-accurate hyper-tuples. |
+| `cargo test -p autheo-pqcnet-icosuple` | Runs integration tests that allocate TupleChain receipts, drive them through Chronosync/5D-QEH with host entropy, and assert byte-perfect hyper-tuples. |
 
 Use this crate/README combo as the jumping-off point for a dedicated `autheo-icosuple-network`
 repository—the data model, builder, and tests already align with the architecture brief provided by the
-Autheo-One team. All telemetry is deterministic and sourced from the real modules today.
+Autheo-One team. All telemetry is deterministic and sourced directly from the production modules—no
+simulated dashboards required.

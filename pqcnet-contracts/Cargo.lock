@@ -208,6 +208,7 @@ name = "autheo-pqcnet-chronosync"
 version = "0.1.0"
 dependencies = [
  "autheo-pqcnet-5dqeh",
+ "autheo-pqcnet-tuplechain",
  "blake3",
  "pqcnet-networking",
  "pqcnet-qs-dag",

@@ -209,8 +209,13 @@ pub struct EpochReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autheo_pqcnet_5dqeh::{HypergraphModule, QehConfig, TemporalWeightModel};
-    use autheo_pqcnet_5dqeh::{Icosuple, MsgAnchorEdge, PqcBinding, PqcScheme};
+    use autheo_pqcnet_5dqeh::{
+        HypergraphModule, HostEntropySource, Icosuple, MsgAnchorEdge, PqcBinding, PqcLayer,
+        PqcScheme, QehConfig, TemporalWeightModel, VertexId, ICOSUPLE_BYTES,
+    };
+    use autheo_pqcnet_tuplechain::{
+        ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload, TupleReceipt,
+    };
     use pqcnet_networking::AnchorEdgeEndpoint;
 
     #[test]
@@ -297,5 +302,84 @@ mod tests {
         let response = AnchorEdgeEndpoint::submit_anchor_edge(&mut keeper, msg).expect("anchor");
         assert_eq!(response.receipt.parents, 0);
         assert_eq!(response.storage.total_vertices(), 1);
+    }
+
+    #[test]
+    fn tuplechain_receipts_anchor_edges_through_chronosync() {
+        let receipt = production_tuple_receipt();
+        let chrono_config = ChronosyncConfig::default();
+        let qeh_config = QehConfig::default();
+        let tw_model = TemporalWeightModel::default();
+        let mut keeper =
+            ChronosyncKeeper::new(chrono_config.clone(), HypergraphModule::new(qeh_config.clone(), tw_model));
+
+        let mut entropy = HostEntropySource::new();
+        let parents: Vec<VertexId> = (0..2).map(|_| VertexId::random(&mut entropy)).collect();
+        let parent_coherence =
+            (parents.len() as f64 / qeh_config.max_parent_links as f64).min(1.0);
+
+        let vector_signature = vec![0.91_f32; qeh_config.vector_dimensions];
+        let pqc_layers = receipt
+            .tier_path
+            .iter()
+            .enumerate()
+            .map(|(idx, tier)| PqcLayer {
+                scheme: if idx == 0 {
+                    PqcScheme::Kyber
+                } else {
+                    PqcScheme::Dilithium
+                },
+                metadata_tag: format!("tier-{}::{tier:?}", idx),
+                epoch: receipt.version as u64,
+            })
+            .collect();
+        let icosuple = Icosuple {
+            label: format!("tuple/{}", receipt.tuple_id),
+            payload_bytes: ICOSUPLE_BYTES,
+            pqc_layers,
+            vector_signature,
+        };
+
+        let msg = MsgAnchorEdge {
+            request_id: 42,
+            chain_epoch: receipt.expiry / 1_000_000,
+            parents: parents.clone(),
+            parent_coherence,
+            lamport: receipt.version as u64,
+            contribution_score: 0.72,
+            ann_similarity: 0.94,
+            qrng_entropy_bits: chrono_config.qrng_entropy_bits,
+            pqc_binding: PqcBinding::new(receipt.creator.clone(), PqcScheme::Dilithium),
+            icosuple,
+        };
+
+        let response =
+            AnchorEdgeEndpoint::submit_anchor_edge(&mut keeper, msg).expect("anchor tuple receipt");
+        assert_eq!(response.receipt.parents, parents.len());
+        assert!(
+            response.storage.total_vertices() >= 1,
+            "storage layout must register anchored vertex"
+        );
+        assert!(
+            keeper
+                .module()
+                .state()
+                .get(&response.receipt.vertex_id)
+                .is_some(),
+            "vertex should be queryable from hypergraph state"
+        );
+    }
+
+    fn production_tuple_receipt() -> TupleReceipt {
+        let mut keeper =
+            TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
+        let payload = TuplePayload::builder("did:autheo:alice", "owns")
+            .object_text("autheo-passport")
+            .proof(ProofScheme::Zkp, b"proof", "zkp")
+            .expiry(1_700_000_000_000)
+            .build();
+        keeper
+            .store_tuple("did:autheo:l1/kernel", payload, 1_700_000_000_000)
+            .expect("tuple receipt")
     }
 }
