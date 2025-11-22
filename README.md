@@ -11,9 +11,112 @@ It provides:
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
 - **Full PQCNet enclave coverage** across `autheo-entropy-wasm`, `autheo-pqc-core`, `autheo-pqc-wasm`, `autheo-pqcnet-{tuplechain,icosuple,chronosync,5dqeh,qrng}`, `pqcnet-{entropy,qfkh,qstp,qace,crypto,networking,relayer,telemetry,qs-dag,sentry}`, plus configs, docs, and protos.
 
-> ⚠️ This workspace doesn’t ship production ML-KEM / ML-DSA code.  
-> `autheo-pqc-core` only defines traits and contract logic, and the sibling `autheo-mlkem-*` / `autheo-mldsa-*` crates are deterministic BLAKE2s-based stubs for demos/tests.  
-> Real deployments point those traits at audited engines—Autheo’s Kyber/Dilithium WASM builds, PQClean, or the `liboqs` feature that wires in liboqs-rs’ primitives.
+> ⚠️ Out of the box this workspace builds against deterministic ML-KEM / ML-DSA stubs.  
+> `autheo-pqc-core` only defines traits and contract logic, and the sibling `autheo-mlkem-*` / `autheo-mldsa-*` crates stay BLAKE2s-based for demos/tests so the WASM artifacts remain reproducible.  
+> Real deployments point those traits at audited engines—Autheo’s Kyber/Dilithium WASM builds, PQClean, or the optional `liboqs` feature (`cargo build -p autheo-pqc-core --features liboqs`) that swaps in liboqs-rs’ Kyber ML-KEM + Dilithium ML-DSA bindings for native hosts.
+
+## DID & AIPP Full-Stack View
+
+The diagram below extends the enclave view to include upstream DID wallets/registries, the AIPP spec overlays, and how those flows connect into PQC engines, runtime services, and TupleChain → Chronosync → 5D-QEH pipelines.
+
+```mermaid
+---
+config:
+  theme: default
+---
+flowchart LR
+subgraph L0["User & DID Layer"]
+  Wallet["DID Wallets / Agents"]
+  DIDCore["DID Core + Registries"]
+end
+subgraph AIPP["DID AIPP Spec Flows"]
+  AIPId["AIPP: Identity & Profiles"]
+  AIPKeys["AIPP: Key Management & Rotation"]
+  AIPAuth["AIPP: Quantum-Safe AuthN"]
+  AIPRec["AIPP: Recovery / Social Recovery"]
+  AIPOverlays["AIPP: Network Overlays"]
+  AIPComms["AIPP: Comms & Transport Protocols"]
+end
+Wallet --> DIDCore --> AIPId
+Wallet --> AIPAuth
+AIPId --> AIPKeys
+AIPKeys --> AIPAuth
+AIPAuth --> AIPRec
+AIPId --> AIPOverlays
+AIPComms --> AIPOverlays
+subgraph Engines["PQC Engines & Entropy"]
+  Kyber["autheo-mlkem-kyber"]
+  Dilithium["autheo-mldsa-dilithium"]
+  Falcon["autheo-mldsa-falcon"]
+  EntropyWasm["autheo-entropy-wasm"]
+  QRNG["autheo-pqcnet-qrng"]
+  PqcEntropy["pqcnet-entropy"]
+end
+subgraph Enclave["Autheo PQC Enclave"]
+  PqcCore["autheo-pqc-core"]
+  PqcWasm["autheo-pqc-wasm"]
+  QFkh["pqcnet-qfkh"]
+  Crypto["pqcnet-crypto"]
+end
+Kyber --> PqcCore
+Dilithium --> PqcCore
+Falcon --> PqcCore
+EntropyWasm --> PqcCore
+QRNG --> PqcCore
+QRNG --> QFkh
+PqcEntropy --> QFkh
+PqcCore --> PqcWasm
+PqcCore --> Crypto
+subgraph Runtime["PQCNet Runtime & Ops"]
+  Qstp["pqcnet-qstp"]
+  QsDag["pqcnet-qs-dag"]
+  Sentry["pqcnet-sentry"]
+  Net["pqcnet-networking"]
+  Relayer["pqcnet-relayer"]
+  Telemetry["pqcnet-telemetry"]
+  QACE["pqcnet-qace"]
+end
+PqcWasm --> Qstp
+QFkh --> Qstp
+Crypto --> Qstp
+Qstp --> QACE
+Qstp --> Net
+Qstp --> Relayer
+Relayer --> QsDag
+Relayer --> Telemetry
+Net --> Telemetry
+Telemetry --> QACE
+QsDag --> Sentry
+subgraph TCStack["TupleChain → Chronosync → 5D-QEH"]
+  Tuplechain["autheo-pqcnet-tuplechain"]
+  Icosuple["autheo-pqcnet-icosuple"]
+  Chrono["autheo-pqcnet-chronosync"]
+  FiveDqeh["autheo-pqcnet-5dqeh"]
+end
+Tuplechain --> Icosuple --> Chrono --> FiveDqeh
+Chrono --> QsDag
+subgraph Shared["Shared Assets"]
+  Docs["docs/"]
+  Protos["protos/"]
+  Configs["configs/"]
+end
+Docs --> Engines
+Docs --> Runtime
+Docs --> TCStack
+Protos --> Runtime
+Protos --> TCStack
+Configs --> Runtime
+AIPKeys --> PqcCore
+AIPAuth --> Qstp
+AIPRec --> QsDag
+AIPOverlays --> Net
+AIPComms --> Relayer
+AIPComms --> Qstp
+classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
+classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
+class Kyber,Dilithium,Falcon,EntropyWasm,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs completed;
+class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
+```
 
 ## Production Enclave Snapshot
 
