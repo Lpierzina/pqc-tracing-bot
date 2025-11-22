@@ -8,6 +8,7 @@
 //! `HypergraphModule::apply_anchor_edge`, and PQC bindings backed by `autheo-pqc-core`).
 
 use blake3::Hasher;
+use core::f64::consts::PI;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -36,6 +37,12 @@ pub struct QehConfig {
     pub crystalline_payload_threshold: usize,
     pub laser_channels: u16,
     pub vector_dimensions: usize,
+    pub vector_similarity_floor: f32,
+    pub quantum_coordinate_scale_mm: f64,
+    pub temporal_precision_ps: f64,
+    pub crystalline_density_tb_per_cm3: f64,
+    pub laser_latency_ps: f64,
+    pub laser_throughput_gbps: f64,
 }
 
 impl Default for QehConfig {
@@ -46,8 +53,118 @@ impl Default for QehConfig {
             crystalline_offload_after_ms: 2_592_000_000, // 30 days in milliseconds
             crystalline_payload_threshold: 3_584,
             laser_channels: 16,
-            vector_dimensions: 8,
+            vector_dimensions: 2_048,
+            vector_similarity_floor: 0.8,
+            quantum_coordinate_scale_mm: 5.0,
+            temporal_precision_ps: 1.0,
+            crystalline_density_tb_per_cm3: 360.0,
+            laser_latency_ps: 0.75,
+            laser_throughput_gbps: 1_000_000.0,
         }
+    }
+}
+
+/// Five-dimensional coordinates for a vertex (x, y, z, temporal, quantum phase).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct QuantumCoordinates {
+    pub x_mm: f64,
+    pub y_mm: f64,
+    pub z_mm: f64,
+    pub temporal_ps: f64,
+    pub phase_radians: f64,
+}
+
+impl QuantumCoordinates {
+    pub const fn new(
+        x_mm: f64,
+        y_mm: f64,
+        z_mm: f64,
+        temporal_ps: f64,
+        phase_radians: f64,
+    ) -> Self {
+        Self {
+            x_mm,
+            y_mm,
+            z_mm,
+            temporal_ps,
+            phase_radians,
+        }
+    }
+
+    fn hash_into(&self, hasher: &mut Hasher) {
+        hasher.update(&self.x_mm.to_le_bytes());
+        hasher.update(&self.y_mm.to_le_bytes());
+        hasher.update(&self.z_mm.to_le_bytes());
+        hasher.update(&self.temporal_ps.to_le_bytes());
+        hasher.update(&self.phase_radians.to_le_bytes());
+    }
+}
+
+/// Encodes how an icosuple is mapped into crystalline storage.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct CrystallineVoxel {
+    pub x_mm: f64,
+    pub y_mm: f64,
+    pub z_mm: f64,
+    pub intensity_bits: f64,
+    pub polarization_radians: f64,
+}
+
+impl CrystallineVoxel {
+    pub const fn new(
+        x_mm: f64,
+        y_mm: f64,
+        z_mm: f64,
+        intensity_bits: f64,
+        polarization_radians: f64,
+    ) -> Self {
+        Self {
+            x_mm,
+            y_mm,
+            z_mm,
+            intensity_bits,
+            polarization_radians,
+        }
+    }
+
+    fn hash_into(&self, hasher: &mut Hasher) {
+        hasher.update(&self.x_mm.to_le_bytes());
+        hasher.update(&self.y_mm.to_le_bytes());
+        hasher.update(&self.z_mm.to_le_bytes());
+        hasher.update(&self.intensity_bits.to_le_bytes());
+        hasher.update(&self.polarization_radians.to_le_bytes());
+    }
+}
+
+/// Pulsed laser telemetry attached to each anchored vertex.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct PulsedLaserLink {
+    pub channel_id: u16,
+    pub throughput_gbps: f64,
+    pub latency_ps: f64,
+    pub qkd_active: bool,
+}
+
+impl PulsedLaserLink {
+    pub const fn new(
+        channel_id: u16,
+        throughput_gbps: f64,
+        latency_ps: f64,
+        qkd_active: bool,
+    ) -> Self {
+        Self {
+            channel_id,
+            throughput_gbps,
+            latency_ps,
+            qkd_active,
+        }
+    }
+
+    fn hash_into(&self, hasher: &mut Hasher) {
+        hasher.update(&self.channel_id.to_le_bytes());
+        hasher.update(&self.throughput_gbps.to_le_bytes());
+        hasher.update(&self.latency_ps.to_le_bytes());
+        hasher.update(&[self.qkd_active as u8]);
     }
 }
 
@@ -59,6 +176,7 @@ pub struct TemporalWeightModel {
     entropy_gain: f64,
     contribution_gain: f64,
     ann_gain: f64,
+    entanglement_gain: f64,
 }
 
 impl TemporalWeightModel {
@@ -68,6 +186,7 @@ impl TemporalWeightModel {
         entropy_gain: f64,
         contribution_gain: f64,
         ann_gain: f64,
+        entanglement_gain: f64,
     ) -> Self {
         Self {
             lamport_gain,
@@ -75,6 +194,7 @@ impl TemporalWeightModel {
             entropy_gain,
             contribution_gain,
             ann_gain,
+            entanglement_gain,
         }
     }
 
@@ -85,14 +205,21 @@ impl TemporalWeightModel {
         let entropy_term = ((input.qrng_entropy_bits as f64) / 512.0).min(1.0) * self.entropy_gain;
         let contribution_term = input.contribution_score * self.contribution_gain;
         let ann_term = input.ann_similarity as f64 * self.ann_gain;
-        (lamport_term + coherence_term + entropy_term + contribution_term + ann_term)
+        let entanglement_term =
+            input.entanglement_coefficient.clamp(0.0, 1.0) * self.entanglement_gain;
+        (lamport_term
+            + coherence_term
+            + entropy_term
+            + contribution_term
+            + ann_term
+            + entanglement_term)
             .clamp(0.0, 10.0)
     }
 }
 
 impl Default for TemporalWeightModel {
     fn default() -> Self {
-        Self::new(0.65, 2.1, 1.3, 0.9, 1.4)
+        Self::new(0.65, 2.1, 1.3, 0.9, 1.4, 1.8)
     }
 }
 
@@ -104,6 +231,7 @@ pub struct TemporalWeightInput {
     pub qrng_entropy_bits: u16,
     pub contribution_score: f64,
     pub ann_similarity: f32,
+    pub entanglement_coefficient: f64,
 }
 
 impl TemporalWeightInput {
@@ -113,6 +241,7 @@ impl TemporalWeightInput {
         qrng_entropy_bits: u16,
         contribution_score: f64,
         ann_similarity: f32,
+        entanglement_coefficient: f64,
     ) -> Self {
         Self {
             lamport,
@@ -120,6 +249,7 @@ impl TemporalWeightInput {
             qrng_entropy_bits,
             contribution_score,
             ann_similarity,
+            entanglement_coefficient,
         }
     }
 }
@@ -173,18 +303,22 @@ pub struct Icosuple {
     pub payload_bytes: usize,
     pub pqc_layers: Vec<PqcLayer>,
     pub vector_signature: Vec<f32>,
+    pub quantum_coordinates: QuantumCoordinates,
+    pub entanglement_coefficient: f32,
+    pub crystalline_voxel: CrystallineVoxel,
+    pub laser_link: PulsedLaserLink,
 }
 
 impl Icosuple {
     /// Synthesizes an icosuple for demos/simulations.
     pub fn synthesize(
+        config: &QehConfig,
         label: impl Into<String>,
         payload_bytes: usize,
-        vector_dimensions: usize,
         similarity_hint: f32,
     ) -> Self {
         let label = label.into();
-        let dims = vector_dimensions.max(1);
+        let dims = config.vector_dimensions.max(1);
         let normalized = similarity_hint.clamp(0.0, 1.0);
         let mut vector_signature = Vec::with_capacity(dims);
         for i in 0..dims {
@@ -192,6 +326,15 @@ impl Icosuple {
             let blended = ((phase * 0.5) + normalized).min(1.0);
             vector_signature.push(blended);
         }
+
+        let ent_seed = derive_seed(&label, payload_bytes, dims, normalized, b"entangle");
+        let entanglement_coefficient = derive_entanglement(ent_seed, normalized);
+        let quantum_seed = derive_seed(&label, payload_bytes, dims, normalized, b"quantum");
+        let quantum_coordinates = build_quantum_coordinates(&quantum_seed, config);
+        let voxel_seed = derive_seed(&label, payload_bytes, dims, normalized, b"voxel");
+        let crystalline_voxel = build_crystalline_voxel(&voxel_seed, config);
+        let laser_seed = derive_seed(&label, payload_bytes, dims, normalized, b"laser");
+        let laser_link = build_laser_link(&laser_seed, config);
 
         let pqc_layers = vec![
             PqcLayer {
@@ -211,6 +354,10 @@ impl Icosuple {
             payload_bytes,
             pqc_layers,
             vector_signature,
+            quantum_coordinates,
+            entanglement_coefficient,
+            crystalline_voxel,
+            laser_link,
         }
     }
 
@@ -235,10 +382,111 @@ impl Icosuple {
         for parent in parents {
             hasher.update(parent.as_bytes());
         }
+        self.quantum_coordinates.hash_into(&mut hasher);
+        hasher.update(&self.entanglement_coefficient.to_le_bytes());
+        self.crystalline_voxel.hash_into(&mut hasher);
+        self.laser_link.hash_into(&mut hasher);
         let mut bytes = [0u8; 32];
         bytes.copy_from_slice(hasher.finalize().as_bytes());
         VertexId(bytes)
     }
+}
+
+const TAU: f64 = PI * 2.0;
+const BITS_PER_TB: f64 = 8.0 * 1_000_000_000_000.0;
+
+fn derive_seed(
+    label: &str,
+    payload_bytes: usize,
+    dims: usize,
+    similarity: f32,
+    salt: &[u8],
+) -> [u8; 64] {
+    let mut hasher = Hasher::new();
+    hasher.update(label.as_bytes());
+    hasher.update(&payload_bytes.to_le_bytes());
+    hasher.update(&(dims as u64).to_le_bytes());
+    hasher.update(&similarity.to_le_bytes());
+    hasher.update(salt);
+    let mut reader = hasher.finalize_xof();
+    let mut seed = [0u8; 64];
+    reader.fill(&mut seed);
+    seed
+}
+
+fn next_unit(seed: &[u8; 64], cursor: &mut usize) -> f64 {
+    if *cursor + 8 > seed.len() {
+        *cursor = 0;
+    }
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&seed[*cursor..*cursor + 8]);
+    *cursor += 8;
+    let raw = u64::from_le_bytes(bytes);
+    (raw as f64) / (u64::MAX as f64)
+}
+
+fn range_value(unit: f64, min: f64, max: f64) -> f64 {
+    min + (max - min) * unit
+}
+
+fn derive_entanglement(seed: [u8; 64], similarity: f32) -> f32 {
+    let mut cursor = 0;
+    let noise = next_unit(&seed, &mut cursor);
+    (((similarity as f64) * 0.65) + noise * 0.35).clamp(0.0, 1.0) as f32
+}
+
+fn build_quantum_coordinates(seed: &[u8; 64], config: &QehConfig) -> QuantumCoordinates {
+    let mut cursor = 0;
+    let min = -config.quantum_coordinate_scale_mm;
+    let max = config.quantum_coordinate_scale_mm;
+    let x = range_value(next_unit(seed, &mut cursor), min, max);
+    let y = range_value(next_unit(seed, &mut cursor), min, max);
+    let z = range_value(next_unit(seed, &mut cursor), min, max);
+    let temporal = range_value(
+        next_unit(seed, &mut cursor),
+        0.0,
+        config.temporal_precision_ps.max(0.0),
+    );
+    let phase = range_value(next_unit(seed, &mut cursor), 0.0, TAU);
+    QuantumCoordinates::new(x, y, z, temporal, phase)
+}
+
+fn build_crystalline_voxel(seed: &[u8; 64], config: &QehConfig) -> CrystallineVoxel {
+    let mut cursor = 0;
+    let min = -config.quantum_coordinate_scale_mm * 1.2;
+    let max = config.quantum_coordinate_scale_mm * 1.2;
+    let x = range_value(next_unit(seed, &mut cursor), min, max);
+    let y = range_value(next_unit(seed, &mut cursor), min, max);
+    let z = range_value(next_unit(seed, &mut cursor), min, max);
+    let density_bits = config.crystalline_density_tb_per_cm3.max(0.0) * BITS_PER_TB;
+    let intensity = range_value(
+        next_unit(seed, &mut cursor),
+        0.5 * density_bits,
+        density_bits,
+    );
+    let polarization = range_value(next_unit(seed, &mut cursor), 0.0, TAU);
+    CrystallineVoxel::new(x, y, z, intensity, polarization)
+}
+
+fn build_laser_link(seed: &[u8; 64], config: &QehConfig) -> PulsedLaserLink {
+    let mut cursor = 0;
+    let channels = config.laser_channels.max(1);
+    let channel_unit = next_unit(seed, &mut cursor);
+    let mut channel_id = (channel_unit * channels as f64)
+        .floor()
+        .min((channels - 1) as f64) as u16;
+    if config.laser_channels == 0 {
+        channel_id = 0;
+    }
+    let throughput_scale = range_value(next_unit(seed, &mut cursor), 0.9, 1.1);
+    let latency_scale = range_value(next_unit(seed, &mut cursor), 0.25, 0.9);
+    let qkd_active = next_unit(seed, &mut cursor) > 0.2;
+    PulsedLaserLink::new(
+        channel_id,
+        config.laser_throughput_gbps * throughput_scale.max(0.1),
+        config.laser_latency_ps * latency_scale.max(0.1),
+        qkd_active,
+    )
 }
 
 /// Errors emitted when inserting or simulating vertices.
@@ -250,6 +498,8 @@ pub enum HypergraphError {
     TooManyParents { given: usize, limit: usize },
     #[error("vector embedding has {given} dimensions but expected {expected}")]
     EmbeddingMismatch { given: usize, expected: usize },
+    #[error("entanglement coefficient {coefficient} outside 0..=1")]
+    InvalidEntanglementCoefficient { coefficient: f32 },
 }
 
 /// Storage placement for an icosuple.
@@ -267,6 +517,10 @@ pub struct VertexReceipt {
     pub storage: StorageTarget,
     pub ann_similarity: f32,
     pub parents: usize,
+    pub quantum_coordinates: QuantumCoordinates,
+    pub entanglement_coefficient: f32,
+    pub crystalline_voxel: CrystallineVoxel,
+    pub laser_link: PulsedLaserLink,
     pub pqc_signature: Option<PqcSignature>,
 }
 
@@ -327,6 +581,11 @@ impl HypergraphState {
                 expected: self.config.vector_dimensions,
             });
         }
+        if !(0.0..=1.0).contains(&icosuple.entanglement_coefficient) {
+            return Err(HypergraphError::InvalidEntanglementCoefficient {
+                coefficient: icosuple.entanglement_coefficient,
+            });
+        }
         if parents.len() > self.config.max_parent_links {
             return Err(HypergraphError::TooManyParents {
                 given: parents.len(),
@@ -348,6 +607,10 @@ impl HypergraphState {
             storage: storage.clone(),
             ann_similarity: tw_input.ann_similarity,
             parents: parents.len(),
+            quantum_coordinates: icosuple.quantum_coordinates,
+            entanglement_coefficient: icosuple.entanglement_coefficient,
+            crystalline_voxel: icosuple.crystalline_voxel,
+            laser_link: icosuple.laser_link,
             pqc_signature: pqc_signature.clone(),
         };
 
@@ -368,6 +631,7 @@ impl HypergraphState {
         tw_input.lamport >= self.config.crystalline_offload_after_ms
             || icosuple.payload_bytes >= self.config.crystalline_payload_threshold
             || tw_input.ann_similarity < self.config.ann_similarity_threshold
+            || icosuple.entanglement_coefficient < self.config.vector_similarity_floor
     }
 }
 
@@ -458,6 +722,7 @@ impl MsgAnchorEdge {
             self.qrng_entropy_bits,
             self.contribution_score,
             self.ann_similarity,
+            self.icosuple.entanglement_coefficient as f64,
         )
     }
 
@@ -525,6 +790,10 @@ fn anchor_signing_preimage(msg: &MsgAnchorEdge) -> [u8; 32] {
     for value in &msg.icosuple.vector_signature {
         hasher.update(&value.to_le_bytes());
     }
+    msg.icosuple.quantum_coordinates.hash_into(&mut hasher);
+    hasher.update(&msg.icosuple.entanglement_coefficient.to_le_bytes());
+    msg.icosuple.crystalline_voxel.hash_into(&mut hasher);
+    msg.icosuple.laser_link.hash_into(&mut hasher);
     let mut out = [0u8; 32];
     out.copy_from_slice(hasher.finalize().as_bytes());
     out
@@ -676,12 +945,8 @@ impl SimulationIntent {
             .wrapping_mul(1_000_000)
             .wrapping_add(self.lamport)
             .wrapping_add(parent_count as u64);
-        let icosuple = Icosuple::synthesize(
-            self.label,
-            self.payload_bytes,
-            config.vector_dimensions,
-            self.ann_similarity,
-        );
+        let icosuple =
+            Icosuple::synthesize(config, self.label, self.payload_bytes, self.ann_similarity);
         MsgAnchorEdge {
             request_id,
             chain_epoch,
@@ -699,13 +964,7 @@ impl SimulationIntent {
 
 /// Pulsed laser telemetry emitted by the simulator.
 #[cfg(feature = "sim")]
-#[derive(Clone, Debug)]
-pub struct LaserPath {
-    pub channel_id: u16,
-    pub throughput_gbps: f64,
-    pub latency_ps: f64,
-    pub qkd_active: bool,
-}
+pub type LaserPath = PulsedLaserLink;
 
 /// Output of a simulator epoch.
 #[cfg(feature = "sim")]
@@ -806,12 +1065,12 @@ impl FiveDqehSim {
             let throughput_gbps = self.rng.gen_range_f64(1_000.0..=1_000_000.0);
             let latency_ps = self.rng.gen_range_f64(0.5..=10.0);
             let qkd_active = self.rng.gen_bool(0.85);
-            paths.push(LaserPath {
-                channel_id: channel,
+            paths.push(PulsedLaserLink::new(
+                channel,
                 throughput_gbps,
                 latency_ps,
                 qkd_active,
-            });
+            ));
         }
         paths
     }
@@ -824,8 +1083,8 @@ mod tests {
     #[test]
     fn temporal_weight_respects_entropy() {
         let model = TemporalWeightModel::default();
-        let low = TemporalWeightInput::new(10, 0.2, 64, 0.1, 0.5);
-        let high = TemporalWeightInput::new(10, 0.2, 512, 0.1, 0.5);
+        let low = TemporalWeightInput::new(10, 0.2, 64, 0.1, 0.5, 0.4);
+        let high = TemporalWeightInput::new(10, 0.2, 512, 0.1, 0.5, 0.4);
         assert!(model.score(&high) > model.score(&low));
     }
 
@@ -835,14 +1094,14 @@ mod tests {
         config.max_parent_links = 2;
         let mut state = HypergraphState::new(config.clone());
         let model = TemporalWeightModel::default();
-        let icosuple = Icosuple::synthesize("demo", 1024, config.vector_dimensions, 0.9);
+        let icosuple = Icosuple::synthesize(&config, "demo", 1_024, 0.9);
         let mut parent_rng = HostEntropySource::new();
         let parents = vec![
             VertexId::random(&mut parent_rng),
             VertexId::random(&mut parent_rng),
             VertexId::random(&mut parent_rng),
         ];
-        let input = TemporalWeightInput::new(5, 1.0, 256, 0.2, 0.9);
+        let input = TemporalWeightInput::new(5, 1.0, 256, 0.2, 0.9, 0.85);
         let err = state
             .insert(icosuple, parents, &model, input, None)
             .expect_err("too many parents");
@@ -890,7 +1149,7 @@ mod tests {
         let model = TemporalWeightModel::default();
         let runtime = Arc::new(MockRuntime);
         let mut module = HypergraphModule::new(config.clone(), model).with_pqc_runtime(runtime);
-        let icosuple = Icosuple::synthesize("edge", 2_048, config.vector_dimensions, 0.91);
+        let icosuple = Icosuple::synthesize(&config, "edge", 2_048, 0.91);
         let msg = MsgAnchorEdge {
             request_id: 99,
             chain_epoch: 42,

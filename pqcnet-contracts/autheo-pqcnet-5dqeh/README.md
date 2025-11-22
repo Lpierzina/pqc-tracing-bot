@@ -1,6 +1,6 @@
 # autheo-pqcnet-5dqeh
 
-`autheo-pqcnet-5dqeh` is now treated as a chain module, not a simulation toy. The crate exposes the Five-Dimensional Qubit-Enhanced Hypergraph (5D-QEH) state machine, storage layout helpers, and RPC-friendly message types so Chronosync, TupleChain, and PQCNet runtimes can embed it directly (native or `wasm32-unknown-unknown`). The developer simulator remains in `examples/` solely as a diagnostic harness.
+`autheo-pqcnet-5dqeh` is now treated as a production chain module, not a simulation toy. The crate exposes the Five-Dimensional Qubit-Enhanced Hypergraph (5D-QEH) state machine, storage layout helpers, and RPC-friendly message types so Chronosync, TupleChain, and PQCNet runtimes can embed it directly (native or `wasm32-unknown-unknown`). The production surface now emits full 5D telemetry—quantum coordinates, crystalline voxels, and pulsed-laser descriptors—while the developer simulator remains in `examples/` solely as a diagnostic harness.
 
 ## Module scope
 
@@ -8,6 +8,25 @@
 - **Ledger affinity** – hot vs crystalline placement is tracked via `ModuleStorageLayout`, keeping TupleChain/Icosuple tiers aligned with Autheo’s storage policies.
 - **PQC plumbing** – `PqcBinding` plus the new `PqcRuntime` trait call straight into `autheo-pqc-core`’s `pqc_handshake/pqc_sign/pqc_rotate` ABIs (native or WASM). `CorePqcRuntime` ships in-crate so chain modules can request signatures or rotations before admitting an anchor edge.
 - **RPC / ABCI shape** – `MsgAnchorEdge`, `MsgAnchorEdgeResponse`, and the RPCNet router mirror the protobuf definitions in `protos/pqcnet_5dqeh.proto`/`qstp.proto`, so relayers, CLI clients, and ABCI handlers speak the same language.
+- **5D instrumentation** – every anchored vertex carries `QuantumCoordinates`, `CrystallineVoxel`, and `PulsedLaserLink` metadata. These encode the 3D spatial position, femtosecond temporal coordinate, quantum phase, crystalline voxel assignment (for 360 TB/cm³ optical glass), and the pulsed-laser channel (sub-picosecond latency with QKD). The fields are embedded inside `MsgAnchorEdge`/`VertexReceipt` and surfaced over RPC.
+
+## Configuration knobs
+
+`QehConfig` ships production defaults that align with the Chronosync/Tuplechain roadmap:
+
+| Field | Description |
+| --- | --- |
+| `max_parent_links` | Hard cap on entangled parents (100 by default). |
+| `ann_similarity_threshold` | Minimum ANN score before forcing crystalline offload. |
+| `vector_dimensions` | Size of the high-dimensional embedding (default 2,048 floats mirroring 4096-byte content). |
+| `vector_similarity_floor` | Entanglement coefficient floor; anything below is archived immediately. |
+| `quantum_coordinate_scale_mm` | Spatial radius for 5D coordinates (controls voxel packing density). |
+| `temporal_precision_ps` | Temporal axis resolution in femto/picoseconds, applied to `QuantumCoordinates`. |
+| `crystalline_density_tb_per_cm3` | Optical crystal density used when synthesizing voxel intensity. |
+| `laser_channels`, `laser_latency_ps`, `laser_throughput_gbps` | Baseline pulsed-laser network geometry exposed through `PulsedLaserLink`. |
+| `crystalline_offload_after_ms`, `crystalline_payload_threshold` | Time/payload triggers for archival placement. |
+
+Hosts may override these fields when instantiating `HypergraphModule` to match their fabrication assumptions or shard layouts; the values flow into deterministic `Icosuple::synthesize` helpers and RPC receipts.
 
 ## State machine + storage layout
 
@@ -40,11 +59,31 @@ println!(
     module.storage_layout().hot_vertices,
     module.storage_layout().crystalline_vertices
 );
+println!(
+    "5d=({:.2},{:.2},{:.2},{:.2}ps,phase {:.2}) | ent={:.2} | laser channel {} @ {:.0}Gbps/{:.2}ps",
+    receipt.quantum_coordinates.x_mm,
+    receipt.quantum_coordinates.y_mm,
+    receipt.quantum_coordinates.z_mm,
+    receipt.quantum_coordinates.temporal_ps,
+    receipt.quantum_coordinates.phase_radians,
+    receipt.entanglement_coefficient,
+    receipt.laser_link.channel_id,
+    receipt.laser_link.throughput_gbps,
+    receipt.laser_link.latency_ps,
+);
 ```
 
 - `HypergraphModule` wraps the deterministic `HypergraphState` and enforces temporal-weight scoring for every edge.
 - `ModuleStorageLayout` tracks hot/crystalline counts so host runtimes can write to their preferred backends.
-- `VertexReceipt`/`HyperVertex` derive `serde` so receipts can be routed over RPC or persisted in telemetry logs.
+- `VertexReceipt`/`HyperVertex` derive `serde` so receipts (including 5D coordinates, crystalline voxels, and pulsed-laser channels) can be routed over RPC or persisted in telemetry logs.
+
+## 5D telemetry surface
+
+- `QuantumCoordinates` encode `(x,y,z,temporal_ps,phase)` with millimeter-scale spatial precision and femtosecond clocks so Chronosync can correlate optical lattice slots.
+- `CrystallineVoxel` captures how each vertex is baked into nanostructured glass (position plus intensity/polarization), enabling deterministic cold-storage placement.
+- `PulsedLaserLink` describes the femtosecond transport channel (channel id, throughput, latency, QKD flag) so relayers can audit trillion-TPS laser fabrics.
+- `entanglement_coefficient` augments the temporal-weight scoring model and dictates whether a vertex stays hot or is instantly vaulted to crystalline tiers.
+- All metadata is deterministic under the `QehConfig`, travels with `MsgAnchorEdge`, and is reflected back via `VertexReceipt` so relayers, RPC clients, and telemetry dashboards see the exact 5D placement choices.
 
 ## Chronosync keeper + RPCNet
 
@@ -55,7 +94,7 @@ println!(
 ## RPC + schema
 
 - The protobuf contract for node/ABCI integrations lives in `protos/pqcnet_5dqeh.proto` (`MsgAnchorEdge`, `MsgAnchorEdgeResponse`, `QehVertexReceipt`, `QehStorageLayout`, etc.).
-- Each icosuple carries PQC metadata (`PqcLayer`, `PqcBinding`) so Autheo nodes can assert that Kyber/Dilithium/Falcon slots match the PQC engine active inside `autheo-pqc-core`/`autheo-pqc-wasm`.
+- Each icosuple carries PQC metadata (`PqcLayer`, `PqcBinding`) so Autheo nodes can assert that Kyber/Dilithium/Falcon slots match the PQC engine active inside `autheo-pqc-core`/`autheo-pqc-wasm`. The same envelope now carries `QehQuantumCoordinates`, `QehCrystallineVoxel`, and `QehPulsedLaserLink` for multi-layer entanglement audits.
 - RPC handlers wrap the Rust structs one-to-one, making it trivial to expose REST/gRPC endpoints such as `POST /pqcnet/5dqeh/v1/anchor_edge`.
 
 ## Build targets

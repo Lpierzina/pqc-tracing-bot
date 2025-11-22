@@ -136,7 +136,10 @@ pub enum RpcNetError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autheo_pqcnet_5dqeh::{Icosuple, ModuleStorageLayout, PqcBinding, VertexId, VertexReceipt};
+    use autheo_pqcnet_5dqeh::{
+        CrystallineVoxel, Icosuple, ModuleStorageLayout, PqcBinding, PulsedLaserLink, QehConfig,
+        QuantumCoordinates, VertexId, VertexReceipt,
+    };
     use pqcnet_qstp::{InMemoryTupleChain, MeshPeerId, MeshQosClass, MeshRoutePlan};
 
     struct DummyAnchor {
@@ -161,6 +164,10 @@ mod tests {
                 storage: autheo_pqcnet_5dqeh::StorageTarget::Hot,
                 ann_similarity: 0.9,
                 parents: 0,
+                quantum_coordinates: QuantumCoordinates::default(),
+                entanglement_coefficient: 0.92,
+                crystalline_voxel: CrystallineVoxel::default(),
+                laser_link: PulsedLaserLink::default(),
                 pqc_signature: None,
             };
             Ok(MsgAnchorEdgeResponse {
@@ -171,6 +178,7 @@ mod tests {
     }
 
     fn sample_anchor() -> MsgAnchorEdge {
+        let config = QehConfig::default();
         MsgAnchorEdge {
             request_id: 1,
             chain_epoch: 1,
@@ -181,7 +189,7 @@ mod tests {
             ann_similarity: 0.9,
             qrng_entropy_bits: 256,
             pqc_binding: PqcBinding::simulated("rpcnet"),
-            icosuple: Icosuple::synthesize("rpc", 1_024, 8, 0.9),
+            icosuple: Icosuple::synthesize(&config, "rpc", 1_024, 0.9),
         }
     }
 

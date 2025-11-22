@@ -104,9 +104,9 @@ impl ChronosyncKeeper {
         };
         let contribution_score = (node.transactions_carried as f64 / denom).clamp(0.0, 1.0);
         let icosuple = Icosuple::synthesize(
+            self.module.config(),
             node.node_id.clone(),
             node.payload_bytes,
-            self.module.config().vector_dimensions,
             ann_similarity,
         );
 

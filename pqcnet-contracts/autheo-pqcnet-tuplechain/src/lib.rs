@@ -558,7 +558,6 @@ impl TupleChainKeeper {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,5 +601,4 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, TupleChainError::UnauthorizedCreator { .. }));
     }
-
 }

@@ -205,13 +205,13 @@ pub struct EpochReport {
     pub rejected_transactions: u64,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use autheo_pqcnet_5dqeh::{
-        HypergraphModule, HostEntropySource, Icosuple, MsgAnchorEdge, PqcBinding, PqcLayer,
-        PqcScheme, QehConfig, TemporalWeightModel, VertexId, ICOSUPLE_BYTES,
+        CrystallineVoxel, HostEntropySource, HypergraphModule, Icosuple, MsgAnchorEdge, PqcBinding,
+        PqcLayer, PqcScheme, PulsedLaserLink, QehConfig, QuantumCoordinates, TemporalWeightModel,
+        VertexId, ICOSUPLE_BYTES,
     };
     use autheo_pqcnet_tuplechain::{
         ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload, TupleReceipt,
@@ -285,8 +285,10 @@ mod tests {
         let chrono_config = ChronosyncConfig::default();
         let qeh_config = QehConfig::default();
         let tw_model = TemporalWeightModel::default();
-        let mut keeper =
-            ChronosyncKeeper::new(chrono_config, HypergraphModule::new(qeh_config, tw_model));
+        let mut keeper = ChronosyncKeeper::new(
+            chrono_config,
+            HypergraphModule::new(qeh_config.clone(), tw_model),
+        );
         let msg = MsgAnchorEdge {
             request_id: 1,
             chain_epoch: 1,
@@ -297,7 +299,7 @@ mod tests {
             ann_similarity: 0.9,
             qrng_entropy_bits: 256,
             pqc_binding: PqcBinding::new("did:autheo:alpha", PqcScheme::Dilithium),
-            icosuple: Icosuple::synthesize("rpcnet", 1_024, 8, 0.9),
+            icosuple: Icosuple::synthesize(&qeh_config, "rpcnet", 1_024, 0.9),
         };
         let response = AnchorEdgeEndpoint::submit_anchor_edge(&mut keeper, msg).expect("anchor");
         assert_eq!(response.receipt.parents, 0);
@@ -310,13 +312,14 @@ mod tests {
         let chrono_config = ChronosyncConfig::default();
         let qeh_config = QehConfig::default();
         let tw_model = TemporalWeightModel::default();
-        let mut keeper =
-            ChronosyncKeeper::new(chrono_config.clone(), HypergraphModule::new(qeh_config.clone(), tw_model));
+        let mut keeper = ChronosyncKeeper::new(
+            chrono_config.clone(),
+            HypergraphModule::new(qeh_config.clone(), tw_model),
+        );
 
         let mut entropy = HostEntropySource::new();
         let parents: Vec<VertexId> = (0..2).map(|_| VertexId::random(&mut entropy)).collect();
-        let parent_coherence =
-            (parents.len() as f64 / qeh_config.max_parent_links as f64).min(1.0);
+        let parent_coherence = (parents.len() as f64 / qeh_config.max_parent_links as f64).min(1.0);
 
         let vector_signature = vec![0.91_f32; qeh_config.vector_dimensions];
         let pqc_layers = receipt
@@ -338,6 +341,10 @@ mod tests {
             payload_bytes: ICOSUPLE_BYTES,
             pqc_layers,
             vector_signature,
+            quantum_coordinates: QuantumCoordinates::default(),
+            entanglement_coefficient: 0.94,
+            crystalline_voxel: CrystallineVoxel::default(),
+            laser_link: PulsedLaserLink::default(),
         };
 
         let msg = MsgAnchorEdge {
@@ -371,8 +378,8 @@ mod tests {
     }
 
     fn production_tuple_receipt() -> TupleReceipt {
-        let mut keeper =
-            TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
+        let mut keeper = TupleChainKeeper::new(TupleChainConfig::default())
+            .allow_creator("did:autheo:l1/kernel");
         let payload = TuplePayload::builder("did:autheo:alice", "owns")
             .object_text("autheo-passport")
             .proof(ProofScheme::Zkp, b"proof", "zkp")

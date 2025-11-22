@@ -27,12 +27,39 @@ message QehIcosuple {
   uint32 payload_bytes = 2;
   repeated QehPqcLayer pqc_layers = 3;
   repeated float vector_signature = 4;
+  QehQuantumCoordinates quantum = 5;
+  float entanglement_coefficient = 6;
+  QehCrystallineVoxel crystalline_voxel = 7;
+  QehPulsedLaserLink laser = 8;
 }
 
 message QehPqcLayer {
   string scheme = 1; // kyber, dilithium, falcon, hybrid/<label>
   string metadata_tag = 2;
   uint64 epoch = 3;
+}
+
+message QehQuantumCoordinates {
+  double x_mm = 1;
+  double y_mm = 2;
+  double z_mm = 3;
+  double temporal_ps = 4;
+  double phase_radians = 5;
+}
+
+message QehCrystallineVoxel {
+  double x_mm = 1;
+  double y_mm = 2;
+  double z_mm = 3;
+  double intensity_bits = 4;
+  double polarization_radians = 5;
+}
+
+message QehPulsedLaserLink {
+  uint32 channel_id = 1;
+  double throughput_gbps = 2;
+  double latency_ps = 3;
+  bool qkd_active = 4;
 }
 
 message QehPqcBinding {
@@ -46,6 +73,10 @@ message QehVertexReceipt {
   string storage = 3;
   float ann_similarity = 4;
   uint32 parents = 5;
+  QehQuantumCoordinates quantum = 6;
+  float entanglement_coefficient = 7;
+  QehCrystallineVoxel crystalline_voxel = 8;
+  QehPulsedLaserLink laser = 9;
 }
 
 message QehStorageLayout {

@@ -10,7 +10,7 @@ use autheo_pqcnet_5dqeh::{
     ModuleStorageLayout, PqcBinding, PqcScheme, StorageTarget, VertexReceipt,
 };
 use autheo_pqcnet_chronosync::{ChronosyncKeeperReport, EpochReport};
-use autheo_pqcnet_tuplechain::{ShardId, TupleReceipt, TupleId};
+use autheo_pqcnet_tuplechain::{ShardId, TupleId, TupleReceipt};
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -48,8 +48,7 @@ impl HyperTuple {
     pub fn encode(&self) -> [u8; ICOSUPLE_BYTES] {
         let mut bytes = [0u8; ICOSUPLE_BYTES];
         bytes[..HASH_FIELD_BYTES].copy_from_slice(&self.input_hash.bytes);
-        bytes[HASH_FIELD_BYTES..(HASH_FIELD_BYTES * 2)]
-            .copy_from_slice(&self.prev_hash.bytes);
+        bytes[HASH_FIELD_BYTES..(HASH_FIELD_BYTES * 2)].copy_from_slice(&self.prev_hash.bytes);
         bytes[(HASH_FIELD_BYTES * 2)..(HASH_FIELD_BYTES * 3)]
             .copy_from_slice(&self.current_hash.bytes);
         let metadata = self.metadata.encoded_bytes();
@@ -194,8 +193,7 @@ impl HyperTupleBuilder {
         epoch_report: &EpochReport,
         keeper_report: &ChronosyncKeeperReport,
     ) -> HyperTuple {
-        let tier_assignments =
-            self.materialize_base_tiers(receipt, epoch_report, keeper_report);
+        let tier_assignments = self.materialize_base_tiers(receipt, epoch_report, keeper_report);
         let extensions = self.materialize_extensions(&keeper_report.applied_vertices);
         let entanglement = self.entanglement_score(
             &tier_assignments,
