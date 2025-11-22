@@ -1,3 +1,5 @@
+#![cfg(feature = "sim")]
+
 use autheo_pqcnet_5dqeh::{QrngEntropyRng, VertexId};
 
 fn main() {

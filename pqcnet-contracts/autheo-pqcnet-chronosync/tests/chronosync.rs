@@ -1,3 +1,5 @@
+#![cfg(feature = "sim")]
+
 use autheo_pqcnet_chronosync::{
     ChronosyncConfig, ChronosyncNodeProfile, ChronosyncSim, MAX_PARENT_REFERENCES,
 };

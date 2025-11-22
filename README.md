@@ -23,7 +23,9 @@ It provides:
 - `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
 - `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue.
 - `autheo-pqc-wasm/` – `cdylib` that exposes the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for hosts.
-- `wazero-harness/` – Go harness used to exercise the WASM ABI end-to-end.
+- `pqcnet-entropy/` – no_std entropy trait + host import bridge (`autheo_host_entropy`) plus deterministic dev-only sources.
+- `autheo-entropy-wasm/` – standalone WASM module that runs on validators/RPi to service entropy requests from PQC modules.
+- `wazero-harness/` – Go harness used to exercise the WASM ABI end-to-end (now instantiates the entropy node and bridges the `autheo_host_entropy` import automatically).
 
 Add new algorithm crates (e.g., future NIST picks) by following the same pattern and letting `autheo-pqc-core` compose them.
 

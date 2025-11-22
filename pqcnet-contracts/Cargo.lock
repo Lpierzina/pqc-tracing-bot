@@ -130,6 +130,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "autheo-entropy-wasm"
+version = "0.1.0"
+dependencies = [
+ "chacha20",
+ "sha2",
+ "spin 0.9.8",
+ "wee_alloc",
+]
+
+[[package]]
 name = "autheo-mldsa-dilithium"
 version = "0.1.0"
 dependencies = [
@@ -185,8 +195,8 @@ dependencies = [
 name = "autheo-pqcnet-5dqeh"
 version = "0.1.0"
 dependencies = [
- "autheo-pqcnet-qrng",
  "blake3",
+ "pqcnet-entropy",
  "serde",
  "thiserror",
 ]
@@ -400,6 +410,17 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
+name = "chacha20"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
+dependencies = [
+ "cfg-if 1.0.4",
+ "cipher",
+ "cpufeatures",
+]
 
 [[package]]
 name = "cipher"
@@ -1150,6 +1171,13 @@ dependencies = [
  "serde",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "pqcnet-entropy"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.16",
 ]
 
 [[package]]

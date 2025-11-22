@@ -6,6 +6,7 @@
 //! modules. Everything is parameterized so downstream tooling can tune shard counts,
 //! subpool sizes, and TPS ceilings without rewriting the core heuristics.
 
+#[cfg(feature = "sim")]
 use rand::{
     distributions::{Distribution, WeightedIndex},
     rngs::StdRng,
@@ -13,9 +14,10 @@ use rand::{
     Rng, SeedableRng,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+#[cfg(feature = "sim")]
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 /// Chronosync DAG nodes reference at most 10 parents.
 pub const MAX_PARENT_REFERENCES: usize = 10;
@@ -49,10 +51,14 @@ impl Default for ChronosyncConfig {
 }
 
 impl ChronosyncConfig {
+    #[cfg(feature = "sim")]
     fn validate(&self) {
         assert!(self.shards > 0, "Chronosync requires at least one shard");
         assert!(self.layers > 0, "Chronosync requires at least one layer");
-        assert!(self.verification_pools > 0, "At least one verification pool is required");
+        assert!(
+            self.verification_pools > 0,
+            "At least one verification pool is required"
+        );
         assert!(self.subpool_size > 0, "Subpool size must be non-zero");
         assert!(self.max_parents > 0 && self.max_parents <= MAX_PARENT_REFERENCES);
     }
@@ -222,12 +228,14 @@ pub struct EpochReport {
 }
 
 /// Chronosync simulator used by demos, tests, and notebooks.
+#[cfg(feature = "sim")]
 pub struct ChronosyncSim<R> {
     config: ChronosyncConfig,
     rng: R,
     epoch: u64,
 }
 
+#[cfg(feature = "sim")]
 impl ChronosyncSim<StdRng> {
     /// Deterministic constructor used by examples/tests.
     pub fn with_seed(seed: u64, config: ChronosyncConfig) -> Self {
@@ -235,6 +243,7 @@ impl ChronosyncSim<StdRng> {
     }
 }
 
+#[cfg(feature = "sim")]
 impl<R: Rng> ChronosyncSim<R> {
     pub fn new(config: ChronosyncConfig, rng: R) -> Self {
         config.validate();
@@ -263,7 +272,12 @@ impl<R: Rng> ChronosyncSim<R> {
         let epoch_index = self.epoch;
         let capped_tps = transactions.min(self.config.global_tps) as f64;
         let pools = self.elect_pools(nodes);
-        let fairness_gini = gini(&nodes.iter().map(|n| n.temporal_weight()).collect::<Vec<_>>());
+        let fairness_gini = gini(
+            &nodes
+                .iter()
+                .map(|n| n.temporal_weight())
+                .collect::<Vec<_>>(),
+        );
         let dag_witness = self.build_dag(nodes, transactions);
         let shard_utilization = self.sample_shards(capped_tps, &pools);
         let rejection_rate = (fairness_gini * 0.05).min(0.05);
@@ -321,11 +335,7 @@ impl<R: Rng> ChronosyncSim<R> {
         pools
     }
 
-    fn build_dag(
-        &mut self,
-        nodes: &[ChronosyncNodeProfile],
-        transactions: u64,
-    ) -> DagWitness {
+    fn build_dag(&mut self, nodes: &[ChronosyncNodeProfile], transactions: u64) -> DagWitness {
         let per_layer_txs = (transactions.min(self.config.global_tps) / self.config.layers as u64)
             .max(1)
             .min(self.config.max_layer_tps);
@@ -395,6 +405,7 @@ impl<R: Rng> ChronosyncSim<R> {
     }
 }
 
+#[cfg(feature = "sim")]
 fn gini(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;

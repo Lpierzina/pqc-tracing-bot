@@ -1,7 +1,8 @@
 use autheo_pqcnet_tuplechain::{
-    ProofScheme, TupleChainConfig, TupleChainKeeper, TupleChainSim, TupleIntent, TuplePayload,
-    TupleStatus,
+    ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload, TupleStatus,
 };
+#[cfg(feature = "sim")]
+use autheo_pqcnet_tuplechain::{TupleChainSim, TupleIntent};
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -41,18 +42,27 @@ fn version_history_is_accessible() {
     assert_eq!(historical.status, TupleStatus::Historical);
 }
 
+#[cfg(feature = "sim")]
 #[test]
 fn prune_expired_entries_and_simulate_epoch() {
     let mut keeper =
         TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
     keeper
-        .store_tuple("did:autheo:l1/kernel", demo_tuple(1_700_000_000_100), 1_700_000_000_000)
+        .store_tuple(
+            "did:autheo:l1/kernel",
+            demo_tuple(1_700_000_000_100),
+            1_700_000_000_000,
+        )
         .unwrap();
     let expired = keeper.ledger_mut().prune_expired(1_700_000_001_000);
     assert_eq!(expired.len(), 1);
 
     let mut sim = TupleChainSim::new(99);
-    let intents = vec![TupleIntent::identity("did:autheo:alice", "passport", 10_000)];
+    let intents = vec![TupleIntent::identity(
+        "did:autheo:alice",
+        "passport",
+        10_000,
+    )];
     let report = sim.drive_epoch(&mut keeper, intents, 1_700_000_005_000);
     assert!(report.errors.is_empty());
     assert_eq!(report.receipts.len(), 1);

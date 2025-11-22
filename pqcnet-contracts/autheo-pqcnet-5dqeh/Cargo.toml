@@ -1,21 +1,19 @@
- [package]
- name = "autheo-pqcnet-5dqeh"
- version = "0.1.0"
- edition = "2021"
- description = "5D-QEH hypergraph primitives, simulation harnesses, and entanglement guards for Autheo PQCNet"
- license = "Apache-2.0 OR MIT"
+[package]
+name = "autheo-pqcnet-5dqeh"
+version = "0.1.0"
+edition = "2021"
+description = "5D-QEH hypergraph primitives, simulation harnesses, and entanglement guards for Autheo PQCNet"
+license = "Apache-2.0 OR MIT"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
 
 [features]
-default = ["std", "qrng-sim"]
-std = []
-wasm = []
-qrng-sim = ["autheo-pqcnet-qrng"]
+default = []
+sim = ["pqcnet-entropy/sim"]
 
  [dependencies]
  blake3 = "1.5"
  serde = { version = "1.0", features = ["derive"] }
  thiserror = "1.0"
-autheo-pqcnet-qrng = { path = "../autheo-pqcnet-qrng", optional = true }
+pqcnet-entropy = { path = "../pqcnet-entropy" }

@@ -5,6 +5,7 @@
 //! that can be used by demos or Cosmos SDK keepers.
 
 use blake3::Hasher;
+#[cfg(feature = "sim")]
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -472,7 +473,11 @@ fn compute_tuple_id(tuple: &TuplePayload) -> TupleId {
     let mut hasher = Hasher::new();
     hasher.update(tuple.subject.as_bytes());
     hasher.update(tuple.predicate.as_bytes());
-    hasher.update(serde_json::to_vec(&tuple.object).unwrap_or_default().as_slice());
+    hasher.update(
+        serde_json::to_vec(&tuple.object)
+            .unwrap_or_default()
+            .as_slice(),
+    );
     hasher.update(&tuple.proof.commitment);
     let mut id = [0u8; 32];
     id.copy_from_slice(hasher.finalize().as_bytes());
@@ -556,6 +561,7 @@ impl TupleChainKeeper {
 }
 
 /// Declarative intent used by the simulator/demo harness.
+#[cfg(feature = "sim")]
 #[derive(Clone, Debug)]
 pub struct TupleIntent {
     pub creator: String,
@@ -567,8 +573,13 @@ pub struct TupleIntent {
     pub verifier_hint: String,
 }
 
+#[cfg(feature = "sim")]
 impl TupleIntent {
-    pub fn identity(subject: impl Into<String>, credential: impl Into<String>, ttl_ms: u64) -> Self {
+    pub fn identity(
+        subject: impl Into<String>,
+        credential: impl Into<String>,
+        ttl_ms: u64,
+    ) -> Self {
         Self {
             creator: "did:autheo:l1/kernel".into(),
             subject: subject.into(),
@@ -617,10 +628,12 @@ impl TupleIntent {
 }
 
 /// Simulation harness that mimics BeginBlocker/EndBlocker activity.
+#[cfg(feature = "sim")]
 pub struct TupleChainSim {
     rng: StdRng,
 }
 
+#[cfg(feature = "sim")]
 impl TupleChainSim {
     pub fn new(seed: u64) -> Self {
         Self {
@@ -663,6 +676,7 @@ impl TupleChainSim {
 }
 
 /// Output of a simulator epoch.
+#[cfg(feature = "sim")]
 #[derive(Clone, Debug)]
 pub struct SimulationReport {
     pub receipts: Vec<TupleReceipt>,
@@ -703,7 +717,8 @@ mod tests {
 
     #[test]
     fn keeper_respects_authorization() {
-        let mut keeper = TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("creator-a");
+        let mut keeper =
+            TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("creator-a");
         let tuple = demo_tuple(5_000);
         assert!(keeper
             .store_tuple("creator-a", tuple.clone(), 1_700_000_000_000)
@@ -714,10 +729,11 @@ mod tests {
         assert!(matches!(err, TupleChainError::UnauthorizedCreator { .. }));
     }
 
+    #[cfg(feature = "sim")]
     #[test]
     fn simulator_runs_epoch() {
-        let mut keeper =
-            TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
+        let mut keeper = TupleChainKeeper::new(TupleChainConfig::default())
+            .allow_creator("did:autheo:l1/kernel");
         let mut sim = TupleChainSim::new(7);
         let intents = vec![
             TupleIntent::identity("did:autheo:alice", "passport", 1_000),

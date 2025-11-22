@@ -1,6 +1,6 @@
-use autheo_pqcnet_chronosync::{
-    ChronosyncConfig, ChronosyncNodeProfile, ChronosyncSim,
-};
+#![cfg(feature = "sim")]
+
+use autheo_pqcnet_chronosync::{ChronosyncConfig, ChronosyncNodeProfile, ChronosyncSim};
 
 fn main() {
     let config = ChronosyncConfig::default();
@@ -61,7 +61,10 @@ fn main() {
         println!("  pool#{:02}: {}", pool.pool_id, members.join(", "));
     }
 
-    println!("\nfirst 5 shard loads (of {} total):", report.shard_utilization.len());
+    println!(
+        "\nfirst 5 shard loads (of {} total):",
+        report.shard_utilization.len()
+    );
     for shard in report.shard_utilization.iter().take(5) {
         println!(
             "  shard-{:04} => {:.2} TPS leader={}",
@@ -78,11 +81,7 @@ fn main() {
     for node in &report.dag_witness.nodes {
         println!(
             "  {} led by {} parents={:?} txs={} payload={}B",
-            node.node_id,
-            node.leader,
-            node.parents,
-            node.transactions_carried,
-            node.payload_bytes
+            node.node_id, node.leader, node.parents, node.transactions_carried, node.payload_bytes
         );
     }
 }

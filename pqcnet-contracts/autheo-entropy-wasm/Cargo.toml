@@ -1,0 +1,15 @@
+[package]
+name = "autheo-entropy-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Autheo DePIN entropy node compiled to wasm32 for host import bridging"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+chacha20 = { version = "0.9", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
+wee_alloc = { version = "0.4", default-features = false }
