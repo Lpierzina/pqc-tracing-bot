@@ -8,8 +8,10 @@
 
 #[cfg(feature = "sim")]
 mod entropy;
+pub mod keeper;
 #[cfg(feature = "sim")]
 use entropy::ChronosyncEntropyRng;
+pub use keeper::{ChronosyncKeeper, ChronosyncKeeperError, ChronosyncKeeperReport};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 #[cfg(feature = "sim")]
@@ -427,6 +429,9 @@ fn gini(values: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use autheo_pqcnet_5dqeh::{HypergraphModule, QehConfig, TemporalWeightModel};
+    use autheo_pqcnet_5dqeh::{Icosuple, MsgAnchorEdge, PqcBinding, PqcScheme};
+    use pqcnet_networking::AnchorEdgeEndpoint;
 
     #[test]
     fn temporal_weight_matches_formula() {
@@ -448,5 +453,75 @@ mod tests {
     fn gini_handles_zero_values() {
         let values = vec![0.0, 0.0, 0.0];
         assert_eq!(gini(&values), 0.0);
+    }
+
+    fn sample_report(nodes: Vec<DagNode>) -> EpochReport {
+        EpochReport {
+            epoch_index: 7,
+            aggregated_tps: 1_000.0,
+            fairness_gini: 0.2,
+            pools: Vec::new(),
+            shard_utilization: Vec::new(),
+            dag_witness: DagWitness { nodes },
+            rejected_transactions: 0,
+        }
+    }
+
+    #[test]
+    fn keeper_streams_dag_witness_into_hypergraph() {
+        let chrono_config = ChronosyncConfig::default();
+        let qeh_config = QehConfig::default();
+        let tw_model = TemporalWeightModel::default();
+        let module = HypergraphModule::new(qeh_config, tw_model);
+        let mut keeper = ChronosyncKeeper::new(chrono_config, module);
+
+        let nodes = vec![
+            DagNode {
+                node_id: "node-0".into(),
+                parents: Vec::new(),
+                shard_affinity: 0,
+                leader: "did:autheo:alpha".into(),
+                payload_bytes: 2_048,
+                transactions_carried: 500,
+            },
+            DagNode {
+                node_id: "node-1".into(),
+                parents: vec!["node-0".into()],
+                shard_affinity: 1,
+                leader: "did:autheo:beta".into(),
+                payload_bytes: 3_072,
+                transactions_carried: 700,
+            },
+        ];
+        let report = sample_report(nodes);
+        let outcome = keeper.ingest_epoch_report(&report).expect("ingest epoch");
+        assert_eq!(outcome.applied_vertices.len(), 2);
+        assert!(outcome.missing_parents.is_empty());
+        assert!(outcome.storage_layout.total_vertices() >= 2);
+        assert!(outcome.dag_head.is_some());
+    }
+
+    #[test]
+    fn keeper_handles_anchor_edge_requests_via_rpcnet_trait() {
+        let chrono_config = ChronosyncConfig::default();
+        let qeh_config = QehConfig::default();
+        let tw_model = TemporalWeightModel::default();
+        let mut keeper =
+            ChronosyncKeeper::new(chrono_config, HypergraphModule::new(qeh_config, tw_model));
+        let msg = MsgAnchorEdge {
+            request_id: 1,
+            chain_epoch: 1,
+            parents: Vec::new(),
+            parent_coherence: 0.1,
+            lamport: 1,
+            contribution_score: 0.5,
+            ann_similarity: 0.9,
+            qrng_entropy_bits: 256,
+            pqc_binding: PqcBinding::new("did:autheo:alpha", PqcScheme::Dilithium),
+            icosuple: Icosuple::synthesize("rpcnet", 1_024, 8, 0.9),
+        };
+        let response = AnchorEdgeEndpoint::submit_anchor_edge(&mut keeper, msg).expect("anchor");
+        assert_eq!(response.receipt.parents, 0);
+        assert_eq!(response.storage.total_vertices(), 1);
     }
 }

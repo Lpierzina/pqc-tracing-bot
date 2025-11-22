@@ -195,7 +195,9 @@ dependencies = [
 name = "autheo-pqcnet-5dqeh"
 version = "0.1.0"
 dependencies = [
+ "autheo-pqc-core",
  "blake3",
+ "hex",
  "pqcnet-entropy",
  "serde",
  "thiserror",
@@ -205,9 +207,14 @@ dependencies = [
 name = "autheo-pqcnet-chronosync"
 version = "0.1.0"
 dependencies = [
+ "autheo-pqcnet-5dqeh",
+ "blake3",
  "pqcnet-entropy",
+ "pqcnet-networking",
+ "pqcnet-qs-dag",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1184,7 +1191,10 @@ dependencies = [
 name = "pqcnet-networking"
 version = "0.1.0"
 dependencies = [
+ "autheo-pqc-core",
+ "autheo-pqcnet-5dqeh",
  "pqcnet-qs-dag",
+ "pqcnet-qstp",
  "rand 0.8.5",
  "serde",
  "serde_json",

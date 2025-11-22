@@ -48,17 +48,28 @@ sequenceDiagram
 
 - `src/lib.rs` – Chronosync config, Temporal Weight math, deterministic QRNG pool elections, QS-DAG
   witness generation, and a `ChronosyncSim` harness.
+- `src/keeper.rs` – `ChronosyncKeeper` + `ChronosyncKeeperReport`, wiring QS-DAG elections into the
+  5D-QEH module and implementing the RPCNet `AnchorEdgeEndpoint` so `MsgAnchorEdge` can land over the new router.
 - `examples/chronosync_sim.rs` – runnable scenario that spins up validator profiles, drives an epoch,
   and prints fairness + shard telemetry (ready for WASM or CLI demos).
 - `tests/chronosync.rs` – integration tests that lock in the TW formula, pool sizing, and QS-DAG
   invariants so future repos can evolve safely.
+
+### Keeper + RPCNet
+
+- The keeper converts each `DagNode` into a `MsgAnchorEdge`, applies it via `autheo-pqcnet-5dqeh`, and
+  maintains a vertex index so QS-DAG snapshots stay in sync with PQC signatures and storage layout.
+- It implements `pqcnet-networking::AnchorEdgeEndpoint`, so you can drop the keeper into a
+  `RpcNetRouter` and immediately serve `POST /pqcnet/5dqeh/v1/anchor_edge` calls alongside `MsgOpenTunnel`.
+- `ChronosyncKeeperReport` exposes applied receipts, missing-parent diagnostics, and the current DAG head,
+  making it trivial to stream telemetry or trigger slashing hooks.
 
 ### Demo / Sim / Tests
 
 | Command | Description |
 | --- | --- |
 | `cargo run -p autheo-pqcnet-chronosync --example chronosync_sim` | Runs the simulator with seeded QRNG entropy, prints elected pools, Gini fairness, QS-DAG witness, and shard loads for the epoch. |
-| `cargo test -p autheo-pqcnet-chronosync` | Executes unit + integration tests covering Temporal Weight math, pool sizing, and DAG generation guarantees. |
+| `cargo test -p autheo-pqcnet-chronosync` | Executes unit + integration tests covering Temporal Weight math, pool sizing, DAG generation guarantees, and the keeper’s RPCNet hook (`keeper_handles_anchor_edge_requests_via_rpcnet_trait`). |
 | `cargo test -p autheo-pqcnet-chronosync -- --ignored` | Replays ignored/long-running fairness sweeps if you extend the crate with heavier sims later. |
 
 Use the README plus the simulator output to spin Chronosync into a standalone repo when the Autheo

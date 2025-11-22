@@ -12,10 +12,12 @@ crate-type = ["rlib", "cdylib"]
 default = []
 sim = ["pqcnet-entropy/sim"]
 
- [dependencies]
- blake3 = "1.5"
- serde = { version = "1.0", features = ["derive"] }
- thiserror = "1.0"
+[dependencies]
+autheo-pqc-core = { path = "../autheo-pqc-core" }
+blake3 = "1.5"
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
 pqcnet-entropy = { path = "../pqcnet-entropy" }
 
 [[example]]

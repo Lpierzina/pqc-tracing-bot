@@ -9,11 +9,16 @@
 
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 mod entropy;
+mod pqc;
 #[cfg(feature = "sim")]
 pub use entropy::QrngEntropyRng;
+pub use pqc::{
+    CorePqcRuntime, PqcHandshakeReceipt, PqcHandshakeRequest, PqcRotationOutcome, PqcRuntime,
+    PqcRuntimeError, PqcSignature,
+};
 pub use pqcnet_entropy::{EntropyError, EntropySource, HostEntropySource};
 
 /// Canonical byte size for 5D-QEH icosuples.
@@ -262,6 +267,7 @@ pub struct VertexReceipt {
     pub storage: StorageTarget,
     pub ann_similarity: f32,
     pub parents: usize,
+    pub pqc_signature: Option<PqcSignature>,
 }
 
 /// Materialized vertex information.
@@ -307,6 +313,7 @@ impl HypergraphState {
         parents: Vec<VertexId>,
         model: &TemporalWeightModel,
         tw_input: TemporalWeightInput,
+        pqc_signature: Option<PqcSignature>,
     ) -> Result<VertexReceipt, HypergraphError> {
         if icosuple.payload_bytes > ICOSUPLE_BYTES {
             return Err(HypergraphError::PayloadTooLarge {
@@ -341,6 +348,7 @@ impl HypergraphState {
             storage: storage.clone(),
             ann_similarity: tw_input.ann_similarity,
             parents: parents.len(),
+            pqc_signature: pqc_signature.clone(),
         };
 
         let vertex = HyperVertex {
@@ -401,6 +409,30 @@ impl PqcBinding {
     pub fn simulated(label: impl Into<String>) -> Self {
         Self::new(label, PqcScheme::Kyber)
     }
+
+    pub fn request_handshake<R: PqcRuntime + ?Sized>(
+        &self,
+        runtime: &R,
+        request: &PqcHandshakeRequest,
+    ) -> Result<PqcHandshakeReceipt, PqcRuntimeError> {
+        runtime.pqc_handshake(self, request)
+    }
+
+    pub fn request_signature<R: PqcRuntime + ?Sized>(
+        &self,
+        runtime: &R,
+        payload: &[u8],
+    ) -> Result<PqcSignature, PqcRuntimeError> {
+        runtime.pqc_sign(self, payload)
+    }
+
+    pub fn rotate_if_needed<R: PqcRuntime + ?Sized>(
+        &self,
+        runtime: &R,
+        now_ms: u64,
+    ) -> Result<PqcRotationOutcome, PqcRuntimeError> {
+        runtime.pqc_rotate(self, now_ms)
+    }
 }
 
 /// RPC / ABCI entry-point for anchoring an entangled edge in 5D-QEH.
@@ -428,6 +460,74 @@ impl MsgAnchorEdge {
             self.ann_similarity,
         )
     }
+
+    /// Deterministic preimage that is signed by PQC bindings when anchoring.
+    pub fn signing_preimage(&self) -> [u8; 32] {
+        anchor_signing_preimage(self)
+    }
+}
+
+/// Response returned after anchoring an edge via RPCNet.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MsgAnchorEdgeResponse {
+    pub receipt: VertexReceipt,
+    pub storage: ModuleStorageLayout,
+}
+
+fn anchor_signing_preimage(msg: &MsgAnchorEdge) -> [u8; 32] {
+    let mut hasher = Hasher::new();
+    hasher.update(&msg.request_id.to_le_bytes());
+    hasher.update(&msg.chain_epoch.to_le_bytes());
+    hasher.update(&msg.lamport.to_le_bytes());
+    hasher.update(&msg.parent_coherence.to_le_bytes());
+    hasher.update(&msg.contribution_score.to_le_bytes());
+    hasher.update(&msg.ann_similarity.to_le_bytes());
+    hasher.update(&msg.qrng_entropy_bits.to_le_bytes());
+    hasher.update(msg.pqc_binding.key_id.as_bytes());
+    match &msg.pqc_binding.scheme {
+        PqcScheme::Kyber => {
+            hasher.update(b"kyber");
+        }
+        PqcScheme::Dilithium => {
+            hasher.update(b"dilithium");
+        }
+        PqcScheme::Falcon => {
+            hasher.update(b"falcon");
+        }
+        PqcScheme::Hybrid(label) => {
+            hasher.update(label.as_bytes());
+        }
+    };
+    for parent in &msg.parents {
+        hasher.update(parent.as_bytes());
+    }
+    hasher.update(msg.icosuple.label.as_bytes());
+    hasher.update(&msg.icosuple.payload_bytes.to_le_bytes());
+    for layer in &msg.icosuple.pqc_layers {
+        match &layer.scheme {
+            PqcScheme::Kyber => {
+                hasher.update(b"layer/kyber");
+            }
+            PqcScheme::Dilithium => {
+                hasher.update(b"layer/dilithium");
+            }
+            PqcScheme::Falcon => {
+                hasher.update(b"layer/falcon");
+            }
+            PqcScheme::Hybrid(label) => {
+                hasher.update(b"layer/hybrid/");
+                hasher.update(label.as_bytes());
+            }
+        };
+        hasher.update(layer.metadata_tag.as_bytes());
+        hasher.update(&layer.epoch.to_le_bytes());
+    }
+    for value in &msg.icosuple.vector_signature {
+        hasher.update(&value.to_le_bytes());
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(hasher.finalize().as_bytes());
+    out
 }
 
 /// Errors returned by the chain module.
@@ -437,6 +537,8 @@ pub enum ModuleError {
     Hypergraph(#[from] HypergraphError),
     #[error("parent coherence must be within [0,1], got {0}")]
     InvalidParentCoherence(f64),
+    #[error(transparent)]
+    Pqc(#[from] PqcRuntimeError),
 }
 
 /// Chain-ready facade that wraps the deterministic hypergraph state machine.
@@ -444,6 +546,7 @@ pub struct HypergraphModule {
     state: HypergraphState,
     weight_model: TemporalWeightModel,
     storage: ModuleStorageLayout,
+    pqc_runtime: Option<Arc<dyn PqcRuntime>>,
 }
 
 impl HypergraphModule {
@@ -452,6 +555,7 @@ impl HypergraphModule {
             state: HypergraphState::new(config),
             weight_model,
             storage: ModuleStorageLayout::default(),
+            pqc_runtime: None,
         }
     }
 
@@ -467,6 +571,22 @@ impl HypergraphModule {
         &self.storage
     }
 
+    /// Attach a PQC runtime (native or WASM) so anchor edges can be signed.
+    pub fn with_pqc_runtime(mut self, runtime: Arc<dyn PqcRuntime>) -> Self {
+        self.pqc_runtime = Some(runtime);
+        self
+    }
+
+    /// Replace the PQC runtime at runtime (e.g., when hot-swapping engines).
+    pub fn set_pqc_runtime(&mut self, runtime: Arc<dyn PqcRuntime>) {
+        self.pqc_runtime = Some(runtime);
+    }
+
+    /// Detach the PQC runtime (tests, dev harnesses, or PQC-disabled builds).
+    pub fn clear_pqc_runtime(&mut self) {
+        self.pqc_runtime = None;
+    }
+
     pub fn state(&self) -> &HypergraphState {
         &self.state
     }
@@ -479,13 +599,32 @@ impl HypergraphModule {
         if !(0.0..=1.0).contains(&msg.parent_coherence) {
             return Err(ModuleError::InvalidParentCoherence(msg.parent_coherence));
         }
+        let pqc_signature = if let Some(runtime) = self.pqc_runtime.as_ref() {
+            let digest = msg.signing_preimage();
+            let signature = msg
+                .pqc_binding
+                .request_signature(runtime.as_ref(), &digest)
+                .map_err(ModuleError::Pqc)?;
+            let epoch_ms = msg.chain_epoch.saturating_mul(1_000);
+            let _ = msg
+                .pqc_binding
+                .rotate_if_needed(runtime.as_ref(), epoch_ms)
+                .map_err(ModuleError::Pqc)?;
+            Some(signature)
+        } else {
+            None
+        };
         let weight_input = msg.weight_input();
         let MsgAnchorEdge {
             icosuple, parents, ..
         } = msg;
-        let receipt = self
-            .state
-            .insert(icosuple, parents, &self.weight_model, weight_input)?;
+        let receipt = self.state.insert(
+            icosuple,
+            parents,
+            &self.weight_model,
+            weight_input,
+            pqc_signature,
+        )?;
         self.storage.register(&receipt);
         Ok(receipt)
     }
@@ -705,9 +844,70 @@ mod tests {
         ];
         let input = TemporalWeightInput::new(5, 1.0, 256, 0.2, 0.9);
         let err = state
-            .insert(icosuple, parents, &model, input)
+            .insert(icosuple, parents, &model, input, None)
             .expect_err("too many parents");
         assert!(matches!(err, HypergraphError::TooManyParents { .. }));
+    }
+
+    struct MockRuntime;
+
+    impl PqcRuntime for MockRuntime {
+        fn pqc_handshake(
+            &self,
+            _binding: &PqcBinding,
+            _request: &PqcHandshakeRequest,
+        ) -> Result<PqcHandshakeReceipt, PqcRuntimeError> {
+            Err(PqcRuntimeError::Disabled)
+        }
+
+        fn pqc_sign(
+            &self,
+            _binding: &PqcBinding,
+            payload: &[u8],
+        ) -> Result<PqcSignature, PqcRuntimeError> {
+            Ok(PqcSignature {
+                key_id: "mock".into(),
+                bytes: payload.to_vec(),
+            })
+        }
+
+        fn pqc_rotate(
+            &self,
+            _binding: &PqcBinding,
+            _now_ms: u64,
+        ) -> Result<PqcRotationOutcome, PqcRuntimeError> {
+            Ok(PqcRotationOutcome {
+                rotated: true,
+                old_key: Some("old".into()),
+                new_key: Some("new".into()),
+            })
+        }
+    }
+
+    #[test]
+    fn module_attaches_pqc_signature_when_runtime_available() {
+        let config = QehConfig::default();
+        let model = TemporalWeightModel::default();
+        let runtime = Arc::new(MockRuntime);
+        let mut module = HypergraphModule::new(config.clone(), model).with_pqc_runtime(runtime);
+        let icosuple = Icosuple::synthesize("edge", 2_048, config.vector_dimensions, 0.91);
+        let msg = MsgAnchorEdge {
+            request_id: 99,
+            chain_epoch: 42,
+            parents: vec![],
+            parent_coherence: 0.25,
+            lamport: 7,
+            contribution_score: 0.5,
+            ann_similarity: 0.91,
+            qrng_entropy_bits: 512,
+            pqc_binding: PqcBinding::new("did:autheo:validator/mock", PqcScheme::Dilithium),
+            icosuple,
+        };
+        let digest = msg.signing_preimage();
+        let receipt = module.apply_anchor_edge(msg).expect("anchor edge");
+        let signature = receipt.pqc_signature.expect("signature attached");
+        assert_eq!(signature.key_id, "mock");
+        assert_eq!(signature.bytes, digest);
     }
 
     #[cfg(feature = "sim")]

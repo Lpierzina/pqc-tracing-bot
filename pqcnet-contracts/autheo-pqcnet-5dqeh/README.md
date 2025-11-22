@@ -4,10 +4,10 @@
 
 ## Module scope
 
-- **Consensus / QS-DAG hook** – `HypergraphModule::apply_anchor_edge` verifies 4096-byte icosuples, enforces ≤100 parents, and recomputes temporal weight before emitting receipts that Chronosync/QS-DAG can persist.
+- **Consensus / QS-DAG hook** – `HypergraphModule::apply_anchor_edge` now powers the Chronosync keeper: it verifies 4096-byte icosuples, enforces ≤100 parents, recomputes temporal weight, and returns receipts that QS-DAG snapshots can persist.
 - **Ledger affinity** – hot vs crystalline placement is tracked via `ModuleStorageLayout`, keeping TupleChain/Icosuple tiers aligned with Autheo’s storage policies.
-- **PQC plumbing** – `PqcBinding` records which Kyber/Dilithium/Falcon slot (backed by `autheo-pqc-core` or `autheo-pqc-wasm`) signed an edge, preparing the runtime for `pqc_handshake`, `pqc_sign`, and `pqc_rotate` ABI calls.
-- **RPC / ABCI shape** – `MsgAnchorEdge` and friends mirror the protobuf definitions in `protos/pqcnet_5dqeh.proto`, so relayers, CLI clients, and ABCI handlers speak the same language.
+- **PQC plumbing** – `PqcBinding` plus the new `PqcRuntime` trait call straight into `autheo-pqc-core`’s `pqc_handshake/pqc_sign/pqc_rotate` ABIs (native or WASM). `CorePqcRuntime` ships in-crate so chain modules can request signatures or rotations before admitting an anchor edge.
+- **RPC / ABCI shape** – `MsgAnchorEdge`, `MsgAnchorEdgeResponse`, and the RPCNet router mirror the protobuf definitions in `protos/pqcnet_5dqeh.proto`/`qstp.proto`, so relayers, CLI clients, and ABCI handlers speak the same language.
 
 ## State machine + storage layout
 
@@ -46,6 +46,12 @@ println!(
 - `ModuleStorageLayout` tracks hot/crystalline counts so host runtimes can write to their preferred backends.
 - `VertexReceipt`/`HyperVertex` derive `serde` so receipts can be routed over RPC or persisted in telemetry logs.
 
+## Chronosync keeper + RPCNet
+
+- `ChronosyncKeeper` (in `autheo-pqcnet-chronosync`) feeds QS-DAG elections straight into this crate. Each `DagNode` becomes a `MsgAnchorEdge`, and the keeper records canonical vertices + storage counters while maintaining a DAG index for relayers.
+- `RpcNetRouter` (from `pqcnet-networking`) is now aware of both `MsgAnchorEdge` and `MsgOpenTunnel`. Attach a keeper plus a tuple-store implementation and you instantly get JSON/REST/gRPC-ready endpoints for anchoring edges or opening QSTP tunnels.
+- Every `VertexReceipt` optionally carries the PQC signature produced during anchoring, so relayers, sentries, or Chronosync watchers can forward the exact bytes that were signed via `pqc_sign`.
+
 ## RPC + schema
 
 - The protobuf contract for node/ABCI integrations lives in `protos/pqcnet_5dqeh.proto` (`MsgAnchorEdge`, `MsgAnchorEdgeResponse`, `QehVertexReceipt`, `QehStorageLayout`, etc.).
@@ -80,10 +86,10 @@ Simulations are relegated to developer tooling. The `FiveDqehSim` helper drives 
 ## Tests
 
 - `cargo test -p autheo-pqcnet-5dqeh`
-  - Verifies temporal-weight math, parent-limit enforcement, simulator telemetry, and that storage-layout accounting matches accepted vertices.
+  - Verifies temporal-weight math, parent-limit enforcement, simulator telemetry, PQC runtime integration (`module_attaches_pqc_signature_when_runtime_available`), and that storage-layout accounting matches accepted vertices.
 
 ## Next steps
 
-- Wire `MsgAnchorEdge` into the Chronosync keeper so QS-DAG elections stream directly into this module.
-- Use the new protobuf definitions to scaffold RPCNet endpoints (`MsgAnchorEdge`, `MsgOpenTunnel`, etc.).
-- Once `autheo-pqc-core` finalises the `pqc_handshake/pqc_sign/pqc_rotate` ABI, surface those calls through `PqcBinding` so this crate can request signatures or key rotations during `apply_anchor_edge`.
+- Surface `ChronosyncKeeperReport` telemetry (storage deltas, PQC signatures, missing parents) over RPCNet so sentries can subscribe without scraping logs.
+- Add slashing / alert hooks that fire whenever `missing_parents` is non-empty or PQC rotations fail, wiring them into relayer & telemetry crates.
+- Bundle the `RpcNetRouter` into the relayer CLI so `MsgAnchorEdge`/`MsgOpenTunnel` can be exercised over HTTP/gRPC instead of direct library calls.

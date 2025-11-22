@@ -18,9 +18,7 @@ impl ChronosyncEntropyRng {
 
     pub fn next_u64(&mut self) -> u64 {
         let mut bytes = [0u8; 8];
-        self.source
-            .try_fill_bytes(&mut bytes)
-            .expect(ENTROPY_PANIC);
+        self.source.try_fill_bytes(&mut bytes).expect(ENTROPY_PANIC);
         u64::from_le_bytes(bytes)
     }
 
