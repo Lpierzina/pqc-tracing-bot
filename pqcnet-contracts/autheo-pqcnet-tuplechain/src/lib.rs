@@ -40,6 +40,53 @@ impl fmt::Display for ShardId {
     }
 }
 
+const TYPE_URL_SUBJECT: &str = "autheo.tuplechain.v1.Subject";
+const TYPE_URL_PREDICATE: &str = "autheo.tuplechain.v1.Predicate";
+const TYPE_URL_OBJECT: &str = "autheo.tuplechain.v1.Object";
+const TYPE_URL_PROOF: &str = "autheo.tuplechain.v1.ProofEnvelope";
+
+/// Lightweight representation of `google.protobuf.Any`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TupleAny {
+    pub type_url: String,
+    pub value: Vec<u8>,
+}
+
+impl TupleAny {
+    pub fn new(type_url: impl Into<String>, value: impl Into<Vec<u8>>) -> Self {
+        Self {
+            type_url: type_url.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn from_string(type_url: impl Into<String>, value: impl Into<String>) -> Self {
+        Self::new(type_url, value.into().into_bytes())
+    }
+
+    pub fn subject(value: impl Into<String>) -> Self {
+        Self::from_string(TYPE_URL_SUBJECT, value)
+    }
+
+    pub fn predicate(value: impl Into<String>) -> Self {
+        Self::from_string(TYPE_URL_PREDICATE, value)
+    }
+
+    pub fn object(value: &Value) -> Self {
+        let bytes = serde_json::to_vec(value).unwrap_or_default();
+        Self::new(TYPE_URL_OBJECT, bytes)
+    }
+
+    pub fn proof_envelope(envelope: &ProofEnvelope) -> Self {
+        let bytes = serde_json::to_vec(envelope).unwrap_or_default();
+        Self::new(TYPE_URL_PROOF, bytes)
+    }
+
+    pub fn len(&self) -> usize {
+        self.type_url.len() + self.value.len()
+    }
+}
+
 /// Supported proof primitives for TupleChain tuples.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ProofScheme {
@@ -88,12 +135,10 @@ impl ProofEnvelope {
     }
 }
 
-/// Canonical TupleChain payload (subject, predicate, object, proof, expiry).
+/// Canonical TupleChain payload backed by repeated `Any` data fields.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TuplePayload {
-    pub subject: String,
-    pub predicate: String,
-    pub object: Value,
+    data: Vec<TupleAny>,
     pub proof: ProofEnvelope,
     pub expiry: u64,
 }
@@ -104,24 +149,30 @@ impl TuplePayload {
         TupleBuilder::new(subject, predicate)
     }
 
+    /// Access the underlying Any fields.
+    pub fn data(&self) -> &[TupleAny] {
+        &self.data
+    }
+
     fn approx_size(&self) -> usize {
-        let object_bytes = serde_json::to_vec(&self.object).unwrap_or_default();
-        self.subject.len()
-            + self.predicate.len()
-            + object_bytes.len()
+        self.data
+            .iter()
+            .map(TupleAny::len)
+            .sum::<usize>()
             + self.proof.verifier_hint.len()
             + self.proof.commitment.len()
             + std::mem::size_of::<u64>()
     }
 }
 
-/// Fluent tuple builder used by demos/tests.
+/// Fluent tuple builder used by demos/tests and Cosmos SDK handlers.
 pub struct TupleBuilder {
     subject: String,
     predicate: String,
     object: Value,
     proof: ProofEnvelope,
     expiry: u64,
+    extras: Vec<TupleAny>,
 }
 
 impl TupleBuilder {
@@ -132,6 +183,7 @@ impl TupleBuilder {
             object: Value::Null,
             proof: ProofEnvelope::placeholder(),
             expiry: u64::MAX,
+            extras: Vec::new(),
         }
     }
 
@@ -160,11 +212,20 @@ impl TupleBuilder {
         self
     }
 
+    /// Attach an arbitrary Any field to the tuple payload.
+    pub fn add_any(mut self, field: TupleAny) -> Self {
+        self.extras.push(field);
+        self
+    }
+
     pub fn build(self) -> TuplePayload {
+        let mut data = Vec::with_capacity(3 + self.extras.len());
+        data.push(TupleAny::subject(self.subject));
+        data.push(TupleAny::predicate(self.predicate));
+        data.push(TupleAny::object(&self.object));
+        data.extend(self.extras);
         TuplePayload {
-            subject: self.subject,
-            predicate: self.predicate,
-            object: self.object,
+            data,
             proof: self.proof,
             expiry: self.expiry,
         }
@@ -177,6 +238,7 @@ pub struct TupleChainConfig {
     pub shard_count: u16,
     pub max_tuple_size: usize,
     pub max_historical_versions: usize,
+    pub sharding_threshold: usize,
 }
 
 impl Default for TupleChainConfig {
@@ -185,6 +247,7 @@ impl Default for TupleChainConfig {
             shard_count: 32,
             max_tuple_size: 4096,
             max_historical_versions: 8,
+            sharding_threshold: 100_000,
         }
     }
 }
@@ -196,10 +259,14 @@ pub enum TupleChainError {
     TupleTooLarge { size: usize, limit: usize },
     #[error("creator {creator} is not authorized to store tuples")]
     UnauthorizedCreator { creator: String },
+    #[error("creator mismatch: expected {expected}, received {actual}")]
+    CreatorMismatch { expected: String, actual: String },
     #[error("tuple not found")]
     TupleNotFound,
     #[error("version {version} not found for tuple")]
     VersionNotFound { version: u32 },
+    #[error("tuple already deleted")]
+    TupleAlreadyDeleted,
 }
 
 /// Lifecycle status of a tuple version.
@@ -208,6 +275,7 @@ pub enum TupleStatus {
     Active,
     Historical,
     Expired,
+    Deleted,
 }
 
 /// Materialized tuple version stored in a shard timeline.
@@ -217,29 +285,48 @@ pub struct TupleVersionedRecord {
     pub tuple: TuplePayload,
     pub status: TupleStatus,
     pub commitment: [u8; 32],
-    pub committed_at: u64,
+    pub timestamp_ms: u64,
 }
 
 #[derive(Clone, Debug)]
 struct TupleTimeline {
     shard_id: ShardId,
+    creator: String,
     records: Vec<TupleVersionedRecord>,
 }
 
 impl TupleTimeline {
-    fn new(shard_id: ShardId) -> Self {
+    fn new(shard_id: ShardId, creator: String) -> Self {
         Self {
             shard_id,
+            creator,
             records: Vec::new(),
         }
     }
 
-    fn latest(&self) -> Option<&TupleVersionedRecord> {
+    fn latest_active(&self) -> Option<&TupleVersionedRecord> {
         self.records
             .iter()
             .rev()
             .find(|record| record.status == TupleStatus::Active)
     }
+
+    fn head(&self) -> Option<&TupleVersionedRecord> {
+        self.records.last()
+    }
+}
+
+/// Fully materialized tuple snapshot used by queries and gRPC surfaces.
+#[derive(Clone, Debug)]
+pub struct TupleSnapshot {
+    pub tuple_id: TupleId,
+    pub shard_id: ShardId,
+    pub creator: String,
+    pub version: u32,
+    pub tuple: TuplePayload,
+    pub status: TupleStatus,
+    pub commitment: [u8; 32],
+    pub timestamp_ms: u64,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -247,6 +334,7 @@ struct ShardStats {
     active: usize,
     historical: usize,
     expired: usize,
+    deleted: usize,
     bytes: usize,
 }
 
@@ -272,6 +360,7 @@ pub struct TupleReceipt {
     pub tier_path: [IcosupleTier; 3],
     pub expiry: u64,
     pub creator: String,
+    pub timestamp_ms: u64,
 }
 
 /// Ledger implementation supporting sharded versioned tuples.
@@ -301,6 +390,16 @@ impl TupleChainLedger {
         now_ms: u64,
         creator: &str,
     ) -> Result<TupleReceipt, TupleChainError> {
+        self.store_tuple_with_shard_hint(tuple, now_ms, creator, None)
+    }
+
+    pub fn store_tuple_with_shard_hint(
+        &mut self,
+        tuple: TuplePayload,
+        now_ms: u64,
+        creator: &str,
+        shard_hint: Option<ShardId>,
+    ) -> Result<TupleReceipt, TupleChainError> {
         let size = tuple.approx_size();
         if size > self.config.max_tuple_size {
             return Err(TupleChainError::TupleTooLarge {
@@ -310,17 +409,39 @@ impl TupleChainLedger {
         }
 
         let tuple_id = compute_tuple_id(&tuple);
-        let shard_index = self
-            .timelines
-            .get(&tuple_id)
-            .map(|timeline| timeline.shard_id.0 as usize)
+        let shard_count = self.config.shard_count as usize;
+        let mut target_index = shard_hint
+            .map(|hint| hint.0 as usize)
+            .filter(|idx| *idx < shard_count)
             .unwrap_or_else(|| self.assign_shard(&tuple));
-        let shard_id = ShardId(shard_index as u16);
 
-        let timeline = self
-            .timelines
-            .entry(tuple_id)
-            .or_insert_with(|| TupleTimeline::new(shard_id));
+        let (timeline, shard_id) = if let Some(timeline) = self.timelines.get_mut(&tuple_id) {
+            if timeline.creator != creator {
+                return Err(TupleChainError::CreatorMismatch {
+                    expected: timeline.creator.clone(),
+                    actual: creator.into(),
+                });
+            }
+            let shard_id = timeline.shard_id;
+            (timeline, shard_id)
+        } else {
+            if self.shard_over_threshold(target_index) {
+                target_index = self.lowest_load_shard();
+            }
+            let shard_id = ShardId(target_index as u16);
+            let timeline = self
+                .timelines
+                .entry(tuple_id)
+                .or_insert_with(|| TupleTimeline::new(shard_id, creator.to_string()));
+            (timeline, shard_id)
+        };
+
+        if matches!(
+            timeline.head(),
+            Some(record) if record.status == TupleStatus::Deleted
+        ) {
+            return Err(TupleChainError::TupleAlreadyDeleted);
+        }
 
         for record in &mut timeline.records {
             if record.status == TupleStatus::Active {
@@ -336,7 +457,7 @@ impl TupleChainLedger {
             tuple: tuple.clone(),
             status: TupleStatus::Active,
             commitment,
-            committed_at: now_ms,
+            timestamp_ms: now_ms,
         };
         timeline.records.push(record);
 
@@ -344,7 +465,7 @@ impl TupleChainLedger {
             timeline.records.remove(0);
         }
 
-        self.rebuild_shard_stats(shard_index);
+        self.rebuild_shard_stats(shard_id.0 as usize);
 
         Ok(TupleReceipt {
             tuple_id,
@@ -354,11 +475,14 @@ impl TupleChainLedger {
             tier_path: IcosupleTier::PATH,
             expiry: tuple.expiry,
             creator: creator.into(),
+            timestamp_ms: now_ms,
         })
     }
 
     pub fn latest(&self, tuple_id: &TupleId) -> Option<&TupleVersionedRecord> {
-        self.timelines.get(tuple_id).and_then(TupleTimeline::latest)
+        self.timelines
+            .get(tuple_id)
+            .and_then(TupleTimeline::latest_active)
     }
 
     pub fn by_version(
@@ -384,7 +508,10 @@ impl TupleChainLedger {
         for (tuple_id, timeline) in self.timelines.iter_mut() {
             let mut changed = false;
             for record in &mut timeline.records {
-                if record.status != TupleStatus::Expired && record.tuple.expiry <= now_ms {
+                if record.status != TupleStatus::Expired
+                    && record.status != TupleStatus::Deleted
+                    && record.tuple.expiry <= now_ms
+                {
                     record.status = TupleStatus::Expired;
                     changed = true;
                 }
@@ -426,8 +553,8 @@ impl TupleChainLedger {
             utilization.push(ShardUtilization {
                 shard_id,
                 tier: IcosupleTier::Apex,
-                tuples: stats.active + stats.historical + stats.expired,
-                bytes: stats.bytes / 4 + stats.expired * 16,
+                tuples: stats.active + stats.historical + stats.expired + stats.deleted,
+                bytes: stats.bytes / 4 + stats.expired * 16 + stats.deleted * 8,
                 load_factor: (base_load * 0.4).min(1.0),
             });
         }
@@ -436,14 +563,35 @@ impl TupleChainLedger {
 
     fn assign_shard(&self, tuple: &TuplePayload) -> usize {
         let mut hasher = Hasher::new();
-        hasher.update(tuple.subject.as_bytes());
-        hasher.update(tuple.predicate.as_bytes());
+        for field in tuple.data().iter().take(3) {
+            hasher.update(field.type_url.as_bytes());
+            hasher.update(&field.value);
+        }
         hasher.update(&tuple.proof.commitment);
         let digest = hasher.finalize();
         let mut shard_bytes = [0u8; 8];
         shard_bytes.copy_from_slice(&digest.as_bytes()[..8]);
         let shard_seed = u64::from_le_bytes(shard_bytes);
         (shard_seed as usize) % self.config.shard_count as usize
+    }
+
+    fn shard_over_threshold(&self, shard_index: usize) -> bool {
+        self.shard_stats
+            .get(shard_index)
+            .map(|stats| stats.active >= self.config.sharding_threshold)
+            .unwrap_or(false)
+    }
+
+    fn lowest_load_shard(&self) -> usize {
+        let mut best_idx = 0;
+        let mut best_load = usize::MAX;
+        for (idx, stats) in self.shard_stats.iter().enumerate() {
+            if stats.active < best_load {
+                best_load = stats.active;
+                best_idx = idx;
+            }
+        }
+        best_idx
     }
 
     fn rebuild_shard_stats(&mut self, shard_index: usize) {
@@ -457,6 +605,7 @@ impl TupleChainLedger {
                     TupleStatus::Active => stats.active += 1,
                     TupleStatus::Historical => stats.historical += 1,
                     TupleStatus::Expired => stats.expired += 1,
+                    TupleStatus::Deleted => stats.deleted += 1,
                 }
                 stats.bytes += record.tuple.approx_size();
             }
@@ -469,13 +618,10 @@ impl TupleChainLedger {
 
 fn compute_tuple_id(tuple: &TuplePayload) -> TupleId {
     let mut hasher = Hasher::new();
-    hasher.update(tuple.subject.as_bytes());
-    hasher.update(tuple.predicate.as_bytes());
-    hasher.update(
-        serde_json::to_vec(&tuple.object)
-            .unwrap_or_default()
-            .as_slice(),
-    );
+    for field in tuple.data() {
+        hasher.update(field.type_url.as_bytes());
+        hasher.update(&field.value);
+    }
     hasher.update(&tuple.proof.commitment);
     let mut id = [0u8; 32];
     id.copy_from_slice(hasher.finalize().as_bytes());
@@ -491,8 +637,10 @@ fn commit_tuple(
 ) -> [u8; 32] {
     let mut hasher = Hasher::new();
     hasher.update(&tuple_id.0);
-    hasher.update(tuple.subject.as_bytes());
-    hasher.update(tuple.predicate.as_bytes());
+    for field in tuple.data() {
+        hasher.update(field.type_url.as_bytes());
+        hasher.update(&field.value);
+    }
     hasher.update(&tuple.proof.commitment);
     hasher.update(creator.as_bytes());
     hasher.update(&version.to_le_bytes());

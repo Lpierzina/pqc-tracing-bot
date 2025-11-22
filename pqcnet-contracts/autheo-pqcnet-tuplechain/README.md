@@ -41,6 +41,17 @@ sequenceDiagram
     Keeper->>DAG: fetch shard snapshot + expiry proofs
 ```
 
+### Specification checkpoints
+
+The crate matches the Cosmos SDK design and the Autheo production blueprint:
+
+- **Tuple schema:** `TuplePayload` stores its five canonical fields plus arbitrary extensions as repeated `TupleAny` entries (a lightweight `google.protobuf.Any`). `TupleReceipt` publishes the tuple id, shard id, tier path, version, expiry, and the exact block timestamp used by the keeper, lining up with `EventCreateTuple`, `EventUpdateTuple`, and `EventDeleteTuple`.
+- **State + history:** `TupleChainLedger` mounts sharded timelines keyed by `tuple/{id}` while retaining `max_historical_versions` worth of `tuple_history/{id}/{version}` data. Each timeline tracks the immutable creator, deterministic shard, and per-version lifecycle state (`Active`, `Historical`, `Expired`, `Deleted`) for governance audits.
+- **Messages + validation:** `TupleChainKeeper::store_tuple_with_shard_hint` provides the `MsgCreateTuple`/`MsgUpdateTuple` logic—enforcing tuple size, host-entropy shard assignment, creator authorization, and immutability after soft deletes. The ledger auto-increments versions, promotes prior payloads to history, and errors on creator mismatch exactly as the specification requires.
+- **Queries + telemetry:** The keeper exposes `latest`, `by_version`, `prune_expired`, `shard_utilization`, and `TupleSnapshot` representations so the gRPC query surface can satisfy `QueryTuple`, `QueryTuples`, `QueryHistoricalTuple`, and `QueryParams`. Shard stats include the 20→3 tier path consumed by Chronosync/QS-DAG.
+- **Parameters:** `TupleChainConfig` maps directly to the module params (shard count, max tuple size, historical depth, sharding threshold) and can be tuned through `x/gov`.
+- **Integration points:** Receipts are still the real interface for `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, `autheo-pqcnet-5dqeh`, and IBC/QSTP relayers—no simulator entropy or fake receipts enter this pipeline.
+
 ### Crate layout
 
 - `src/lib.rs`: TupleChain ledger, keeper façade, builder APIs, and unit tests.
@@ -49,7 +60,9 @@ sequenceDiagram
 ### Usage
 
 ```rust
-use autheo_pqcnet_tuplechain::{ProofScheme, TupleChainConfig, TupleChainKeeper, TuplePayload};
+use autheo_pqcnet_tuplechain::{
+    ProofScheme, TupleAny, TupleChainConfig, TupleChainKeeper, TuplePayload,
+};
 
 let mut keeper =
     TupleChainKeeper::new(TupleChainConfig::default()).allow_creator("did:autheo:l1/kernel");
@@ -61,6 +74,10 @@ let receipt = keeper
             .object_text("autheoid-passport")
             .proof(ProofScheme::Zkp, b"proof", "demo-zkp")
             .expiry(1_700_000_000_000 + 86_400_000)
+            .add_any(TupleAny::new(
+                "autheo.tuplechain.v1.Metadata",
+                br#"{"category":"identity"}"#.to_vec(),
+            ))
             .build(),
         1_700_000_000_000,
     )
