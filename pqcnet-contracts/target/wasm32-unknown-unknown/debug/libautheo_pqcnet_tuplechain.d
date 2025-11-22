@@ -1,0 +1,1 @@
+/workspace/pqcnet-contracts/target/wasm32-unknown-unknown/debug/libautheo_pqcnet_tuplechain.rlib: /workspace/pqcnet-contracts/autheo-pqcnet-tuplechain/src/lib.rs /workspace/pqcnet-contracts/pqcnet-entropy/src/lib.rs

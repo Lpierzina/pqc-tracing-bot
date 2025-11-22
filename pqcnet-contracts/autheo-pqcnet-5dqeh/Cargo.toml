@@ -17,3 +17,13 @@ sim = ["pqcnet-entropy/sim"]
  serde = { version = "1.0", features = ["derive"] }
  thiserror = "1.0"
 pqcnet-entropy = { path = "../pqcnet-entropy" }
+
+[[example]]
+name = "coherence_walkthrough"
+path = "examples/coherence_walkthrough.rs"
+required-features = ["sim"]
+
+[[example]]
+name = "host_entropy_demo"
+path = "examples/host_entropy_demo.rs"
+required-features = ["sim"]

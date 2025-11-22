@@ -6,7 +6,7 @@
 
 use blake3::Hasher;
 #[cfg(feature = "sim")]
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use pqcnet_entropy::{EntropySource, SimEntropySource};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -630,14 +630,14 @@ impl TupleIntent {
 /// Simulation harness that mimics BeginBlocker/EndBlocker activity.
 #[cfg(feature = "sim")]
 pub struct TupleChainSim {
-    rng: StdRng,
+    entropy: SimEntropySource,
 }
 
 #[cfg(feature = "sim")]
 impl TupleChainSim {
     pub fn new(seed: u64) -> Self {
         Self {
-            rng: StdRng::seed_from_u64(seed),
+            entropy: SimEntropySource::with_seed(seed),
         }
     }
 
@@ -654,7 +654,7 @@ impl TupleChainSim {
         let mut errors = Vec::new();
 
         for (offset, intent) in intents.into_iter().enumerate() {
-            let jitter: u64 = self.rng.gen_range(0..=250);
+            let jitter = self.gen_range_inclusive(0, 250);
             let ts = epoch_ms + (offset as u64 * 7) + jitter;
             let (creator, payload) = intent.into_payload(ts);
             match keeper.store_tuple(&creator, payload, ts) {
@@ -672,6 +672,23 @@ impl TupleChainSim {
             expired,
             errors,
         }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut bytes = [0u8; 8];
+        self.entropy
+            .try_fill_bytes(&mut bytes)
+            .expect("tuplechain sim entropy");
+        u64::from_le_bytes(bytes)
+    }
+
+    fn gen_range_inclusive(&mut self, min: u64, max: u64) -> u64 {
+        if max <= min {
+            return min;
+        }
+        let span = max - min + 1;
+        let sample = self.next_u64() % span;
+        min + sample
     }
 }
 

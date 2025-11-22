@@ -7,12 +7,9 @@
 //! subpool sizes, and TPS ceilings without rewriting the core heuristics.
 
 #[cfg(feature = "sim")]
-use rand::{
-    distributions::{Distribution, WeightedIndex},
-    rngs::StdRng,
-    seq::SliceRandom,
-    Rng, SeedableRng,
-};
+mod entropy;
+#[cfg(feature = "sim")]
+use entropy::ChronosyncEntropyRng;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 #[cfg(feature = "sim")]
@@ -229,23 +226,20 @@ pub struct EpochReport {
 
 /// Chronosync simulator used by demos, tests, and notebooks.
 #[cfg(feature = "sim")]
-pub struct ChronosyncSim<R> {
+pub struct ChronosyncSim {
     config: ChronosyncConfig,
-    rng: R,
+    rng: ChronosyncEntropyRng,
     epoch: u64,
 }
 
 #[cfg(feature = "sim")]
-impl ChronosyncSim<StdRng> {
+impl ChronosyncSim {
     /// Deterministic constructor used by examples/tests.
     pub fn with_seed(seed: u64, config: ChronosyncConfig) -> Self {
-        Self::new(config, StdRng::seed_from_u64(seed))
+        Self::new(config, ChronosyncEntropyRng::with_seed(seed))
     }
-}
 
-#[cfg(feature = "sim")]
-impl<R: Rng> ChronosyncSim<R> {
-    pub fn new(config: ChronosyncConfig, rng: R) -> Self {
+    pub fn new(config: ChronosyncConfig, rng: ChronosyncEntropyRng) -> Self {
         config.validate();
         Self {
             config,
@@ -301,7 +295,6 @@ impl<R: Rng> ChronosyncSim<R> {
             .iter()
             .map(|node| node.temporal_weight().max(1e-6))
             .collect();
-        let dist = WeightedIndex::new(&weights).expect("non-empty weights");
         let mut pools = Vec::with_capacity(self.config.verification_pools);
 
         for pool_id in 0..self.config.verification_pools {
@@ -310,7 +303,7 @@ impl<R: Rng> ChronosyncSim<R> {
             for _ in 0..self.config.subpool_size {
                 let mut attempts = 0usize;
                 let idx = loop {
-                    let candidate = dist.sample(&mut self.rng);
+                    let candidate = self.rng.sample_weighted_index(&weights);
                     attempts += 1;
                     if used_indexes.insert(candidate) || attempts > nodes.len() * 2 {
                         break candidate;
@@ -343,25 +336,16 @@ impl<R: Rng> ChronosyncSim<R> {
         let mut dag_nodes = Vec::with_capacity(self.config.layers as usize);
 
         for layer in 0..self.config.layers {
-            let leader = nodes
-                .choose(&mut self.rng)
-                .map(|profile| profile.node_id.clone())
-                .expect("nodes is non-empty");
+            let leader_index = self.rng.sample_index(nodes.len());
+            let leader_profile = &nodes[leader_index];
+            let leader = leader_profile.node_id.clone();
 
             let parents = if history.is_empty() {
                 Vec::new()
             } else {
                 let parent_count = usize::min(self.config.max_parents, history.len());
-                history
-                    .choose_multiple(&mut self.rng, parent_count)
-                    .cloned()
-                    .collect()
+                self.sample_parents(&history, parent_count)
             };
-
-            let leader_profile = nodes
-                .iter()
-                .find(|profile| profile.node_id == leader)
-                .expect("leader must exist");
 
             let node_id = format!("epoch{}-layer{}-node{}", self.epoch, layer, history.len());
             history.push(node_id.clone());
@@ -379,6 +363,21 @@ impl<R: Rng> ChronosyncSim<R> {
         DagWitness { nodes: dag_nodes }
     }
 
+    fn sample_parents(&mut self, history: &[String], requested: usize) -> Vec<String> {
+        let take = requested.min(history.len());
+        if take == 0 {
+            return Vec::new();
+        }
+        let mut indexes: Vec<usize> = (0..history.len()).collect();
+        let mut parents = Vec::with_capacity(take);
+        for _ in 0..take {
+            let idx = self.rng.sample_index(indexes.len());
+            let selected = indexes.swap_remove(idx);
+            parents.push(history[selected].clone());
+        }
+        parents
+    }
+
     fn sample_shards(
         &mut self,
         total_tps: f64,
@@ -389,7 +388,7 @@ impl<R: Rng> ChronosyncSim<R> {
         let mut shard_loads = Vec::with_capacity(self.config.shards as usize);
 
         for shard_id in 0..self.config.shards {
-            let jitter = self.rng.gen_range(0.85..1.15);
+            let jitter = self.rng.range_f64(0.85, 1.15);
             let leader = iter
                 .find(|selection| selection.shard_affinity == shard_id)
                 .map(|selection| selection.node_id.clone());

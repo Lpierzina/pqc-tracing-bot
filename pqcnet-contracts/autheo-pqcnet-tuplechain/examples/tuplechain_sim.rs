@@ -1,3 +1,5 @@
+#![cfg(feature = "sim")]
+
 use autheo_pqcnet_tuplechain::{
     ProofScheme, TupleChainConfig, TupleChainKeeper, TupleChainSim, TupleIntent,
 };

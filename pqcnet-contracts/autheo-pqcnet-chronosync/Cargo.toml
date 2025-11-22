@@ -7,9 +7,14 @@ license = "Apache-2.0"
 
 [features]
 default = []
-sim = ["rand"]
+sim = ["pqcnet-entropy/sim"]
 
 [dependencies]
-rand = { version = "0.8", features = ["std", "std_rng"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+pqcnet-entropy = { path = "../pqcnet-entropy" }
+
+[[example]]
+name = "chronosync_sim"
+path = "examples/chronosync_sim.rs"
+required-features = ["sim"]
