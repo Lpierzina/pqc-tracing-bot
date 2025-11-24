@@ -6,7 +6,10 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
-const MAX_PARENT_REFERENCES: usize = 10;
+use crate::tuple::TupleEnvelope;
+
+pub const MAX_PARENT_REFERENCES: usize = 10;
+pub const MIN_PARENT_REFERENCES: usize = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StateOp {
@@ -37,6 +40,7 @@ pub struct StateDiff {
     pub parents: Vec<String>,
     pub lamport: u64,
     pub ops: Vec<StateOp>,
+    pub tuple: Option<TupleEnvelope>,
 }
 
 impl StateDiff {
@@ -47,6 +51,7 @@ impl StateDiff {
             parents: Vec::new(),
             lamport: 0,
             ops: Vec::new(),
+            tuple: None,
         }
     }
 
@@ -63,7 +68,37 @@ impl StateDiff {
             parents,
             lamport,
             ops,
+            tuple: None,
         }
+    }
+
+    pub fn with_tuple(
+        id: impl Into<String>,
+        author: impl Into<String>,
+        parents: Vec<String>,
+        lamport: u64,
+        ops: Vec<StateOp>,
+        tuple: TupleEnvelope,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            author: author.into(),
+            parents,
+            lamport,
+            ops,
+            tuple: Some(tuple),
+        }
+    }
+
+    pub fn tuple(&self) -> Option<&TupleEnvelope> {
+        self.tuple.as_ref()
+    }
+
+    pub fn effective_timestamp(&self) -> u64 {
+        self.tuple
+            .as_ref()
+            .map(|tuple| tuple.timestamp_ns)
+            .unwrap_or(self.lamport)
     }
 }
 
@@ -107,7 +142,7 @@ impl TemporalWeight {
     }
 
     pub fn weight(&self, diff: &StateDiff) -> u64 {
-        let timestamp = diff.lamport;
+        let timestamp = diff.effective_timestamp();
         let fan_out = diff.parents.len() as u64;
         timestamp
             .saturating_add(self.alpha.saturating_mul(fan_out))

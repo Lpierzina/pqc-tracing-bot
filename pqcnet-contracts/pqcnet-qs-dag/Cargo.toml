@@ -7,6 +7,7 @@ description = "QS-DAG primitives for PQCNet: DAG state machine + PQC anchoring f
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+blake3 = { version = "1.5", default-features = false }
 
 [dev-dependencies]
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
