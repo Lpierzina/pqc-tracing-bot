@@ -2,6 +2,15 @@
 name = "pqcnet-qace"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.74"
+license = "Apache-2.0 OR MIT"
+description = "Quantum Adaptive Chaos Engine (QACE) for PQCNet tunnels"
+homepage = "https://example.com/pqcnet/qace"
+repository = "https://example.com/pqcnet"
+documentation = "https://example.com/pqcnet/qace/docs"
+readme = "README.md"
+keywords = ["pqcnet", "qace", "qstp", "routing", "pqc"]
+categories = ["network-programming", "cryptography"]
 
 [features]
 default = []

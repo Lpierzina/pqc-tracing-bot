@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ];
 
-    println!("== QACE GA Failover Simulation ==");
+    println!("== QACE GA Failover Runbook ==");
     println!(
         "{:<18} {:<12} {:<12} {:<12} {:<14}",
         "scenario", "action", "primary", "score", "confidence"
