@@ -1165,6 +1165,9 @@ dependencies = [
  "autheo-pqc-core",
  "blake2",
  "digest",
+ "hex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

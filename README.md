@@ -144,7 +144,7 @@ class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 
 - `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue.
 - `autheo-pqc-wasm/` – `cdylib` exposing the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for host runtimes.
-- `pqcnet-qfkh/` – Quantum-Forward Key Hopping controller that deterministically hops ML-KEM key pairs and derived session material (`cargo run -p pqcnet-qfkh --example qfkh_sim`).
+- `pqcnet-qfkh/` – Quantum-Forward Key Hopping controller that deterministically hops ML-KEM key pairs and derived session material (`cargo run -p pqcnet-qfkh --example qfkh_trace` replays the latest production capture).
 
 ### Tuplechain • Chronosync • Hypergraph
 
@@ -182,7 +182,7 @@ The workspace also ships production-grade controllers, keepers, and simulators s
 - `pqcnet-crypto/` – deterministic key derivation + signing (`cargo run -p pqcnet-crypto --example key_rotation`).
 - `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels, tuple metadata sealing, and deterministic integration tests (`cargo test -p pqcnet-qstp`).
 - `pqcnet-qace/` – GA-based adaptive routing guards that mutate mesh route plans without renegotiating KEM material (`cargo run -p pqcnet-qace --example ga_failover`).
-- `pqcnet-qfkh/` – epoch-based Quantum-Forward Key Hopping (`cargo run -p pqcnet-qfkh --example qfkh_sim`).
+- `pqcnet-qfkh/` – epoch-based Quantum-Forward Key Hopping (`cargo run -p pqcnet-qfkh --example qfkh_trace`).
 - `pqcnet-networking/` – RPCNet routers, in-memory bus, and overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
 - `pqcnet-relayer/` – batch queue + service that ferries PQC envelopes and hypergraph receipts to external chains (`cargo run -p pqcnet-relayer --example pipeline`).
 - `pqcnet-telemetry/` – metrics snapshots for host runtimes, tunnels, and Chronosync keepers (`cargo run -p pqcnet-telemetry --example flush_snapshot`).
@@ -739,6 +739,7 @@ flowchart LR
         Configs["configs/"]
         Docs["docs/"]
         Protos["protos/"]
+        QfkhTrace["data/qfkh_prod_trace.json"]
     end
 
     Kyber --> CoreCrate
@@ -773,6 +774,7 @@ flowchart LR
     Relayer --> Configs
     Sentry --> Configs
     Docs --> Configs
+    QfkhTrace --> Qfkh
     Qstp --> Protos
     FiveDQeh --> Protos
     Protos --> Networking
@@ -786,7 +788,7 @@ flowchart LR
 - **Autheo PQC enclave** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the WASM ABI, contract glue, and Quantum-Forward Key Hopping controller that feed QSTP tunnels and TupleChain receipts.
 - **Tuple → Hypergraph data plane** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` inflate tuples into hyper-tuples, run Chronosync elections, and anchor the resulting vertices inside `pqcnet-qs-dag`.
 - **Runtime & ops** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` keep tunnels, routing guards, relayers, telemetry feeds, and watcher quorums aligned with the PQC anchors.
-- **Shared assets** – `configs/`, `docs/`, and `protos/` provide reproducible configs, deep-dive documentation, and protobuf contracts for relayers, RPCNet routers, and downstream clients.
+- **Shared assets** – `configs/`, `docs/`, `protos/`, and `data/qfkh_prod_trace.json` provide reproducible configs, deep-dive documentation, protobuf contracts, and real QFKH telemetry for relayers, RPCNet routers, and downstream clients.
 
 #### Flow walkthrough
 

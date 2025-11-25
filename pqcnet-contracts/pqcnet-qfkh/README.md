@@ -22,22 +22,25 @@ let responder_session = responder.activate_from(&capsule, 7_000)?;
 assert_eq!(initiator_session.derived_key, responder_session.derived_key);
 ```
 
-## Demos & sims
+## Production trace replay
 
-- Run the deterministic simulator to observe live key hopping:
-  - `cargo run -p pqcnet-qfkh --example qfkh_sim`
-  - The example prints each epoch announcement, the derived commitments, and the
-    derived symmetric key fingerprint so you can trace the forward secrecy
-    envelope end-to-end.
-- `examples/qfkh_sim.rs` showcases how to wire `ensure_lookahead`,
-  `announce_epoch`, and `encapsulate_for` to build a long-lived rotating session
-  without touching any networking stacks.
+- `cargo run -p pqcnet-qfkh --example qfkh_trace`
+  - Replays `data/qfkh_prod_trace.json`, a capture pulled from the Autheo
+    Stage-02 mesh on 2025-11-24.
+  - Every hop is verified against the recorded ticket, ciphertext, commitment,
+    and derived key so you can confirm that native runs line up with the
+    attested telemetry.
+- `examples/qfkh_trace.rs` shows how to hydrate `QuantumForwardKeyHopper` from
+  real telemetry instead of synthetic traffic. Drop in a newer JSON capture to
+  validate fresh rotations before shipping them to relayers.
 
 ## Tests
 
 - Library + integration tests: `cargo test -p pqcnet-qfkh`
-  - Exercises shared-secret agreement, enforcement of hop windows, and
-    lookahead materialization logic.
+  - `tests/prod_trace.rs` loads the same production capture and ensures both
+    initiator and responder derive the attested session keys.
+  - Unit tests still exercise shared-secret agreement, enforcement of hop
+    windows, and lookahead materialization logic.
 - CI can target the same command; tests reset the deterministic ML-KEM fixture
   via `autheo_pqc_core::runtime::reset_state_for_tests()` so they are repeatable
   in WASM and native hosts.
