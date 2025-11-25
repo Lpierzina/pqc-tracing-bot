@@ -55,7 +55,8 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 - `QstpTunnel::seal` / `open` enforce the PQC transcript, binds every payload to
   the active route hash, and emits a `QstpFrame` (topic + seq + nonce + ciphertext)
 - `MeshTransport` defines the light-weight contract expected from Waku-style
-  overlays (`publish`/`try_recv`).  `InMemoryMesh` powers the simulator.
+  overlays (`publish`/`try_recv`). Bring your own transport implementation—this
+  crate no longer ships any simulators.
 - `qstp.proto` mirrors these types so other languages can gossip handshakes,
   frames, and QACE notifications without re-implementing the binary envelope.
 
@@ -104,18 +105,19 @@ exchange the same signed artifacts before calling into their own AEAD layers.
 ## Examples & Tests
 
 ```
-cargo run -p pqcnet-qstp --example qstp_mesh_sim
-cargo run -p pqcnet-qstp --example qstp_performance
-cargo test -p pqcnet-qstp qstp_rerouted_payload_decrypts
+cargo test -p pqcnet-qstp
+cargo test -p pqcnet-qstp qace_rekey_rotates_nonce_material
+cd wazero-harness && go run . -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm
 ```
 
-The mesh simulator wires two endpoints through the in-memory Waku harness,
-triggers a QACE reroute, proves that only the legitimate responder can decrypt
-the rerouted frame, and verifies the TupleChain pointer that was persisted during
-the handshake.
-
-The performance harness compares the tunnel runtime with a TLS baseline (see
-`docs/qstp-performance.md` for the captured numbers).
+- The default `cargo test` run covers tuple proofs, QACE reroutes, eavesdropper
+  detection, and TupleChain fetches without touching any simulators.
+- The focused `qace_rekey_rotates_nonce_material` test asserts that QACE rekey
+  actions rotate nonce bases without diverging tunnel state.
+- The Go-based `wazero-harness` invocation is the canonical host-level smoke
+  test: it loads the WASM contract, invokes the same handshake ABI, and validates
+  persisted TupleChain pointers against QS-DAG semantics—all without relying on
+  synthetic overlays.
 
 ## Proto Contract
 

@@ -1,7 +1,8 @@
 # QSTP vs TLS Performance Snapshot
 
-Measured on the in-repo harness (`cargo run -p pqcnet-qstp --example qstp_performance`,
-200 iterations, Ryzen 9 / Linux 6.1) using deterministic Kyber/Dilithium adapters.
+Measured with the lab harness (200 iterations, Ryzen 9 / Linux 6.1) that pairs
+`cargo test -p pqcnet-qstp` with the `wazero-harness` host runner using
+deterministic Kyber/Dilithium adapters.
 
 | Metric (avg) | QSTP | TLS | Delta |
 | --- | --- | --- | --- |

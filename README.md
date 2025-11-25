@@ -156,7 +156,7 @@ class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 ### PQCNet runtime & ops
 
 - `pqcnet-crypto/` – deterministic key derivation/signing glue (`cargo run -p pqcnet-crypto --example key_rotation`).
-- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels (`cargo run -p pqcnet-qstp --example qstp_mesh_sim`).
+- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels (`cargo test -p pqcnet-qstp`).
 - `pqcnet-qace/` – GA-based routing controllers that mutate active mesh routes (`cargo run -p pqcnet-qace --example ga_failover`).
 - `pqcnet-networking/` – RPCNet message bus + overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
 - `pqcnet-relayer/` – batch relay queue + pipeline CLI (`cargo run -p pqcnet-relayer --example pipeline`).
@@ -180,7 +180,7 @@ Add new algorithm crates (e.g., future NIST picks) by following the same pattern
 The workspace also ships production-grade controllers, keepers, and simulators so you can exercise the full PQCNet node stack—tunnels, routing, tuple storage, hypergraph anchoring, relays, QRNG feeds, and telemetry. Each crate documents its config schema, doctests, and runnable examples:
 
 - `pqcnet-crypto/` – deterministic key derivation + signing (`cargo run -p pqcnet-crypto --example key_rotation`).
-- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels, tuple metadata sealing, and mesh simulators (`cargo run -p pqcnet-qstp --example qstp_mesh_sim`).
+- `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels, tuple metadata sealing, and deterministic integration tests (`cargo test -p pqcnet-qstp`).
 - `pqcnet-qace/` – GA-based adaptive routing guards that mutate mesh route plans without renegotiating KEM material (`cargo run -p pqcnet-qace --example ga_failover`).
 - `pqcnet-qfkh/` – epoch-based Quantum-Forward Key Hopping (`cargo run -p pqcnet-qfkh --example qfkh_sim`).
 - `pqcnet-networking/` – RPCNet routers, in-memory bus, and overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
@@ -592,7 +592,7 @@ The harness now:
 - Kyber + Dilithium handshakes (`establish_runtime_tunnel`) returning ready-to-use
   `QstpTunnel`s and the protobuf-friendly `QstpPeerMetadata`.
 - AES-256-GCM data channels with nonce binding to the active `MeshRoutePlan`.
-- A `MeshTransport` trait plus `InMemoryMesh` simulator for Waku-like pub-sub meshes.
+- A `MeshTransport` trait describing how to plug QSTP frames into Waku-like pub-sub meshes (bring your own transport).
 - TupleChain metadata encryption/retrieval (`TupleChainStore`) so the control plane
   can persist tunnel descriptors without leaking plaintext.
 - Adaptive routing via QACE hooks (`pqcnet_qace::GaQace` + `pqcnet_qace::SimpleQace`) that re-derive directional keys
@@ -601,8 +601,8 @@ The harness now:
 Quick start:
 
 ```
-cargo run -p pqcnet-qstp --example qstp_mesh_sim
-cargo run -p pqcnet-qstp --example qstp_performance
+cargo test -p pqcnet-qstp
+cargo test -p pqcnet-qstp qace_rekey_rotates_nonce_material
 cargo run -p autheo-pqc-core --example handshake_demo
 cargo run -p pqcnet-qace --example ga_failover
 cargo run -p pqcnet-qace --example deterministic_guard
@@ -617,32 +617,35 @@ deploying to a real mesh.
 
 ### Example: QSTP Tunnels for PQCNet Applications
 
-Run the mesh simulator to watch PQCNet provision a QSTP tunnel that THEO swaps or Waku-derived pub-sub meshes can immediately reuse:
+Skip ad-hoc simulators and rely on the deterministic tests that now ship with the crate:
 
 ```
 cd pqcnet-contracts
-cargo run -p pqcnet-qstp --example qstp_mesh_sim
+cargo test -p pqcnet-qstp qstp_tunnel_encrypts_and_decrypts_payload
+cargo test -p pqcnet-qstp qstp_rerouted_payload_decrypts
+cargo test -p pqcnet-qstp qace_rekey_rotates_nonce_material
+cargo test -p pqcnet-qstp eavesdropper_cannot_decrypt_frame
 ```
 
-The example prints each of the following guardrails so you can demonstrate end-to-end confidentiality, integrity, and forward secrecy:
+These tests demonstrate the same guardrails end-to-end:
 
-1. **Initiator handshake** – `establish_runtime_tunnel` derives a `QstpTunnel`, `QstpPeerMetadata`, and a session secret straight from the Kyber/Dilithium artifacts returned by `pqc_handshake`.
-2. **Responder hydration** – `hydrate_remote_tunnel` proves that peers only need the advertised `peer_metadata` plus the shared secret to hydrate the tunnel on a different machine (ideal for validators or settlement daemons).
-3. **Payload sealing** – `QstpTunnel::seal` wraps something like a THEO swap intent (`waku::order-intent`) into an AES-256-GCM `QstpFrame` whose AAD binds the tunnel id, route hash, and application context, then the in-memory Waku mesh delivers it to `node_b`.
-4. **Reroute on threat** – feeding `GaQace` a high `threat_score` triggers a hop from `waku/mesh/primary` to `waku/mesh/failsafe` without repeating the ML-KEM/ML-DSA handshake, keeping the data plane live while still rotating directional nonces.
-5. **TupleChain audit trail** – `fetch_tuple_metadata` dumps the encrypted pointer and route hash so that control planes can show auditors which policy enforced the tunnel at any point in time.
-6. **Eavesdrop failure** – the simulator spins up a fake responder with zeroed secrets to highlight that any mismatched shared secret trips `PqcError::VerifyFailed`, demonstrating post-quantum confidentiality even on public meshes.
+1. **Initiator handshake** – `qstp_tunnel_encrypts_and_decrypts_payload` shows `establish_runtime_tunnel` deriving a `QstpTunnel`, `QstpPeerMetadata`, and the session secret directly from the Kyber/Dilithium artifacts returned by `pqc_handshake`.
+2. **Responder hydration** – the same test proves that responders only need the advertised metadata plus the shared secret to hydrate the tunnel on another machine (ideal for validators or settlement daemons).
+3. **Payload sealing** – `qstp_tunnel_encrypts_and_decrypts_payload` exercises `QstpTunnel::seal/open`, binding tunnel id, route hash, and app AAD into every AES-256-GCM transcript.
+4. **Adaptive reroute & rekey** – `qstp_rerouted_payload_decrypts` and `qace_rekey_rotates_nonce_material` feed QACE metrics that trigger reroutes and nonce rotations without repeating the ML-KEM/ML-DSA ceremony.
+5. **TupleChain audit trail** – `eavesdropper_cannot_decrypt_frame` calls `fetch_tuple_metadata` to recover the encrypted pointer + route hash so auditors can prove which policy enforced the tunnel at any time.
+6. **Eavesdrop failure** – the same test spins up a fake responder with zeroed secrets to highlight that mismatched shared secrets trip `PqcError::VerifyFailed`, demonstrating post-quantum confidentiality even on public meshes.
 
 Plug in your own Waku transport by implementing the `MeshTransport` trait and replace the TupleChain stub with your ledger or state store; no contract changes are required.
 
 #### Performance harness (optional)
 
 ```
-cd pqcnet-contracts
-cargo run -p pqcnet-qstp --example qstp_performance
+cd wazero-harness
+go run . -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm
 ```
 
-This benchmark logs average handshake and payload times for both QSTP tunnels and a TLS 1.3 baseline, plus the percentage overhead. Capture the table when you need to prove that PQCNet stays within the “< 10% end-to-end overhead” target for high-frequency swaps.
+This Go harness logs average handshake and payload times for both QSTP tunnels and a TLS 1.3 baseline, plus the percentage overhead. Capture the numbers (also mirrored in `docs/qstp-performance.md`) when you need to prove that PQCNet stays within the “< 10% end-to-end overhead” target for high-frequency swaps.
 
 #### Rust Handshake API
 

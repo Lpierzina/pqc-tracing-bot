@@ -7,7 +7,7 @@
 - `establish_runtime_tunnel` turns PQC handshake envelopes into ready-to-use tunnels plus protobuf-friendly metadata blobs (`QstpPeerMetadata`) that remote peers can hydrate with a single call to `hydrate_remote_tunnel`.
 - `QstpTunnel::seal/open` authenticate every frame against the active `MeshRoutePlan`, binding `TunnelId`, route hash, and application AAD into the AES-GCM transcript.
 - `TupleChainStore` provides an integration point for storing encrypted metadata off-chain so operators can prove tunnel provenance without exposing plaintext—perfect for zero-knowledge attestations.
-- `MeshTransport` + `InMemoryMesh` let you simulate Waku/THEO overlays and plug in real transports later.
+- `MeshTransport` documents the contract for wiring real Waku/THEO overlays; bring your own transport implementation when integrating this crate.
 - QACE interoperability via `register_alternate_routes` and `apply_qace` keeps channels adaptive: reroutes trigger nonce rotation, while rekeys keep tuple material in lock-step.
 
 ### How it works
@@ -20,6 +20,7 @@ sequenceDiagram
     participant Tuple as TupleChain Store
     participant Mesh as Mesh/Waku Overlay
     participant Peer as Remote Peer
+    participant QACE as QACE Engine
 
     Host->>Handshake: build_handshake_artifacts(request)
     Handshake-->>Host: ciphertext + shared_secret + signature
@@ -28,7 +29,8 @@ sequenceDiagram
     Tunnel->>Mesh: QstpFrame (AES-256-GCM, bound to route_hash)
     Mesh-->>Peer: sealed frame / peer metadata
     Peer->>Tunnel: hydrate_remote_tunnel(shared_secret, metadata, route)
-    Tunnel->>Mesh: apply_qace(metrics) for reroute/rekey decisions
+    Tunnel->>QACE: apply_qace(metrics, path_set)
+    QACE-->>Tunnel: decision (reroute/rekey + new alternates)
 ```
 
 Every payload follows the same lifecycle: PQC handshake output → tunnel finalization → encrypted TupleChain metadata → sealed frames on the mesh. Observers never see tuple details in plaintext, yet auditors can later prove session lineage using the stored pointer and `QstpTunnel::fetch_tuple_metadata`.
@@ -75,8 +77,8 @@ assert_eq!(clear, b"hello-qstp");
 
 | Command | Description |
 | --- | --- |
-| `cargo run -p pqcnet-qstp --example qstp_mesh_sim` | Spins up two peers over the in-memory mesh, exercises QACE reroutes, and shows tuple metadata retrieval. |
-| `cargo run -p pqcnet-qstp --example qstp_performance` | Benchmarks QSTP handshake + payload latency versus a TLS baseline using `rustls`. |
-| `cargo test -p pqcnet-qstp` | Runs the in-crate test suite, covering reroutes, tuple metadata proofs, and authenticity checks. |
+| `cargo test -p pqcnet-qstp` | Runs the in-crate suite that exercises handshakes, tuple proofs, and QACE-backed reroutes. |
+| `cargo test -p pqcnet-qstp qace_rekey_rotates_nonce_material` | Focused test that proves QACE rekey actions rotate nonce material while keeping the active route stable. |
+| `cd wazero-harness && go run . -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm` | Optional host-level harness that loads the compiled WASM, drives the same handshake artifacts, and validates TupleChain persistence without any in-crate simulators. |
 
-Use these artifacts to prove the zero-knowledge and adaptive-routing guarantees end-to-end before wiring QSTP into external repos.
+Use these artifacts to prove the zero-knowledge and adaptive-routing guarantees end-to-end before wiring QSTP into external repos—no bundled simulators are required.

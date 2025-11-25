@@ -48,7 +48,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
    - Ledger of relays (attestation hashes, stake, performance history)
    - Attestation record store with append-only edges
    - Meta-routing tables (per-topic shard owners, QoS hints)
-4. **Linear Scaling** – Each new relayer shard only needs Kafka/Redis partition metadata + QS-DAG anchor; sentries maintain lightweight pointer caches ensuring O(log n) routing updates. Simulations (`qstp_mesh_sim`) are updated to spawn ≥1,000 nodes using the Waku adapter to validate scaling and recovery.
+4. **Linear Scaling** – Each new relayer shard only needs Kafka/Redis partition metadata + QS-DAG anchor; sentries maintain lightweight pointer caches ensuring O(log n) routing updates. Regression coverage now leans on `cargo test -p pqcnet-qstp` (reroutes, tuple proofs) plus scripted `wazero-harness` runs that drive the Waku adapter across ≥1,000 virtual nodes to validate scaling and recovery.
 
 ---
 
@@ -85,7 +85,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
 - **Backpressure** – Relayers monitor partition lag; when exceeding thresholds, they:
   - Send QSTP `FlowControl::Pause` messages upstream.
   - Persist overflow batches to local RocksDB-backed queues for replay.
-- **Resilience Testing** – `qstp_performance` example extended to:
+- **Resilience Testing** – the lab harness that feeds `docs/qstp-performance.md` now extends `wazero-harness` to:
   - Spawn synthetic relayer pools, apply chaos (node churn, latency spikes).
   - Verify <5% packet loss by measuring replay success once nodes recover.
 
@@ -97,7 +97,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
   - Emits `IBCEnvelope { channel, sequence, payload_hash, signature }`.
   - Used by both sentries (RPC audit logs) and relayers (volume proofs).
 - **THEO Accounting** – Volume metrics exported via gRPC/JSON from relayers; governance or staking nodes consume them for reward calculation.
-- **QSTP Tunnels** – Remain the default data-plane interface; `pqcnet-qstp/examples/qstp_mesh_sim` updated to showcase sentry→relayer→client routing.
+- **QSTP Tunnels** – Remain the default data-plane interface; the `qstp_rerouted_payload_decrypts` and `qace_rekey_rotates_nonce_material` tests now cover sentry→relayer→client routing decisions without relying on simulators.
 
 ---
 
@@ -120,7 +120,7 @@ Phase | Workstreams | Notes
 1. Overlay scaffolding | New crates `pqcnet-sentry`, `pqcnet-relayer`, Waku transport adapter for `MeshTransport`. Wire existing `autheo-pqc-core` modules into node runtimes. | Heavy reuse of `runtime.rs`, `pqcnet-qstp`, `pqcnet-qs-dag`.
 2. Message bus & accounting | Kafka/Redis connectors, shard workers, volume metrics pipeline, Prometheus exporters, governance proto for volume proofs. | Add integration tests + `cargo test -p autheo-pqc-core relayer::*`.
 3. Security hardening | Attestation collector, QS-DAG ledger extensions, slashing hooks, HSM adapters, Shamir share services. | Update `docs/qstp.md` + new `docs/attestation.md`.
-4. Throughput & resilience | Synthetic harness to hit 10,000 TPS, chaos tests for <5% packet loss, backpressure controls. | Extend `qstp_performance` and add `relayer_burst.rs` example.
+4. Throughput & resilience | Synthetic harness to hit 10,000 TPS, chaos tests for <5% packet loss, backpressure controls. | Extend the `wazero-harness` scripts and add a `relayer_burst.rs` example.
 5. Deployment & ops | Dockerfiles, Helm charts, CI workflows (build/push images), operator runbook, metrics dashboards. | Validate in distributed testbed before GA.
 
 ---

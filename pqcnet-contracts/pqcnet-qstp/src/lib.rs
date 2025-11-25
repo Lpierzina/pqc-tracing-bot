@@ -4,7 +4,7 @@ extern crate alloc;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -229,43 +229,6 @@ pub trait MeshTransport {
     fn try_recv(&mut self, topic: &str) -> Option<QstpFrame>;
 }
 
-/// Deterministic in-memory mesh simulator satisfying the transport trait.
-pub struct InMemoryMesh {
-    topics: BTreeMap<String, VecDeque<QstpFrame>>,
-}
-
-impl InMemoryMesh {
-    pub fn new() -> Self {
-        Self {
-            topics: BTreeMap::new(),
-        }
-    }
-
-    pub fn len(&self, topic: &str) -> usize {
-        self.topics.get(topic).map(|q| q.len()).unwrap_or(0)
-    }
-}
-
-impl Default for InMemoryMesh {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MeshTransport for InMemoryMesh {
-    fn publish(&mut self, frame: QstpFrame) -> PqcResult<()> {
-        self.topics
-            .entry(frame.topic.clone())
-            .or_insert_with(VecDeque::new)
-            .push_back(frame);
-        Ok(())
-    }
-
-    fn try_recv(&mut self, topic: &str) -> Option<QstpFrame> {
-        self.topics.get_mut(topic)?.pop_front()
-    }
-}
-
 /// Internal metadata stored alongside cipher state.
 #[derive(Clone, Debug)]
 pub struct QstpTunnelMetadata {
@@ -459,6 +422,13 @@ impl QstpTunnel {
         self.route = route;
         self.route_hash = self.route.route_hash();
         self.rotate_route_material();
+    }
+}
+
+#[cfg(test)]
+impl QstpTunnel {
+    fn nonce_bases(&self) -> ([u8; 12], [u8; 12]) {
+        (self.tx.nonce_base, self.rx.nonce_base)
     }
 }
 
@@ -806,11 +776,12 @@ fn build_aad(tunnel_id: &TunnelId, route_hash: &[u8; 32], seq: u64, app_aad: &[u
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::borrow::Cow;
     use alloc::boxed::Box;
     use autheo_pqc_core::adapters::DemoMlKem;
     use autheo_pqc_core::kem::MlKemEngine;
     use autheo_pqc_core::runtime;
-    use pqcnet_qace::{QaceAction, SimpleQace};
+    use pqcnet_qace::{QaceAction, QaceConvergence, SimpleQace};
 
     #[test]
     fn handshake_between_two_endpoints_matches_shared_secret() {
@@ -1022,5 +993,83 @@ mod tests {
             )
             .expect("qace apply");
         assert_eq!(decision.path_set.primary.topic, "waku/r1");
+    }
+
+    #[test]
+    fn qace_rekey_rotates_nonce_material() {
+        runtime::reset_state_for_tests();
+        let mut tuple_chain = InMemoryTupleChain::new();
+        let peer = MeshPeerId::derive("rekey-peer");
+        let route = MeshRoutePlan {
+            topic: "waku/rekey".into(),
+            hops: vec![MeshPeerId::derive("hop-rekey")],
+            qos: MeshQosClass::Control,
+            epoch: 314,
+        };
+        let mut established =
+            establish_runtime_tunnel(b"client=rekey", peer, route.clone(), &mut tuple_chain)
+                .expect("tunnel");
+
+        let (tx_before, rx_before) = established.tunnel.nonce_bases();
+        let mut engine = StaticRekey::default();
+        let decision = established
+            .tunnel
+            .apply_qace(
+                QaceMetrics {
+                    loss_bps: 7_000,
+                    ..Default::default()
+                },
+                &mut engine,
+            )
+            .expect("rekey decision");
+        assert!(matches!(decision.action, QaceAction::Rekey));
+        assert_eq!(decision.path_set.primary.topic, route.topic);
+
+        let (tx_after, rx_after) = established.tunnel.nonce_bases();
+        assert_ne!(tx_before, tx_after, "tx nonce base should rotate");
+        assert_ne!(rx_before, rx_after, "rx nonce base should rotate");
+    }
+
+    #[test]
+    fn tuple_metadata_round_trip_and_validation() {
+        let plain = TupleMetadataPlain {
+            tunnel_id: TunnelId([0x11; 16]),
+            kem_key_id: KeyId([0x22; 32]),
+            signing_key_id: KeyId([0x33; 32]),
+            threshold: ThresholdPolicy { t: 2, n: 3 },
+            route_hash: [0x44; 32],
+            qos: MeshQosClass::LowLatency,
+            route_epoch: 99,
+            established_at: 1_687_000,
+        };
+        let bytes = plain.to_bytes();
+        let parsed = TupleMetadataPlain::from_bytes(&bytes).expect("parse metadata");
+        assert_eq!(parsed, plain);
+
+        let mut corrupted = bytes.clone();
+        let qos_offset = 16 + 32 + 32 + 2 + 32;
+        corrupted[qos_offset] = 0xff;
+        assert!(matches!(
+            TupleMetadataPlain::from_bytes(&corrupted),
+            Err(PqcError::InvalidInput(_))
+        ));
+    }
+
+    #[derive(Default)]
+    struct StaticRekey;
+
+    impl QaceEngine<MeshRoutePlan> for StaticRekey {
+        fn evaluate(
+            &mut self,
+            request: QaceRequest<MeshRoutePlan>,
+        ) -> pqcnet_qace::QaceResult<QaceDecision<MeshRoutePlan>> {
+            Ok(QaceDecision {
+                action: QaceAction::Rekey,
+                score: 733,
+                rationale: Cow::Borrowed("test-rekey"),
+                path_set: request.path_set,
+                convergence: QaceConvergence::deterministic(),
+            })
+        }
     }
 }
