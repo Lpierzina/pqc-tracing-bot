@@ -13,3 +13,7 @@ sim = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 getrandom = "0.2"
+
+[[example]]
+name = "production_entropy"
+path = "examples/production_entropy.rs"
