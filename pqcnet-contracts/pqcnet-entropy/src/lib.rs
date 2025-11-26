@@ -129,7 +129,7 @@ mod tests {
     use super::*;
     use std::string::ToString;
 
-    #[cfg(feature = "sim")]
+    #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
     #[test]
     fn sim_entropy_is_deterministic() {
         let mut first = SimEntropySource::with_seed(42);
@@ -150,7 +150,7 @@ mod tests {
         assert!(buf.iter().any(|b| *b != 0));
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
     #[test]
     fn sim_entropy_reseed_resets_stream() {
         let mut sim = SimEntropySource::with_seed(7);
@@ -242,6 +242,7 @@ mod tests {
         assert!(unique_bytes > 150, "entropy should produce diverse byte values, got {} unique", unique_bytes);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn entropy_error_display() {
         let err1 = EntropyError::HostRejected(-1);
@@ -252,6 +253,7 @@ mod tests {
         assert_eq!(err2.to_string(), "test error");
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn entropy_error_equality() {
         let err1 = EntropyError::HostRejected(-1);
