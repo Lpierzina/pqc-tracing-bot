@@ -49,33 +49,30 @@ threshold-total-shares = 5               # Shamir n parameter
 All fields default to production-safe values so existing configs keep working;
 only set them when overriding rotation cadence or share counts for tests.
 
-## Flow diagram
-
-```mermaid
----
-config:
-  theme: neutral
----
+%%{init: { "theme": "neutral" }}%%
 flowchart LR
-    subgraph Provider[CryptoProvider]
-      cfg[CryptoConfig]
-      secrets[Node Secret Seed]
-      kem[KeyManager (Kyber)]
-      sig[SignatureManager (Dilithium)]
+    subgraph Provider["CryptoProvider"]
+        cfg["CryptoConfig"]
+        secrets["Node Secret Seed"]
+        kem["KeyManager (Kyber)"]
+        sig["SignatureManager (Dilithium)"]
     end
-    relayer[pqcnet-relayer]
-    sentry[pqcnet-sentry]
+
+    relayer["pqcnet-relayer"]
+    sentry["pqcnet-sentry"]
 
     cfg --> kem
     cfg --> sig
     secrets --> kem
     secrets --> sig
+
     relayer -->|derive_shared_key| Provider
     sentry -->|derive_shared_key| Provider
+
     Provider -->|ciphertext + shared secret| relayer
     Provider -->|ciphertext + shared secret| sentry
     Provider -->|sign/verify| relayer
-```
+
 
 The same provider instance is passed into the relayer, sentry, and other runtime
 services, guaranteeing that every outbound handshake carries the ML-KEM
