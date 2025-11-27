@@ -17,7 +17,7 @@
 //! assert_eq!(report.processed_watchers, cfg.sentry.watchers.len());
 //! ```
 
-use pqcnet_crypto::CryptoProvider;
+use pqcnet_crypto::{CryptoError, CryptoProvider};
 use pqcnet_networking::{NetworkClient, NetworkingError};
 use pqcnet_telemetry::{TelemetryError, TelemetryHandle};
 use thiserror::Error;
@@ -34,6 +34,8 @@ pub enum ServiceError {
     },
     #[error(transparent)]
     Telemetry(#[from] TelemetryError),
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -66,11 +68,12 @@ impl SentryService {
 
     pub fn run_iteration(&mut self, dry_run: bool) -> Result<SentryReport, ServiceError> {
         for watcher in &self.config.watchers {
-            let derived = self.crypto.derive_shared_key(watcher);
+            let derived = self.crypto.derive_shared_key(watcher)?;
             let payload = format!(
-                "watcher-handshake:{}:{}",
+                "watcher-handshake:{}:{}:{}",
                 watcher,
-                hex::encode(derived.material)
+                hex::encode(derived.material),
+                hex::encode(&derived.ciphertext)
             );
             if dry_run {
                 self.telemetry.record_counter("sentry.dry_run", 1)?;
