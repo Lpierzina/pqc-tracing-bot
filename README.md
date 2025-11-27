@@ -155,7 +155,7 @@ class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 
 ### PQCNet runtime & ops
 
-- `pqcnet-crypto/` – deterministic key derivation/signing glue (`cargo run -p pqcnet-crypto --example key_rotation`).
+- `pqcnet-crypto/` – ML-KEM/ML-DSA key orchestration + ciphertext handling (`cargo run -p pqcnet-crypto --example key_rotation`).
 - `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels (`cargo test -p pqcnet-qstp`).
 - `pqcnet-qace/` – GA-based routing controllers that mutate active mesh routes (`cargo run -p pqcnet-qace --example ga_failover`).
 - `pqcnet-networking/` – RPCNet message bus + overlay adapters (`cargo run -p pqcnet-networking --example in_memory_bus`).
@@ -179,7 +179,7 @@ Add new algorithm crates (e.g., future NIST picks) by following the same pattern
 
 The workspace also ships production-grade controllers, keepers, and simulators so you can exercise the full PQCNet node stack—tunnels, routing, tuple storage, hypergraph anchoring, relays, QRNG feeds, and telemetry. Each crate documents its config schema, doctests, and runnable examples:
 
-- `pqcnet-crypto/` – deterministic key derivation + signing (`cargo run -p pqcnet-crypto --example key_rotation`).
+- `pqcnet-crypto/` – ML-KEM/ML-DSA key orchestration + ciphertext handling (`cargo run -p pqcnet-crypto --example key_rotation`).
 - `pqcnet-qstp/` – Quantum-Secure Transport Protocol tunnels, tuple metadata sealing, and deterministic integration tests (`cargo test -p pqcnet-qstp`).
 - `pqcnet-qace/` – GA-based adaptive routing guards that mutate mesh route plans without renegotiating KEM material (`cargo run -p pqcnet-qace --example ga_failover`).
 - `pqcnet-qfkh/` – epoch-based Quantum-Forward Key Hopping (`cargo run -p pqcnet-qfkh --example qfkh_trace`).

@@ -20,7 +20,7 @@
 
 use std::collections::VecDeque;
 
-use pqcnet_crypto::CryptoProvider;
+use pqcnet_crypto::{CryptoError, CryptoProvider};
 use pqcnet_networking::NetworkClient;
 use pqcnet_telemetry::{TelemetryError, TelemetryHandle};
 use thiserror::Error;
@@ -31,6 +31,8 @@ use crate::config::{Config, RelayerMode, RelayerSection};
 pub enum ServiceError {
     #[error(transparent)]
     Telemetry(#[from] TelemetryError),
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,23 +66,25 @@ impl RelayerService {
         }
     }
 
-    fn fill_queue(&mut self) {
+    fn fill_queue(&mut self) -> Result<(), ServiceError> {
         while self.queue.len() < self.config.max_queue_depth as usize {
             let idx = self.queue.len();
-            let derived = self.crypto.derive_shared_key(&format!("batch-{}", idx));
-            let signature = self.crypto.sign(&derived.material);
+            let derived = self.crypto.derive_shared_key(&format!("batch-{}", idx))?;
+            let signature = self.crypto.sign(&derived.material)?;
             let payload = format!(
-                "{}:{}:{}",
+                "{}:{}:{}:{}",
                 self.config.mode.as_str(),
                 hex::encode(derived.material),
-                hex::encode(signature.digest)
+                hex::encode(signature.bytes),
+                hex::encode(&derived.ciphertext)
             );
             self.queue.push_back(payload.into_bytes());
         }
+        Ok(())
     }
 
     pub fn relay_once(&mut self) -> Result<RelayerReport, ServiceError> {
-        self.fill_queue();
+        self.fill_queue()?;
         let mut delivered = 0usize;
         for _ in 0..self.config.batch_size {
             if let Some(message) = self.queue.pop_front() {
