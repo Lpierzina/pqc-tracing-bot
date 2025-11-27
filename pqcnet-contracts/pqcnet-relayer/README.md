@@ -30,6 +30,7 @@ to production nodes—no mock ciphertexts or simulated signatures.
    `NetworkClient::broadcast`. Receipts feed telemetry counters/latencies, and
    bidirectional mode requeues messages to simulate full-mesh chatter.
 
+```mermaid
 %%{init: { "theme": "neutral" }}%%
 flowchart LR
     subgraph Crypto["pqcnet-crypto::CryptoProvider"]
@@ -57,6 +58,7 @@ flowchart LR
     Crypto -->|ciphertext + shared secret| Relayer
     Relayer <--> |sign / verify| Crypto
     net --> Sentries["pqcnet-sentry + peers"]
+```
 
 Relayers and sentries consume the same ciphertext + shared-secret tuples, which
 keeps watcher quorums aligned with the relayer backlog.

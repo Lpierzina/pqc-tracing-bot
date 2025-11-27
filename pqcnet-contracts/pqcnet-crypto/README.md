@@ -57,6 +57,7 @@ only set them when overriding rotation cadence or share counts for tests.
 needs PQC material. The diagram below mirrors the production wiring that runs on
 relayers and sentries today.
 
+```mermaid
 %%{init: { "theme": "neutral" }}%%
 flowchart LR
     subgraph Provider["CryptoProvider (pqcnet-crypto)"]
@@ -79,6 +80,7 @@ flowchart LR
 
     sentry -->|derive_shared_key| Provider
     Provider -->|ciphertext + shared secret| sentry
+```
 
 Relayers and sentries call the exact same APIs that production nodes exercise:
 

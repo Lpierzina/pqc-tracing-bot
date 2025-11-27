@@ -28,6 +28,7 @@ instead of a mock simulator.
    encode it with the ciphertext, and either publish it or mark a dry-run ping.
 3. Record watcher latency + counters and report quorum status for the caller.
 
+```mermaid
 %%{init: { "theme": "neutral" }}%%
 flowchart LR
     subgraph Crypto["pqcnet-crypto::CryptoProvider"]
@@ -53,6 +54,7 @@ flowchart LR
     Sentry -->|derive_shared_key| Crypto
     Crypto -->|ciphertext + shared secret| Sentry
     net --> Relayers["pqcnet-relayer peers"]
+```
 
 Sentries therefore consume and attest the same ciphertext + quorum metadata that
 relayers ship, keeping PQC proofs and telemetry synchronized.
