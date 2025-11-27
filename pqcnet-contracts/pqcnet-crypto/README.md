@@ -1,10 +1,12 @@
 # pqcnet-crypto
 
-`pqcnet-crypto` is the production ML-KEM/ML-DSA glue that every pqcnet
+`pqcnet-crypto` is the production ML-KEM/ML-DSA glue that every PQCNet
 runtime service depends on. It wraps `autheo-pqc-core`’s `KeyManager` (Kyber
 rotation + threshold metadata) and `SignatureManager` (Dilithium signing) so we
 ship the exact contract flows that go to production—no simulators, no dummy
-hashes.
+hashes. The same `CryptoProvider` instance is embedded inside
+`pqcnet-relayer`, `pqcnet-sentry`, QSTP tunnels, and watchdog services so every
+crate publishes a standalone binary backed by real ciphertexts and signatures.
 
 ## What it provides
 
@@ -49,35 +51,44 @@ threshold-total-shares = 5               # Shamir n parameter
 All fields default to production-safe values so existing configs keep working;
 only set them when overriding rotation cadence or share counts for tests.
 
+## Runtime alignment
+
+`CryptoProvider` is instantiated once per node and handed to every daemon that
+needs PQC material. The diagram below mirrors the production wiring that runs on
+relayers and sentries today.
+
 %%{init: { "theme": "neutral" }}%%
 flowchart LR
-    subgraph Provider["CryptoProvider"]
+    subgraph Provider["CryptoProvider (pqcnet-crypto)"]
         cfg["CryptoConfig"]
-        secrets["Node Secret Seed"]
+        seed["Node Secret Seed"]
         kem["KeyManager (Kyber)"]
         sig["SignatureManager (Dilithium)"]
+        cfg --> kem
+        cfg --> sig
+        seed --> kem
+        seed --> sig
     end
 
     relayer["pqcnet-relayer"]
     sentry["pqcnet-sentry"]
 
-    cfg --> kem
-    cfg --> sig
-    secrets --> kem
-    secrets --> sig
-
     relayer -->|derive_shared_key| Provider
-    sentry -->|derive_shared_key| Provider
-
     Provider -->|ciphertext + shared secret| relayer
+    relayer <--> |sign / verify| Provider
+
+    sentry -->|derive_shared_key| Provider
     Provider -->|ciphertext + shared secret| sentry
-    Provider -->|sign/verify| relayer
 
+Relayers and sentries call the exact same APIs that production nodes exercise:
 
-The same provider instance is passed into the relayer, sentry, and other runtime
-services, guaranteeing that every outbound handshake carries the ML-KEM
-ciphertext required for the peer to decapsulate, and every signature references a
-real Dilithium key id.
+- `derive_shared_key(peer)` encapsulates into the current Kyber key, HKDFs the
+  shared secret with the node’s `secret-seed`, and returns both the ciphertext
+  (sent to the peer) and the derived session bytes.
+- `sign(payload)` / `verify(payload, signature)` go through `SignatureManager`
+  so `KeyId` provenance matches what QS-DAG anchors expect.
+- No mocks or simulators sit in between; config files point to the same
+  `[crypto]` block that the other crates parse.
 
 ## API highlights
 
