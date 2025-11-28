@@ -1,7 +1,9 @@
-#![no_std]
+#![cfg_attr(target_arch = "wasm32", no_std)]
 
+#[cfg(target_arch = "wasm32")]
 extern crate alloc;
 
+#[cfg(target_arch = "wasm32")]
 use alloc::alloc::{alloc, dealloc};
 use chacha20::cipher::generic_array::GenericArray;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
@@ -10,7 +12,10 @@ use core::alloc::Layout;
 use core::slice;
 use sha2::{Digest, Sha512};
 use spin::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
+use std::alloc::{alloc, dealloc};
 
+#[cfg(target_arch = "wasm32")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
@@ -123,8 +128,8 @@ pub extern "C" fn autheo_entropy_health() -> i32 {
     }
 }
 
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-#[cfg_attr(target_arch = "wasm32", panic_handler)]
+#[cfg(target_arch = "wasm32")]
+#[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
