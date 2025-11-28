@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Autheo DePIN entropy node compiled to wasm32 for host import bridging"
 license = "Apache-2.0 OR MIT"
+readme = "README.md"
+repository = "https://github.com/autheo/pqcnet-contracts"
+homepage = "https://autheo.dev/pqcnet"
+keywords = ["entropy", "wasm", "pqc", "autheo", "no-std"]
 
 [lib]
 crate-type = ["rlib", "cdylib"]
