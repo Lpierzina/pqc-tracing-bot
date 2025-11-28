@@ -1,7 +1,7 @@
 //! Core sentry loop that watches configured relayers and records telemetry.
 //!
 //! # Example
-//! ```
+//! ```no_run
 //! use pqcnet_crypto::CryptoProvider;
 //! use pqcnet_networking::NetworkClient;
 //! use pqcnet_sentry::config::Config;
@@ -101,8 +101,13 @@ impl SentryService {
 #[cfg(test)]
 mod tests {
     use pqcnet_crypto::CryptoConfig;
-    use pqcnet_networking::NetworkingConfig;
+    use pqcnet_networking::{NetworkingConfig, PeerConfig};
     use pqcnet_telemetry::TelemetryConfig;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
 
     use super::*;
 
@@ -121,14 +126,55 @@ mod tests {
 
     #[test]
     fn run_iteration_increments_success_counter() {
-        let cfg = config();
+        let mut cfg = config();
+        let network_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        cfg.networking.peers = vec![PeerConfig {
+            id: "peer-a".into(),
+            address: network_listener.local_addr().unwrap().to_string(),
+        }];
+        let collector = HttpCollector::start(1);
+        cfg.telemetry = TelemetryConfig::sample(&collector.url);
         let crypto = CryptoProvider::from_config(&cfg.crypto).unwrap();
         let network = NetworkClient::from_config(&cfg.crypto.node_id, cfg.networking.clone());
         let telemetry = TelemetryHandle::from_config(cfg.telemetry.clone());
         let mut service = SentryService::new(&cfg, crypto, network, telemetry.clone());
         let report = service.run_iteration(false).unwrap();
         assert_eq!(report.processed_watchers, 1);
-        let snapshot = telemetry.flush();
+        drop(network_listener);
+        let snapshot = telemetry.flush().unwrap();
         assert_eq!(snapshot.counters["sentry.success"], 1);
+    }
+
+    struct HttpCollector {
+        url: String,
+        join: Option<thread::JoinHandle<()>>,
+    }
+
+    impl HttpCollector {
+        fn start(expected_requests: usize) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind collector");
+            let addr = listener.local_addr().expect("collector addr");
+            let handle = thread::spawn(move || {
+                for _ in 0..expected_requests {
+                    if let Ok((mut stream, _)) = listener.accept() {
+                        let mut buf = [0u8; 2048];
+                        let _ = stream.read(&mut buf);
+                        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                    }
+                }
+            });
+            Self {
+                url: format!("http://{}", addr),
+                join: Some(handle),
+            }
+        }
+    }
+
+    impl Drop for HttpCollector {
+        fn drop(&mut self) {
+            if let Some(handle) = self.join.take() {
+                let _ = handle.join();
+            }
+        }
     }
 }

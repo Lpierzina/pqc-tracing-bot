@@ -25,7 +25,10 @@ pub struct PoolTier {
 
 impl PoolTier {
     pub const fn new(tier: u8, pool_capacity: usize) -> Self {
-        Self { tier, pool_capacity }
+        Self {
+            tier,
+            pool_capacity,
+        }
     }
 }
 
@@ -75,7 +78,10 @@ impl<ValidatorId: Clone> VerificationPool<ValidatorId> {
         self.members.push(validator);
     }
 
-    fn elect_coordinator<R: QrngCore>(&mut self, qrng: &mut R) -> Result<Option<PoolCoordinator<ValidatorId>>, R::Error> {
+    fn elect_coordinator<R: QrngCore>(
+        &mut self,
+        qrng: &mut R,
+    ) -> Result<Option<PoolCoordinator<ValidatorId>>, R::Error> {
         if self.members.is_empty() {
             self.coordinator = None;
             return Ok(None);
@@ -125,7 +131,11 @@ impl<ValidatorId: Ord> TupleVote<ValidatorId> {
         self.rejections.len()
     }
 
-    fn into_outcome(self, tuple_id: String, verdict: VerificationVerdict) -> VerificationOutcome<ValidatorId>
+    fn into_outcome(
+        self,
+        tuple_id: String,
+        verdict: VerificationVerdict,
+    ) -> VerificationOutcome<ValidatorId>
     where
         ValidatorId: Clone,
     {
@@ -297,10 +307,7 @@ mod tests {
     #[test]
     fn elects_coordinators_per_pool() {
         let mut hvp = HierarchicalVerificationPools::new(
-            vec![
-                PoolTier::new(8, 2),
-                PoolTier::new(9, 2),
-            ],
+            vec![PoolTier::new(8, 2), PoolTier::new(9, 2)],
             IncrementingQrng(0),
         );
         hvp.register_validator(8, "v1".to_string());
@@ -313,17 +320,16 @@ mod tests {
 
     #[test]
     fn reaches_quorum() {
-        let mut hvp = HierarchicalVerificationPools::new(
-            vec![PoolTier::new(8, 10)],
-            IncrementingQrng(0),
-        );
+        let mut hvp =
+            HierarchicalVerificationPools::new(vec![PoolTier::new(8, 10)], IncrementingQrng(0));
         for idx in 0..9 {
             hvp.register_validator(8, format!("v{idx}"));
         }
         assert_eq!(hvp.total_validators(), 9);
         // threshold with 2/3 => 6
         for idx in 0..6 {
-            let outcome = hvp.submit_vote("tuple-1", &format!("v{idx}"), VerificationVerdict::Approve);
+            let outcome =
+                hvp.submit_vote("tuple-1", &format!("v{idx}"), VerificationVerdict::Approve);
             if idx < 5 {
                 assert!(outcome.is_none());
             } else {

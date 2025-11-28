@@ -1,7 +1,7 @@
 //! Simplified relayer queue that batches PQC messages before broadcasting.
 //!
 //! # Example
-//! ```
+//! ```no_run
 //! use pqcnet_crypto::CryptoProvider;
 //! use pqcnet_networking::NetworkClient;
 //! use pqcnet_relayer::config::{Config, RelayerMode};
@@ -21,7 +21,7 @@
 use std::collections::VecDeque;
 
 use pqcnet_crypto::{CryptoError, CryptoProvider};
-use pqcnet_networking::NetworkClient;
+use pqcnet_networking::{NetworkClient, NetworkingError};
 use pqcnet_telemetry::{TelemetryError, TelemetryHandle};
 use thiserror::Error;
 
@@ -33,6 +33,8 @@ pub enum ServiceError {
     Telemetry(#[from] TelemetryError),
     #[error(transparent)]
     Crypto(#[from] CryptoError),
+    #[error(transparent)]
+    Network(#[from] NetworkingError),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -93,7 +95,7 @@ impl RelayerService {
                         self.telemetry.record_counter("relayer.ingest", 1)?;
                     }
                     RelayerMode::Egress | RelayerMode::Bidirectional => {
-                        let receipts = self.network.broadcast(&message);
+                        let receipts = self.network.broadcast(&message)?;
                         delivered += receipts.len();
                         self.telemetry
                             .record_counter("relayer.egress", receipts.len() as u64)?;
@@ -123,8 +125,13 @@ impl RelayerService {
 #[cfg(test)]
 mod tests {
     use pqcnet_crypto::CryptoConfig;
-    use pqcnet_networking::NetworkingConfig;
+    use pqcnet_networking::{NetworkingConfig, PeerConfig};
     use pqcnet_telemetry::TelemetryConfig;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
 
     use super::*;
 
@@ -144,7 +151,22 @@ mod tests {
 
     #[test]
     fn relay_once_records_metrics() {
-        let cfg = config(RelayerMode::Egress);
+        let mut cfg = config(RelayerMode::Egress);
+        let mut listeners = Vec::new();
+        cfg.networking.peers = ["peer-a", "peer-b"]
+            .iter()
+            .map(|id| {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let addr = listener.local_addr().unwrap().to_string();
+                listeners.push(listener);
+                PeerConfig {
+                    id: id.to_string(),
+                    address: addr,
+                }
+            })
+            .collect();
+        let collector = HttpCollector::start(1);
+        cfg.telemetry = TelemetryConfig::sample(&collector.url);
         let crypto = CryptoProvider::from_config(&cfg.crypto).unwrap();
         let network = NetworkClient::from_config(&cfg.crypto.node_id, cfg.networking.clone());
         let telemetry = TelemetryHandle::from_config(cfg.telemetry.clone());
@@ -152,7 +174,41 @@ mod tests {
 
         let report = service.relay_once().unwrap();
         assert!(report.delivered > 0);
-        let snapshot = telemetry.flush();
+        drop(listeners);
+        let snapshot = telemetry.flush().unwrap();
         assert_eq!(snapshot.counters["relayer.egress"], report.delivered as u64);
+    }
+
+    struct HttpCollector {
+        url: String,
+        join: Option<thread::JoinHandle<()>>,
+    }
+
+    impl HttpCollector {
+        fn start(expected_requests: usize) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind collector");
+            let addr = listener.local_addr().expect("collector addr");
+            let handle = thread::spawn(move || {
+                for _ in 0..expected_requests {
+                    if let Ok((mut stream, _)) = listener.accept() {
+                        let mut buf = [0u8; 4096];
+                        let _ = stream.read(&mut buf);
+                        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                    }
+                }
+            });
+            Self {
+                url: format!("http://{}", addr),
+                join: Some(handle),
+            }
+        }
+    }
+
+    impl Drop for HttpCollector {
+        fn drop(&mut self) {
+            if let Some(handle) = self.join.take() {
+                let _ = handle.join();
+            }
+        }
     }
 }

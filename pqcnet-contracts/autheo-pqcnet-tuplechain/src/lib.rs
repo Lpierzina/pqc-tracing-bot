@@ -155,10 +155,7 @@ impl TuplePayload {
     }
 
     fn approx_size(&self) -> usize {
-        self.data
-            .iter()
-            .map(TupleAny::len)
-            .sum::<usize>()
+        self.data.iter().map(TupleAny::len).sum::<usize>()
             + self.proof.verifier_hint.len()
             + self.proof.commitment.len()
             + std::mem::size_of::<u64>()

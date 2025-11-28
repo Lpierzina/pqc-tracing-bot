@@ -5,7 +5,10 @@ use pqcnet_qfkh::{QfkhConfig, QuantumForwardKeyHopper};
 use std::error::Error;
 
 mod prod_trace {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/dev_support/prod_trace.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/dev_support/prod_trace.rs"
+    ));
 }
 
 fn make_engine() -> MlKemEngine {

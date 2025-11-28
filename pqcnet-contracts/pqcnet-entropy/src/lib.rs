@@ -185,12 +185,15 @@ mod tests {
         let mut rng = HostEntropySource::new();
         let mut buf1 = [0u8; 32];
         let mut buf2 = [0u8; 32];
-        
+
         rng.fill_bytes(&mut buf1);
         rng.fill_bytes(&mut buf2);
-        
+
         // Very high probability that two 32-byte buffers differ
-        assert_ne!(buf1, buf2, "consecutive entropy calls should produce different values");
+        assert_ne!(
+            buf1, buf2,
+            "consecutive entropy calls should produce different values"
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -198,9 +201,9 @@ mod tests {
     fn host_entropy_fills_large_buffers() {
         let mut rng = HostEntropySource::new();
         let mut large = vec![0u8; 1024];
-        
+
         rng.fill_bytes(&mut large);
-        
+
         // Check that we got non-zero bytes (very high probability)
         let non_zero = large.iter().filter(|&&b| b != 0).count();
         assert!(non_zero > 0, "large buffer should contain non-zero bytes");
@@ -211,15 +214,18 @@ mod tests {
     fn host_entropy_multiple_instances_independent() {
         let mut rng1 = HostEntropySource::new();
         let mut rng2 = HostEntropySource::new();
-        
+
         let mut buf1 = [0u8; 16];
         let mut buf2 = [0u8; 16];
-        
+
         rng1.fill_bytes(&mut buf1);
         rng2.fill_bytes(&mut buf2);
-        
+
         // Independent instances should produce different values
-        assert_ne!(buf1, buf2, "independent instances should produce different entropy");
+        assert_ne!(
+            buf1, buf2,
+            "independent instances should produce different entropy"
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -228,18 +234,22 @@ mod tests {
         let mut rng = HostEntropySource::new();
         let mut sample = [0u8; 1024];
         rng.fill_bytes(&mut sample);
-        
+
         // Count byte values
         let mut counts = [0u32; 256];
         for &byte in &sample {
             counts[byte as usize] += 1;
         }
-        
+
         // With 1024 bytes, we expect most byte values to appear
         // This is a basic sanity check, not a full statistical test
         let unique_bytes = counts.iter().filter(|&&c| c > 0).count();
         // Should have at least 200 unique byte values out of 256 (reasonable for 1024 bytes)
-        assert!(unique_bytes > 150, "entropy should produce diverse byte values, got {} unique", unique_bytes);
+        assert!(
+            unique_bytes > 150,
+            "entropy should produce diverse byte values, got {} unique",
+            unique_bytes
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -247,7 +257,7 @@ mod tests {
     fn entropy_error_display() {
         let err1 = EntropyError::HostRejected(-1);
         let err2 = EntropyError::Platform("test error");
-        
+
         assert!(err1.to_string().contains("autheo_host_entropy"));
         assert!(err1.to_string().contains("-1"));
         assert_eq!(err2.to_string(), "test error");
@@ -260,7 +270,7 @@ mod tests {
         let err2 = EntropyError::HostRejected(-1);
         let err3 = EntropyError::HostRejected(-2);
         let err4 = EntropyError::Platform("test");
-        
+
         assert_eq!(err1, err2);
         assert_ne!(err1, err3);
         assert_ne!(err1, err4);
@@ -272,16 +282,16 @@ mod tests {
         let mut rng1 = HostEntropySource::new();
         let mut rng2 = rng1; // Copy
         let mut rng3 = rng2; // Copy again
-        
+
         // All should work independently
         let mut buf1 = [0u8; 8];
         let mut buf2 = [0u8; 8];
         let mut buf3 = [0u8; 8];
-        
+
         rng1.fill_bytes(&mut buf1);
         rng2.fill_bytes(&mut buf2);
         rng3.fill_bytes(&mut buf3);
-        
+
         // All should produce entropy
         assert!(buf1.iter().any(|&b| b != 0));
         assert!(buf2.iter().any(|&b| b != 0));
@@ -293,14 +303,14 @@ mod tests {
     fn host_entropy_source_default() {
         let mut rng1 = HostEntropySource::default();
         let mut rng2 = HostEntropySource::new();
-        
+
         // Both should work
         let mut buf1 = [0u8; 8];
         let mut buf2 = [0u8; 8];
-        
+
         rng1.fill_bytes(&mut buf1);
         rng2.fill_bytes(&mut buf2);
-        
+
         assert!(buf1.iter().any(|&b| b != 0));
         assert!(buf2.iter().any(|&b| b != 0));
     }

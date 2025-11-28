@@ -81,18 +81,18 @@ fn main() {
     println!("\n6. Entropy quality check (byte distribution)...");
     let mut sample = [0u8; 1024];
     rng.fill_bytes(&mut sample);
-    
+
     // Count byte values
     let mut byte_counts = [0u32; 256];
     for &byte in &sample {
         byte_counts[byte as usize] += 1;
     }
-    
+
     // Find min/max counts
     let min_count = byte_counts.iter().min().unwrap();
     let max_count = byte_counts.iter().max().unwrap();
     let expected = sample.len() / 256;
-    
+
     println!("   Sample size: {} bytes", sample.len());
     println!("   Expected count per byte: ~{}", expected);
     println!("   Min count: {}, Max count: {}", min_count, max_count);

@@ -1,14 +1,15 @@
-//! Deterministic, in-memory networking façade that mimics message passing
-//! semantics required by the pqcnet binaries. The implementation focuses on
-//! debuggability and deterministic tests rather than real sockets.
+//! Production-first networking façade that pushes real PQCNet payloads across
+//! relay gateways. Deterministic transports remain available for tests, but the
+//! default `prod` feature sends bytes over TCP sockets so real dApps and nodes
+//! see the same data path they will run in production.
 //!
 //! # Quickstart
-//! ```
+//! ```no_run
 //! use pqcnet_networking::{NetworkClient, NetworkingConfig};
 //!
 //! let config = NetworkingConfig::sample("127.0.0.1:7100");
 //! let client = NetworkClient::from_config("node-a", config);
-//! let receipts = client.broadcast("ping");
+//! let receipts = client.broadcast("ping").unwrap();
 //! assert_eq!(receipts.len(), 2);
 //! assert_eq!(client.drain_inflight().len(), 2);
 //! ```
@@ -31,6 +32,7 @@ pub use rpcnet::{
     SessionKeyMaterial,
 };
 
+#[cfg(not(feature = "prod"))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -39,6 +41,8 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
+#[cfg(feature = "prod")]
+use std::{io::Write, net::TcpStream};
 use thiserror::Error;
 
 #[cfg(any(
@@ -122,6 +126,13 @@ pub enum NetworkingError {
     UnknownPeer(String),
     #[error("in-flight limit {limit} reached (currently {current})")]
     InFlightLimit { limit: u16, current: usize },
+    #[cfg(feature = "prod")]
+    #[error("socket error for peer {peer}: {source}")]
+    Socket {
+        peer: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,6 +189,7 @@ impl NetworkClient {
         target_peer: &str,
         payload: impl Into<Vec<u8>>,
     ) -> Result<DeliveryReceipt, NetworkingError> {
+        let payload = payload.into();
         let mut inflight = self.inflight.lock().unwrap();
         if inflight.len() >= self.config.max_inflight as usize {
             return Err(NetworkingError::InFlightLimit {
@@ -189,11 +201,14 @@ impl NetworkClient {
             .peers
             .get(target_peer)
             .ok_or_else(|| NetworkingError::UnknownPeer(target_peer.to_owned()))?;
+        #[cfg(feature = "prod")]
+        let latency_ms = deliver_over_tcp(peer, &payload)?;
+        #[cfg(not(feature = "prod"))]
         let latency_ms = simulate_latency(self.config.jitter_ms);
         inflight.push(Message {
             from: self.node_id.clone(),
             to: peer.id.clone(),
-            payload: payload.into(),
+            payload,
             sent_at: Instant::now(),
         });
         Ok(DeliveryReceipt {
@@ -202,12 +217,17 @@ impl NetworkClient {
         })
     }
 
-    pub fn broadcast(&self, payload: impl AsRef<[u8]>) -> Vec<DeliveryReceipt> {
+    pub fn broadcast(
+        &self,
+        payload: impl AsRef<[u8]>,
+    ) -> Result<Vec<DeliveryReceipt>, NetworkingError> {
         let payload = payload.as_ref().to_vec();
-        self.peers
-            .keys()
-            .filter_map(|peer| self.publish(peer, payload.clone()).ok())
-            .collect()
+        let mut receipts = Vec::with_capacity(self.peers.len());
+        for peer in self.peers.keys() {
+            let receipt = self.publish(peer, payload.clone())?;
+            receipts.push(receipt);
+        }
+        Ok(receipts)
     }
 
     pub fn drain_inflight(&self) -> Vec<Message> {
@@ -218,6 +238,7 @@ impl NetworkClient {
     }
 }
 
+#[cfg(not(feature = "prod"))]
 fn simulate_latency(max_ms: u64) -> u64 {
     if max_ms == 0 {
         return 0;
@@ -225,17 +246,52 @@ fn simulate_latency(max_ms: u64) -> u64 {
     rand::thread_rng().gen_range(1..=max_ms)
 }
 
+#[cfg(feature = "prod")]
+fn deliver_over_tcp(peer: &PeerConfig, payload: &[u8]) -> Result<u64, NetworkingError> {
+    let started = Instant::now();
+    let mut stream =
+        TcpStream::connect(&peer.address).map_err(|source| NetworkingError::Socket {
+            peer: peer.id.clone(),
+            source,
+        })?;
+    stream
+        .write_all(payload)
+        .map_err(|source| NetworkingError::Socket {
+            peer: peer.id.clone(),
+            source,
+        })?;
+    stream.flush().map_err(|source| NetworkingError::Socket {
+        peer: peer.id.clone(),
+        source,
+    })?;
+    Ok(started.elapsed().as_millis().min(u64::MAX as u128) as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
 
-    fn client() -> NetworkClient {
-        NetworkClient::from_config("node-a", NetworkingConfig::sample("127.0.0.1:7000"))
+    fn client() -> (NetworkClient, Vec<TcpListener>) {
+        let mut config = NetworkingConfig::sample("127.0.0.1:7000");
+        let mut listeners = Vec::new();
+        let mut peers = Vec::new();
+        for id in ["peer-a", "peer-b"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap().to_string();
+            listeners.push(listener);
+            peers.push(PeerConfig {
+                id: id.into(),
+                address: addr,
+            });
+        }
+        config.peers = peers;
+        (NetworkClient::from_config("node-a", config), listeners)
     }
 
     #[test]
     fn publishes_to_known_peer() {
-        let client = client();
+        let (client, _listeners) = client();
         let receipt = client.publish("peer-a", b"hello".as_slice()).unwrap();
         assert_eq!(receipt.peer_id, "peer-a");
         let inflight = client.drain_inflight();
@@ -245,7 +301,7 @@ mod tests {
 
     #[test]
     fn errors_on_unknown_peer() {
-        let client = client();
+        let (client, _listeners) = client();
         let err = client.publish("missing", b"hello").unwrap_err();
         assert!(matches!(err, NetworkingError::UnknownPeer(_)));
     }
@@ -254,7 +310,15 @@ mod tests {
     fn enforce_inflight_limit() {
         let mut config = NetworkingConfig::sample("127.0.0.1:7000");
         config.max_inflight = 1;
-        let client = NetworkClient::from_config("node-a", config);
+        let (client, _listeners) = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap().to_string();
+            config.peers = vec![PeerConfig {
+                id: "peer-a".into(),
+                address: addr,
+            }];
+            (NetworkClient::from_config("node-a", config), vec![listener])
+        };
         client.publish("peer-a", b"a").unwrap();
         let err = client.publish("peer-a", b"b").unwrap_err();
         assert!(matches!(err, NetworkingError::InFlightLimit { .. }));
@@ -262,8 +326,8 @@ mod tests {
 
     #[test]
     fn broadcast_to_all_peers() {
-        let client = client();
-        let receipts = client.broadcast("ping");
+        let (client, _listeners) = client();
+        let receipts = client.broadcast("ping").unwrap();
         assert_eq!(receipts.len(), 2);
     }
 }

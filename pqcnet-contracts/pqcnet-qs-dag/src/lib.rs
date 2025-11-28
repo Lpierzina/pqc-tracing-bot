@@ -11,8 +11,8 @@ pub mod tuple;
 
 pub use anchor::{QsDagHost, QsDagPqc};
 pub use hvp::{
-    HierarchicalVerificationPools, PoolCoordinator, PoolId, PoolTier, QrngCore, VerificationOutcome,
-    VerificationVerdict,
+    HierarchicalVerificationPools, PoolCoordinator, PoolId, PoolTier, QrngCore,
+    VerificationOutcome, VerificationVerdict,
 };
 pub use icosuple::{IcosupleLayer, LayerClass};
 pub use sharding::{
@@ -20,5 +20,5 @@ pub use sharding::{
 };
 pub use state::{DagError, QsDag, StateDiff, StateOp, StateSnapshot, TemporalWeight};
 pub use tuple::{
-    PayloadProfile, TupleDomain, TupleEnvelope, TupleProof, TupleProofKind, TupleValidation, QIPTag,
+    PayloadProfile, QIPTag, TupleDomain, TupleEnvelope, TupleProof, TupleProofKind, TupleValidation,
 };

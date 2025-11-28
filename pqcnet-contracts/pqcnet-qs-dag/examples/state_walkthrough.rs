@@ -62,10 +62,15 @@ fn main() -> Result<(), DagError> {
     let coordinators = hvp.elect_coordinators().expect("qrng never fails");
     println!("QRNG coordinators: {coordinators:?}");
     for validator in ["alice", "bob", "carol", "dave"] {
-        if let Some(outcome) =
-            hvp.submit_vote(settlement_diff.id.clone(), &validator.to_string(), VerificationVerdict::Approve)
-        {
-            println!("Finalized tuple {} with verdict {:?}", outcome.tuple_id, outcome.verdict);
+        if let Some(outcome) = hvp.submit_vote(
+            settlement_diff.id.clone(),
+            &validator.to_string(),
+            VerificationVerdict::Approve,
+        ) {
+            println!(
+                "Finalized tuple {} with verdict {:?}",
+                outcome.tuple_id, outcome.verdict
+            );
             break;
         }
     }
@@ -77,7 +82,9 @@ fn main() -> Result<(), DagError> {
         .expect("shard assignment succeeds");
     println!(
         "Tuple {} routed to shard {:?} with anchor {:02x?}",
-        assignment.tuple_id, assignment.shard_id, &assignment.global_anchor[..4]
+        assignment.tuple_id,
+        assignment.shard_id,
+        &assignment.global_anchor[..4]
     );
 
     let snapshot = dag.snapshot().expect("reachable head");
