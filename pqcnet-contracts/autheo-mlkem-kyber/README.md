@@ -70,3 +70,20 @@ let keypair = engine.keypair()?;
 
 - `cargo test -p autheo-mlkem-kyber` runs deterministic unit tests.
 - `cargo test -p autheo-mlkem-kyber --features liboqs -- --ignored` exercises the liboqs-backed round trip (only available on native targets with `liboqs` installed).
+
+### Windows toolchains (MSVC)
+
+The MSVC target does **not** link `Advapi32` automatically, yet `liboqs`
+requires the Windows CryptoAPI entry points. The workspace-level
+`.cargo/config.toml` now contains:
+
+```
+[target.'cfg(windows)']
+# liboqs pulls in CryptoAPI symbols; Advapi32 satisfies them on MSVC.
+rustflags = ["-ladvapi32"]
+```
+
+so Kyber builds/tests that enable `liboqs` link the required system library
+without extra flags. If you override `RUSTFLAGS`, append `-ladvapi32` or MSVC
+will raise `LNK2019` errors when running
+`cargo test -p autheo-mlkem-kyber --features liboqs -- --ignored`.

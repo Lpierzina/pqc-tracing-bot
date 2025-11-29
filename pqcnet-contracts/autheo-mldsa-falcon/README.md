@@ -48,3 +48,20 @@ engine.verify(&pair.public_key, b"epoch attest", &sig)?;
 
 - `cargo test -p autheo-mldsa-falcon` validates deterministic signing.
 - `cargo test -p autheo-mldsa-falcon --features liboqs -- --ignored` runs the liboqs round trip.
+
+### Windows toolchains (MSVC)
+
+When targeting `x86_64-pc-windows-msvc`, `liboqs` (via `oqs-sys`) depends on the
+Windows CryptoAPI (`CryptAcquireContextA`, `CryptGenRandom`, etc.). The workspace
+ships `.cargo/config.toml` with:
+
+```
+[target.'cfg(windows)']
+# liboqs pulls in CryptoAPI symbols; Advapi32 satisfies them on MSVC.
+rustflags = ["-ladvapi32"]
+```
+
+so the Falcon crate (and every other `liboqs` consumer) links `Advapi32`
+automatically. If you override `RUSTFLAGS`, remember to include `-ladvapi32` or
+MSVC will emit `LNK2019` errors while building `cargo test -p autheo-mldsa-falcon
+--features liboqs -- --ignored`.

@@ -1,0 +1,3 @@
+[target.'cfg(windows)']
+# liboqs pulls in CryptoAPI symbols; Advapi32 satisfies them on MSVC.
+rustflags = ["-ladvapi32"]

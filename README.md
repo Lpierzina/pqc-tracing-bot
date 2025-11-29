@@ -539,6 +539,29 @@ Signature and batch-verification tests
 
 DAG integration tests with a mocked QsDagHost
 
+### Windows toolchains (MSVC)
+
+Rust’s MSVC target does **not** link `Advapi32` automatically, yet `liboqs`
+(through `oqs-sys`) calls the Windows CryptoAPI (`CryptAcquireContextA`,
+`CryptGenRandom`, etc.). The workspace now ships `.cargo/config.toml` with:
+
+```
+[target.'cfg(windows)']
+# liboqs pulls in CryptoAPI symbols; Advapi32 satisfies them on MSVC.
+rustflags = ["-ladvapi32"]
+```
+
+so every crate that enables the `liboqs` feature links the required system
+library without extra per-crate build scripts. If you override `RUSTFLAGS`,
+append `-ladvapi32` for `x86_64-pc-windows-msvc` targets; otherwise MSVC will
+emit `LNK2019` errors for those CryptoAPI symbols when running commands such as:
+
+```
+cargo test -p autheo-mlkem-kyber --features liboqs -- --ignored
+```
+
+No changes are required on GNU or non-Windows targets.
+
 ### Automated Test Coverage Snapshot (2025-11-15)
 
 `cargo test` fans out across all crates and currently reports:
