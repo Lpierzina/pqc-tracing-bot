@@ -15,6 +15,13 @@ It provides:
 > Deterministic ML-KEM/ML-DSA stubs are still available for reproducible sims by building with `--no-default-features`, but every default build/test now exercises the recorded data path end-to-end.  
 > Native deployments can continue swapping the traits over to Autheo’s audited engines or the optional `liboqs` bindings (`cargo build -p autheo-pqc-core --features liboqs`) without touching the contract logic.
 
+## Real Data Inputs & Guarantees
+
+- **Hardware entropy pipeline** – `autheo-entropy-core` ingests validator HSM, `/dev/hwrng`, RPi, and DePIN QRNG feeds, mixes them with Shake256/ChaCha20, and exposes the bytes through `autheo-entropy-wasm` + `pqcnet-entropy::HostEntropySource`, so every PQC crate consumes production-grade randomness (see `pqcnet-contracts/autheo-entropy-core/README.md`).
+- **Recorded QFKH telemetry** – `autheo-pqc-core` vendors `data/qfkh_prod_trace.json`, and `pqcnet-qfkh` verifies that trace during `build.rs`, ensuring handshake + rotation logic match the captures running on validators.
+- **Tuple & hypergraph data** – TupleChain receipts, Chronosync elections, and 5D-QEH anchors reuse the same QRNG-assisted randomness captured in ops, so DAG anchoring tests and wazero demos use indistinguishable data paths.
+- **Harness verification** – The `wazero-harness` boots `autheo-entropy-wasm`, loads `autheo_pqc_wasm.wasm`, and measures the exact telemetry counters (`pqcnet-telemetry`) that live validators emit, giving CI a direct comparison against production signals.
+
 ## DID & AIPP Full-Stack View
 
 The diagram below extends the enclave view to include upstream DID wallets/registries, the AIPP spec overlays, and how those flows connect into PQC engines, runtime services, and TupleChain → Chronosync → 5D-QEH pipelines.
@@ -49,6 +56,7 @@ subgraph Engines["PQC Engines & Entropy"]
   Dilithium["autheo-mldsa-dilithium"]
   Falcon["autheo-mldsa-falcon"]
   EntropyWasm["autheo-entropy-wasm"]
+  EntropyCore["autheo-entropy-core"]
   QRNG["autheo-pqcnet-qrng"]
   PqcEntropy["pqcnet-entropy"]
 end
@@ -61,9 +69,12 @@ end
 Kyber --> PqcCore
 Dilithium --> PqcCore
 Falcon --> PqcCore
-EntropyWasm --> PqcCore
-QRNG --> PqcCore
+EntropyCore --> EntropyWasm
+EntropyCore --> PqcEntropy
+EntropyWasm --> PqcEntropy
+QRNG --> EntropyCore
 QRNG --> QFkh
+PqcEntropy --> PqcCore
 PqcEntropy --> QFkh
 PqcCore --> PqcWasm
 PqcCore --> Crypto
@@ -114,13 +125,13 @@ AIPComms --> Relayer
 AIPComms --> Qstp
 classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
 classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
-class Kyber,Dilithium,Falcon,EntropyWasm,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs completed;
+class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs completed;
 class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 ```
 
 ## Production Enclave Snapshot
 
-- **Entropy + QRNG** – `autheo-entropy-wasm` runs alongside validators, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
+- **Entropy + QRNG** – `autheo-entropy-core` budgets hardware feeds into `autheo-entropy-wasm`, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
 - **PQC engines** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` provide deterministic ML-KEM/ML-DSA adapters that can be swapped for audited engines.
 - **Core enclave + ABI** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the PQC contract logic, WASM surface, and Quantum-Forward Key Hopping controller that feed every tunnel.
 - **Tuple → Hypergraph pipeline** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` form the production data plane before anchoring in `pqcnet-qs-dag`.
@@ -137,6 +148,7 @@ class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 - `autheo-mldsa-dilithium/` – deterministic Dilithium3 (ML-DSA-65) adapter + demo artifacts.
 - `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
 - `autheo-entropy-wasm/` – standalone WASM module that responds to `autheo_host_entropy` imports for validators, relayers, or RPi entropy nodes.
+- `autheo-entropy-core/` – validator/relayer entropy control plane that budgets HSM/RNG feeds and backs the `autheo-entropy-wasm` + `pqcnet-entropy` pipeline with real hardware data.
 - `pqcnet-entropy/` – no_std entropy trait + host import bridge used by every PQC module, with deterministic dev-only sources for tests.
 - `autheo-pqcnet-qrng/` – quantum RNG harness that mixes photon/vacuum telemetry, Shake256 whitening, and Kyber/Dilithium envelopes (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
 
@@ -740,6 +752,7 @@ flowchart LR
         Kyber["autheo-mlkem-kyber"]
         Dilithium["autheo-mldsa-dilithium"]
         Falcon["autheo-mldsa-falcon"]
+        EntropyCore["autheo-entropy-core"]
         EntropyWasm["autheo-entropy-wasm"]
         Qrng["autheo-pqcnet-qrng"]
         EntropyTrait["pqcnet-entropy"]
@@ -779,8 +792,10 @@ flowchart LR
     Kyber --> CoreCrate
     Dilithium --> CoreCrate
     Falcon --> CoreCrate
+    Qrng --> EntropyCore
+    EntropyCore --> EntropyWasm
+    EntropyCore --> EntropyTrait
     EntropyWasm --> EntropyTrait
-    Qrng --> EntropyTrait
     EntropyTrait --> CoreCrate
     EntropyTrait --> Chronosync
     CoreCrate --> Wasm
@@ -818,7 +833,7 @@ flowchart LR
 
 #### Component roles
 
-- **PQC engines & entropy** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` deliver Kyber/Dilithium/Falcon fixtures plus host/QRNG entropy to every module that needs randomness.
+- **PQC engines & entropy** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, `autheo-entropy-core`, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` deliver Kyber/Dilithium/Falcon fixtures plus hardware/QRNG entropy to every module that needs randomness.
 - **Autheo PQC enclave** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the WASM ABI, contract glue, and Quantum-Forward Key Hopping controller that feed QSTP tunnels and TupleChain receipts.
 - **Tuple → Hypergraph data plane** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` inflate tuples into hyper-tuples, run Chronosync elections, and anchor the resulting vertices inside `pqcnet-qs-dag`.
 - **Runtime & ops** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` keep tunnels, routing guards, relayers, telemetry feeds, and watcher quorums aligned with the PQC anchors.
@@ -826,7 +841,7 @@ flowchart LR
 
 #### Flow walkthrough
 
-1. **Entropy & QRNG intake** – `autheo-entropy-wasm`, `pqcnet-entropy`, and `autheo-pqcnet-qrng` combine host entropy with photon/vacuum telemetry so Kyber/Dilithium keys, TupleChain pruning, and Chronosync elections all share the same randomness budget.
+1. **Entropy & QRNG intake** – `autheo-entropy-core` budgets validator HSM, `/dev/hwrng`, and QRNG feeds, `autheo-entropy-wasm` serves the WASM ABI, and `pqcnet-entropy` presents the `HostEntropySource` used by every crate, so Kyber/Dilithium keys, TupleChain pruning, and Chronosync elections all share the same randomness budget exposed by `autheo-pqcnet-qrng`.
 2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule.
 3. **Tunnels & crypto glue** – `pqcnet-crypto` binds the enclave outputs to `pqcnet-qstp`, while QSTP frames inherit QFKh hops and TupleChain pointers for downstream auditors.
 4. **Tuple receipts** – `autheo-pqcnet-tuplechain` writes canonical receipts that `autheo-pqcnet-icosuple` inflates into hyper-tuples before Chronosync consumes them.
