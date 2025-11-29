@@ -90,7 +90,7 @@ pub fn reset_state_for_tests() {
     *guard = None;
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "real_data")))]
 mod tests {
     use super::*;
 
@@ -115,6 +115,29 @@ mod tests {
         reset_state_for_tests();
         with_contract_state(|state| {
             assert_eq!(state.monotonic_ms, INITIAL_TIMESTAMP_MS);
+        });
+    }
+}
+
+#[cfg(all(test, feature = "real_data"))]
+mod real_data_tests {
+    use super::*;
+    use hex_literal::hex;
+
+    #[test]
+    fn recorded_state_bootstraps_from_trace() {
+        reset_state_for_tests();
+        with_contract_state(|state| {
+            assert_eq!(state.monotonic_ms, 1_700_000_000_000);
+            let (kem_state, _) = state
+                .key_manager
+                .encapsulate_for_current()
+                .expect("encapsulate");
+            assert_eq!(state.key_manager.rotation_interval_ms(), 6_000);
+            assert_eq!(
+                &kem_state.public_key[..],
+                &hex!("d7b0fb204399baf73a88cd54b634524e795b2e639c5445362645928b4f70c6a5")[..]
+            );
         });
     }
 }

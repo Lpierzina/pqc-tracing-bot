@@ -1,0 +1,44 @@
+{
+  "config": {
+    "rotation_interval_ms": 6000,
+    "lookahead_epochs": 3
+  },
+  "samples": [
+    {
+      "epoch": 0,
+      "announce_at_ms": 2750,
+      "activate_at_ms": 3250,
+      "window_start_ms": 0,
+      "window_end_ms": 6000,
+      "key_id_hex": "f4678306b37f27f114162372478864ea485ab4a77f9c9c7b39916ca7ec56397e",
+      "public_key_hex": "d7b0fb204399baf73a88cd54b634524e795b2e639c5445362645928b4f70c6a5",
+      "ciphertext_hex": "4a0479d7d28610ad18143ccd2626c99c64e38f8d2eed137b7269b1498174dd776fd37a037c21aec8ff974d855c61b818",
+      "commitment_hex": "4aa98eb9ae7ea039cf03cb11479b778e408fa633d1c9702512aa5d221cb12df6",
+      "derived_key_hex": "803e7695fabc0807f54d777fdd01724c7d655d0d386503fbbb97714188273f58"
+    },
+    {
+      "epoch": 1,
+      "announce_at_ms": 9100,
+      "activate_at_ms": 9600,
+      "window_start_ms": 6000,
+      "window_end_ms": 12000,
+      "key_id_hex": "8c3851ed2fe6101919f7b76bb59c55ebdb488f606db66e02cdef463bc1e977f0",
+      "public_key_hex": "5b1df29ec8c2221bf102bb337025128224f1866fa155534fb6805589d2d27d7e",
+      "ciphertext_hex": "fda38b9b8b132af34fc5c93726d7103332fb1b25f84f0c92ba16969bf065a38188a62549522256678280156b2a77b31d",
+      "commitment_hex": "a9c77a34740bd49213143be3b64374403492be16c6443dae7358d85d81665e2f",
+      "derived_key_hex": "84ce0313049b370e4eb16d37a0c14c4708b91d23f5a6c9282261d7eb3c2b0a2d"
+    },
+    {
+      "epoch": 2,
+      "announce_at_ms": 15250,
+      "activate_at_ms": 15750,
+      "window_start_ms": 12000,
+      "window_end_ms": 18000,
+      "key_id_hex": "2c93d9542bb5bc1a3f06dc6d81dba9f8e6aa8751ca2425493efc3acc2d0e7cee",
+      "public_key_hex": "a31955521cd796f73258fa062a23b9abc8e0809a6b09f7ab4843c6c440abe981",
+      "ciphertext_hex": "9753ace7e4c1c2a27555eeff07503600b2df908d42cc05228fc449f6994a10887e357ab947155c1b5550f0026f040b48",
+      "commitment_hex": "e09997ef1ed91cae79745b6fe90e3aae67a194057d09f18ef065c01950700980",
+      "derived_key_hex": "739142abd8fc1a7badc0dc2e78271467bc01fffdb69e2660fba5912c74a9932b"
+    }
+  ]
+}

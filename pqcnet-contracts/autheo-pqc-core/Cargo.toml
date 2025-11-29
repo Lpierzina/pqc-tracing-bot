@@ -5,7 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [features]
-default = []
+default = ["real_data"]
 liboqs = ["dep:oqs"]
 real_data = []
 
@@ -29,3 +29,8 @@ shamir = "2.0"
 name = "liboqs_cli"
 path = "src/bin/liboqs_cli.rs"
 required-features = ["liboqs"]
+
+[build-dependencies]
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

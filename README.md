@@ -11,9 +11,9 @@ It provides:
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
 - **Full PQCNet enclave coverage** across `autheo-entropy-wasm`, `autheo-pqc-core`, `autheo-pqc-wasm`, `autheo-pqcnet-{tuplechain,icosuple,chronosync,5dqeh,qrng}`, `pqcnet-{entropy,qfkh,qstp,qace,crypto,networking,relayer,telemetry,qs-dag,sentry}`, plus configs, docs, and protos.
 
-> ⚠️ Out of the box this workspace builds against deterministic ML-KEM / ML-DSA stubs.  
-> `autheo-pqc-core` only defines traits and contract logic, and the sibling `autheo-mlkem-*` / `autheo-mldsa-*` crates stay BLAKE2s-based for demos/tests so the WASM artifacts remain reproducible.  
-> Real deployments point those traits at audited engines—Autheo’s Kyber/Dilithium WASM builds, PQClean, or the optional `liboqs` feature (`cargo build -p autheo-pqc-core --features liboqs`) that swaps in liboqs-rs’ Kyber ML-KEM + Dilithium ML-DSA bindings for native hosts.
+> ⚠️ `autheo-pqc-core` now ships with the `real_data` feature enabled by default, embedding the latest QFKH production trace (`data/qfkh_prod_trace.json`) directly into `runtime::recorded`.  
+> Deterministic ML-KEM/ML-DSA stubs are still available for reproducible sims by building with `--no-default-features`, but every default build/test now exercises the recorded data path end-to-end.  
+> Native deployments can continue swapping the traits over to Autheo’s audited engines or the optional `liboqs` bindings (`cargo build -p autheo-pqc-core --features liboqs`) without touching the contract logic.
 
 ## DID & AIPP Full-Stack View
 
@@ -231,6 +231,40 @@ Refer to the crate-level READMEs plus the sample TOML/YAML files under `configs/
 - `types.rs` / `error.rs` – strongly typed IDs, timestamps, and shared error handling.
 
 All modules are written to be `no_std`-friendly and can be compiled to WASM for embedding in Autheo’s PQCNet node.
+
+### Real Data Flow inside PQCNet
+
+Default builds now consume the same telemetry that powers the QFKH controllers in production. The flow below highlights how the recorded data path slots `autheo-pqc-core` between the PQC engines and the rest of the PQCNet suite.
+
+```mermaid
+---
+config:
+  theme: default
+---
+flowchart LR
+    Trace["data/qfkh_prod_trace.json\n(real QFKH telemetry)"]
+    Build["build.rs\nserde + hex embed"]
+    Recorded["runtime::recorded\nRECORDED_SAMPLES"]
+    KeyMgr["KeyManager\n(t-of-n, rotation)"]
+    SigMgr["SignatureManager\nML-DSA transcripts"]
+    QFkh["pqcnet-qfkh"]
+    Qstp["pqcnet-qstp"]
+    QsDag["pqcnet-qs-dag"]
+    Tuple["autheo-pqcnet-tuplechain → Chronosync → 5D-QEH"]
+    Trace --> Build --> Recorded --> KeyMgr
+    Recorded --> SigMgr
+    KeyMgr --> QFkh
+    KeyMgr --> Qstp
+    SigMgr --> Qstp
+    SigMgr --> QsDag
+    QFkh --> Tuple
+    Tuple --> QsDag
+```
+
+- `data/qfkh_prod_trace.json` is vendored inside `autheo-pqc-core` for stand-alone builds and cross-checked against the upstream `pqcnet-qfkh` capture during `build.rs`.
+- `build.rs` parses the trace, emits `recorded_trace.rs`, and wires `TRACE_ROTATION_INTERVAL_MS` / `RECORDED_SAMPLES` into the `runtime::recorded` module.
+- `KeyManager` and `SignatureManager` bootstrap from those constants, so PQCNet services (`pqcnet-qfkh`, `pqcnet-qstp`, `pqcnet-qs-dag`, TupleChain → Chronosync → 5D-QEH) immediately receive production-aligned KEM and ML-DSA material without any simulator stubs.
+- To run the deterministic path for reproducibility, disable default features (`cargo test -p autheo-pqc-core --no-default-features`). Otherwise, every build/test run exercises the real trace-backed flow shown above.
 
 ---
 

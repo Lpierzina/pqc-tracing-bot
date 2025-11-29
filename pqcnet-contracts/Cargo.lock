@@ -176,10 +176,13 @@ dependencies = [
  "autheo-mlkem-kyber",
  "blake2",
  "digest",
+ "hex",
  "hex-literal",
  "oqs",
  "pqcnet-qace",
  "pqcnet-qs-dag",
+ "serde",
+ "serde_json",
  "shamir",
  "spin",
 ]
