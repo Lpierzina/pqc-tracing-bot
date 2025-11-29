@@ -22,6 +22,21 @@ It provides:
 - **Tuple & hypergraph data** – TupleChain receipts, Chronosync elections, and 5D-QEH anchors reuse the same QRNG-assisted randomness captured in ops, so DAG anchoring tests and wazero demos use indistinguishable data paths.
 - **Harness verification** – The `wazero-harness` boots `autheo-entropy-wasm`, loads `autheo_pqc_wasm.wasm`, and measures the exact telemetry counters (`pqcnet-telemetry`) that live validators emit, giving CI a direct comparison against production signals.
 
+### Core Enclave Real-Data Flow
+
+See `autheo-pqc-core/README.md` for the full code-flow diagram that the default build path now exercises. In short:
+
+1. `build.rs` parses `data/qfkh_prod_trace.json`, emits `recorded_trace.rs`, and hardens `TRACE_ROTATION_INTERVAL_MS` / `RECORDED_SAMPLES` into the binary whenever the `real_data` feature (default) is enabled.
+2. `runtime::recorded::build_contract_state` hydrates `KeyManager` and `SignatureManager` with those samples so `pqc_handshake` emits the exact KeyIds, ciphertexts, and transcript signatures that validators observe.
+3. `pqcnet-qfkh`, `pqcnet-qstp`, and `pqcnet-qs-dag` deserialize the handshake envelope and advance tunnels, TupleChain receipts, Chronosync elections, and 5D-QEH anchors without any simulator shortcuts.
+4. `pqcnet-relayer` and `pqcnet-telemetry` collect the downstream artifacts (route hashes, DAG anchors, rotation timestamps), letting the wazero harness and ops dashboards diff CI runs against production captures.
+
+Disable the telemetry replay only when you need deterministic simulations:
+
+```
+cargo test -p autheo-pqc-core --no-default-features
+```
+
 ## DID & AIPP Full-Stack View
 
 The diagram below extends the enclave view to include upstream DID wallets/registries, the AIPP spec overlays, and how those flows connect into PQC engines, runtime services, and TupleChain → Chronosync → 5D-QEH pipelines.
@@ -154,7 +169,7 @@ class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 
 ### Core enclave & ABI
 
-- `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue.
+- `autheo-pqc-core/` – contract logic, trait definitions, key management, signatures, QS-DAG glue; see `autheo-pqc-core/README.md` for the real-data flow diagram and integration notes.
 - `autheo-pqc-wasm/` – `cdylib` exposing the PQC ABI (`pqc_alloc`, `pqc_free`, `pqc_handshake`) for host runtimes.
 - `pqcnet-qfkh/` – Quantum-Forward Key Hopping controller that deterministically hops ML-KEM key pairs and derived session material (`cargo run -p pqcnet-qfkh --example qfkh_trace` replays the latest production capture).
 
