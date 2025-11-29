@@ -1,1 +1,0 @@
-/workspace/pqcnet-contracts/target/debug/examples/chronosync_sim: /workspace/pqcnet-contracts/autheo-pqcnet-chronosync/examples/chronosync_sim.rs /workspace/pqcnet-contracts/autheo-pqcnet-chronosync/src/lib.rs
