@@ -18,26 +18,25 @@ Autheo's **PQC core enclave** wraps ML-KEM (Kyber) + ML-DSA (Dilithium/Falcon) e
 
 The diagram below shows how real telemetry from validators feeds the enclave and propagates through PQCNet runtime crates.
 
-```mermaid
 flowchart LR
-    Trace[data/qfkh_prod_trace.json\n(real validator telemetry)]
-    Build[build.rs\nserde + hex embed]
-    Recorded[runtime::recorded\nRECORDED_SAMPLES]
-    KeyMgr[key_manager::KeyManager\n(t-of-n rotation)]
-    SigMgr[signatures::SignatureManager\nML-DSA transcripts]
-    Handshake[handshake::execute_handshake\n&pqc_handshake ABI]
-    QFkh[pqcnet-qfkh\n(epoch hop controller)]
-    Qstp[pqcnet-qstp\nQSTP tunnels]
-    QsDag[pqcnet-qs-dag\nanchor helpers]
-    Tuple[autheo-pqcnet-tuplechain → Chronosync → 5D-QEH]
-    Relayer[pqcnet-relayer + pqcnet-telemetry]
+    Trace["data/qfkh_prod_trace.json<br/>(real validator telemetry)"]
+    Build["build.rs<br/>serde + hex embed"]
+    Recorded["runtime::recorded<br/>RECORDED_SAMPLES"]
+    KeyMgr["key_manager::KeyManager<br/>(t-of-n rotation)"]
+    SigMgr["signatures::SignatureManager<br/>ML-DSA transcripts"]
+    Handshake["handshake::execute_handshake<br/>&amp;pqc_handshake ABI"]
+    QFkh["pqcnet-qfkh<br/>(epoch hop controller)"]
+    Qstp["pqcnet-qstp<br/>QSTP tunnels"]
+    QsDag["pqcnet-qs-dag<br/>anchor helpers"]
+    Tuple["autheo-pqcnet-tuplechain -> Chronosync -> 5D-QEH"]
+    Relayer["pqcnet-relayer + pqcnet-telemetry"]
 
     Trace --> Build --> Recorded --> KeyMgr -->|KeyId + ciphertext| Handshake
     Recorded --> SigMgr -->|transcript sigs| Handshake
     Handshake -->|Key frames| Qstp --> Relayer
     KeyMgr --> QFkh --> Tuple --> QsDag --> Relayer
     SigMgr --> QsDag
-```
+
 
 **What this guarantees**
 
