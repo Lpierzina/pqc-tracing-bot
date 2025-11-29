@@ -1,0 +1,179 @@
+#![cfg(feature = "deterministic")]
+
+use crate::types::{FalconError, FalconKeyPair, FalconLevel, FalconResult};
+use alloc::vec::Vec;
+use blake2::Blake2s256;
+use digest::Digest;
+use spin::Mutex;
+
+const DOMAIN_FALCON_SK: &[u8] = b"PQCNET_FALCON_SK_V1";
+const DOMAIN_FALCON_PK: &[u8] = b"PQCNET_FALCON_PK_V1";
+const DOMAIN_FALCON_SIG: &[u8] = b"PQCNET_FALCON_SIG_V1";
+
+/// Deterministic Falcon fallback that mirrors the ML-DSA surface.
+pub struct FalconDeterministic {
+    counter: Mutex<u64>,
+}
+
+impl FalconDeterministic {
+    /// Create a new deterministic Falcon engine.
+    pub const fn new() -> Self {
+        Self {
+            counter: Mutex::new(11),
+        }
+    }
+
+    /// Return the configured Falcon security level.
+    pub const fn level(&self) -> FalconLevel {
+        FalconLevel::Falcon1024
+    }
+
+    /// Generate a deterministic Falcon keypair.
+    pub fn keypair(&self) -> FalconResult<FalconKeyPair> {
+        let seed = self.next_seed();
+        let secret_key = seed.to_vec();
+        let public_key = expand_bytes(DOMAIN_FALCON_PK, &seed, 32);
+
+        Ok(FalconKeyPair {
+            public_key,
+            secret_key,
+            level: self.level(),
+        })
+    }
+
+    /// Sign data with the Falcon secret key.
+    pub fn sign(&self, secret_key: &[u8], message: &[u8]) -> FalconResult<Vec<u8>> {
+        if secret_key.is_empty() {
+            return Err(FalconError::InvalidInput("falcon secret missing"));
+        }
+
+        let public_key = expand_bytes(DOMAIN_FALCON_PK, secret_key, 32);
+        let mut transcript =
+            Vec::with_capacity(public_key.len() + message.len() + DOMAIN_FALCON_SIG.len());
+        transcript.extend_from_slice(DOMAIN_FALCON_SIG);
+        transcript.extend_from_slice(&public_key);
+        transcript.extend_from_slice(message);
+
+        let mut digest = Blake2s256::new();
+        digest.update(&transcript);
+        Ok(digest.finalize().to_vec())
+    }
+
+    /// Verify a Falcon signature.
+    pub fn verify(&self, public_key: &[u8], message: &[u8], signature: &[u8]) -> FalconResult<()> {
+        if public_key.is_empty() {
+            return Err(FalconError::InvalidInput("falcon pk missing"));
+        }
+        if signature.len() != 32 {
+            return Err(FalconError::InvalidInput("falcon signature length invalid"));
+        }
+
+        let mut transcript =
+            Vec::with_capacity(public_key.len() + message.len() + DOMAIN_FALCON_SIG.len());
+        transcript.extend_from_slice(DOMAIN_FALCON_SIG);
+        transcript.extend_from_slice(public_key);
+        transcript.extend_from_slice(message);
+
+        let mut digest = Blake2s256::new();
+        digest.update(&transcript);
+        let expected = digest.finalize();
+
+        if expected.as_slice() == signature {
+            Ok(())
+        } else {
+            Err(FalconError::VerifyFailed)
+        }
+    }
+
+    fn next_seed(&self) -> [u8; 32] {
+        let mut guard = self.counter.lock();
+        let current = *guard;
+        *guard = current.wrapping_add(1);
+        drop(guard);
+
+        let mut seed = [0u8; 32];
+        let derived = expand_bytes(DOMAIN_FALCON_SK, &current.to_le_bytes(), 32);
+        seed.copy_from_slice(&derived);
+        seed
+    }
+}
+
+impl Default for FalconDeterministic {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn expand_bytes(domain: &[u8], input: &[u8], len: usize) -> Vec<u8> {
+    if len == 0 {
+        return Vec::new();
+    }
+
+    let mut out = Vec::with_capacity(len);
+    let mut counter: u32 = 0;
+
+    while out.len() < len {
+        let mut digest = Blake2s256::new();
+        digest.update(domain);
+        digest.update(&(len as u32).to_le_bytes());
+        digest.update(input);
+        digest.update(&counter.to_le_bytes());
+
+        let block = digest.finalize();
+        let remaining = len - out.len();
+        let chunk = &block[..remaining.min(block.len())];
+        out.extend_from_slice(chunk);
+        counter = counter.wrapping_add(1);
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keypair_sign_and_verify_success() {
+        let engine = FalconDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        assert_eq!(pair.public_key.len(), 32);
+        assert_eq!(pair.secret_key.len(), 32);
+        assert_eq!(pair.level, FalconLevel::Falcon1024);
+
+        let msg = b"falcon demo payload";
+        let sig = engine.sign(&pair.secret_key, msg).expect("sign");
+        assert_eq!(sig.len(), 32);
+        engine
+            .verify(&pair.public_key, msg, &sig)
+            .expect("verify succeeds");
+    }
+
+    #[test]
+    fn sign_rejects_missing_secret() {
+        let engine = FalconDeterministic::new();
+        let err = engine.sign(&[], b"msg").unwrap_err();
+        assert_eq!(err, FalconError::InvalidInput("falcon secret missing"));
+    }
+
+    #[test]
+    fn verify_rejects_bad_signature_length() {
+        let engine = FalconDeterministic::new();
+        let err = engine.verify(&[1u8; 32], b"msg", &[0u8; 8]).unwrap_err();
+        assert_eq!(
+            err,
+            FalconError::InvalidInput("falcon signature length invalid")
+        );
+    }
+
+    #[test]
+    fn verify_detects_tampering() {
+        let engine = FalconDeterministic::new();
+        let pair = engine.keypair().expect("keypair");
+        let msg = b"tamper me";
+        let mut sig = engine.sign(&pair.secret_key, msg).expect("sign");
+        sig[31] ^= 0xAA;
+        let err = engine.verify(&pair.public_key, msg, &sig).unwrap_err();
+        assert_eq!(err, FalconError::VerifyFailed);
+    }
+}

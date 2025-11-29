@@ -3,7 +3,14 @@ name = "autheo-mldsa-dilithium"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["deterministic"]
+std = []
+deterministic = ["dep:blake2", "dep:digest", "dep:spin"]
+liboqs = ["dep:oqs", "std"]
+
 [dependencies]
-blake2 = { version = "0.10", default-features = false }
-digest = { version = "0.10", default-features = false }
-spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
+blake2 = { version = "0.10", default-features = false, optional = true }
+digest = { version = "0.10", default-features = false, optional = true }
+spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"], optional = true }
+oqs = { version = "0.8", default-features = false, features = ["dilithium", "std"], optional = true }

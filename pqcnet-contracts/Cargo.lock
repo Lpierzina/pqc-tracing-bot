@@ -145,6 +145,7 @@ version = "0.1.0"
 dependencies = [
  "blake2",
  "digest",
+ "oqs",
  "spin",
 ]
 
@@ -154,6 +155,7 @@ version = "0.1.0"
 dependencies = [
  "blake2",
  "digest",
+ "oqs",
  "spin",
 ]
 
@@ -163,6 +165,7 @@ version = "0.1.0"
 dependencies = [
  "blake2",
  "digest",
+ "oqs",
  "spin",
 ]
 

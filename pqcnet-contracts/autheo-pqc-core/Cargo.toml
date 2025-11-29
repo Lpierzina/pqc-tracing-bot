@@ -6,13 +6,18 @@ build = "build.rs"
 
 [features]
 default = ["real_data"]
-liboqs = ["dep:oqs"]
+liboqs = [
+    "dep:oqs",
+    "autheo-mlkem-kyber/liboqs",
+    "autheo-mldsa-dilithium/liboqs",
+    "autheo-mldsa-falcon/liboqs",
+]
 real_data = []
 
 [dependencies]
-autheo-mlkem-kyber = { path = "../autheo-mlkem-kyber" }
-autheo-mldsa-dilithium = { path = "../autheo-mldsa-dilithium" }
-autheo-mldsa-falcon = { path = "../autheo-mldsa-falcon" }
+autheo-mlkem-kyber = { path = "../autheo-mlkem-kyber", default-features = false, features = ["deterministic"] }
+autheo-mldsa-dilithium = { path = "../autheo-mldsa-dilithium", default-features = false, features = ["deterministic"] }
+autheo-mldsa-falcon = { path = "../autheo-mldsa-falcon", default-features = false, features = ["deterministic"] }
 pqcnet-qace = { path = "../pqcnet-qace" }
 pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 blake2 = { version = "0.10", default-features = false }

@@ -2,7 +2,7 @@ use crate::dsa::{MlDsa, MlDsaKeyPair};
 use crate::error::{PqcError, PqcResult};
 use crate::kem::{MlKem, MlKemEncapsulation, MlKemKeyPair};
 use crate::types::SecurityLevel;
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use autheo_mldsa_dilithium::{
     DilithiumDeterministic, DilithiumError, DilithiumKeyPair, DilithiumLevel,
 };
@@ -22,6 +22,9 @@ impl From<KyberError> for PqcError {
     fn from(value: KyberError) -> Self {
         match value {
             KyberError::InvalidInput(msg) => PqcError::InvalidInput(msg),
+            KyberError::IntegrationError(ctx, msg) => {
+                PqcError::IntegrationError(format!("{ctx}: {msg}"))
+            }
         }
     }
 }
@@ -31,6 +34,9 @@ impl From<DilithiumError> for PqcError {
         match value {
             DilithiumError::InvalidInput(msg) => PqcError::InvalidInput(msg),
             DilithiumError::VerifyFailed => PqcError::VerifyFailed,
+            DilithiumError::IntegrationError(ctx, msg) => {
+                PqcError::IntegrationError(format!("{ctx}: {msg}"))
+            }
         }
     }
 }
@@ -40,6 +46,9 @@ impl From<FalconError> for PqcError {
         match value {
             FalconError::InvalidInput(msg) => PqcError::InvalidInput(msg),
             FalconError::VerifyFailed => PqcError::VerifyFailed,
+            FalconError::IntegrationError(ctx, msg) => {
+                PqcError::IntegrationError(format!("{ctx}: {msg}"))
+            }
         }
     }
 }
@@ -120,18 +129,23 @@ impl MlDsa for FalconDeterministic {
 
 fn map_kem_level(level: KyberLevel) -> SecurityLevel {
     match level {
+        KyberLevel::MlKem512 => SecurityLevel::MlKem128,
         KyberLevel::MlKem768 => SecurityLevel::MlKem192,
+        KyberLevel::MlKem1024 => SecurityLevel::MlKem256,
     }
 }
 
 fn map_dilithium_level(level: DilithiumLevel) -> SecurityLevel {
     match level {
+        DilithiumLevel::MlDsa44 => SecurityLevel::MlDsa128,
         DilithiumLevel::MlDsa65 => SecurityLevel::MlDsa192,
+        DilithiumLevel::MlDsa87 => SecurityLevel::MlDsa256,
     }
 }
 
 fn map_falcon_level(level: FalconLevel) -> SecurityLevel {
     match level {
+        FalconLevel::Falcon512 => SecurityLevel::MlDsa128,
         FalconLevel::Falcon1024 => SecurityLevel::MlDsa256,
     }
 }
