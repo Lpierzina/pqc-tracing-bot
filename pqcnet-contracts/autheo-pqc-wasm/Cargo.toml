@@ -7,5 +7,5 @@ edition = "2021"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-autheo-pqc-core = { path = "../autheo-pqc-core" }
+autheo-pqc-core = { path = "../autheo-pqc-core", features = ["real_data"] }
 wee_alloc = { version = "0.4", default-features = false }

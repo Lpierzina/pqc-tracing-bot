@@ -93,6 +93,23 @@ impl SignatureManager {
         Ok((state, pair))
     }
 
+    /// Install a pre-provisioned signing key (used for replaying real data).
+    pub fn install_external_key(
+        &mut self,
+        now_ms: TimestampMs,
+        pair: MlDsaKeyPair,
+    ) -> DsaKeyState {
+        let id = self.compute_key_id(&pair.public_key, now_ms);
+        let state = DsaKeyState {
+            id,
+            public_key: pair.public_key.clone(),
+            level: pair.level,
+            created_at: now_ms,
+        };
+        self.keys.push(state.clone());
+        state
+    }
+
     /// Sign arbitrary data with the provided secret key.
     pub fn sign(&self, sk: &[u8], msg: &[u8]) -> PqcResult<Bytes> {
         self.dsa.sign(sk, msg)

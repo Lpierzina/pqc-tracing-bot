@@ -1,12 +1,21 @@
+#[cfg(not(feature = "real_data"))]
 use crate::adapters::{DemoMlDsa, DemoMlKem};
+#[cfg(not(feature = "real_data"))]
 use crate::dsa::MlDsaEngine;
 use crate::error::PqcResult;
+#[cfg(not(feature = "real_data"))]
 use crate::kem::MlKemEngine;
-use crate::key_manager::{KeyManager, ThresholdPolicy};
+use crate::key_manager::KeyManager;
+#[cfg(not(feature = "real_data"))]
+use crate::key_manager::ThresholdPolicy;
 use crate::signatures::{DsaKeyState, SignatureManager};
 use crate::types::{Bytes, TimestampMs};
+#[cfg(not(feature = "real_data"))]
 use alloc::boxed::Box;
 use spin::Mutex;
+
+#[cfg(feature = "real_data")]
+mod recorded;
 
 pub struct ContractState {
     pub key_manager: KeyManager,
@@ -18,11 +27,20 @@ pub struct ContractState {
 
 static STATE: Mutex<Option<ContractState>> = Mutex::new(None);
 
+#[cfg(not(feature = "real_data"))]
 const DEFAULT_ROTATION_INTERVAL_MS: u64 = 300_000;
+#[cfg(not(feature = "real_data"))]
 const DEFAULT_THRESHOLD: ThresholdPolicy = ThresholdPolicy { t: 3, n: 5 };
+#[cfg(not(feature = "real_data"))]
 const INITIAL_TIMESTAMP_MS: TimestampMs = 1_700_000_000_000;
 
 impl ContractState {
+    #[cfg(feature = "real_data")]
+    fn initialize() -> PqcResult<Self> {
+        recorded::build_contract_state()
+    }
+
+    #[cfg(not(feature = "real_data"))]
     fn initialize() -> PqcResult<Self> {
         let kem_engine = MlKemEngine::new(Box::new(DemoMlKem::new()));
         let mut key_manager =
