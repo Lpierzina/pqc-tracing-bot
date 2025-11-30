@@ -11,3 +11,9 @@ blake3 = { version = "1.5", default-features = false }
 
 [dev-dependencies]
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
+autheo-pqcnet-qrng = { path = "../autheo-pqcnet-qrng" }
+autheo-pqcnet-tuplechain = { path = "../autheo-pqcnet-tuplechain" }
+autheo-pqcnet-icosuple = { path = "../autheo-pqcnet-icosuple" }
+autheo-pqcnet-5dqeh = { path = "../autheo-pqcnet-5dqeh" }
+autheo-pqcnet-chronosync = { path = "../autheo-pqcnet-chronosync" }
+serde_json = "1.0"

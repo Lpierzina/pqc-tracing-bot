@@ -1,8 +1,6 @@
 #![cfg(all(feature = "liboqs", not(target_arch = "wasm32")))]
 
-use crate::types::{
-    DilithiumError, DilithiumKeyPair, DilithiumLevel, DilithiumResult,
-};
+use crate::types::{DilithiumError, DilithiumKeyPair, DilithiumLevel, DilithiumResult};
 use alloc::vec::Vec;
 use oqs::sig;
 use std::sync::Once;
@@ -82,7 +80,12 @@ impl DilithiumLibOqs {
     }
 
     /// Verify a Dilithium signature.
-    pub fn verify(&self, public_key: &[u8], message: &[u8], signature: &[u8]) -> DilithiumResult<()> {
+    pub fn verify(
+        &self,
+        public_key: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> DilithiumResult<()> {
         let sig = self.instantiate()?;
         let pk = sig
             .public_key_from_bytes(public_key)
@@ -124,8 +127,6 @@ mod tests {
 
         let msg = b"autheo pqc";
         let sig = engine.sign(&pair.secret_key, msg).expect("sign");
-        engine
-            .verify(&pair.public_key, msg, &sig)
-            .expect("verify");
+        engine.verify(&pair.public_key, msg, &sig).expect("verify");
     }
 }

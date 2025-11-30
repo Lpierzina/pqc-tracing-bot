@@ -1,6 +1,6 @@
-use alloc::{string::String, vec::Vec};
 #[cfg(feature = "liboqs")]
 use alloc::string::ToString;
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "liboqs")]
 use core::fmt;
 

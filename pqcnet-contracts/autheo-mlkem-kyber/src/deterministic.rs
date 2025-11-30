@@ -1,8 +1,6 @@
 #![cfg(feature = "deterministic")]
 
-use crate::types::{
-    KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult,
-};
+use crate::types::{KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult};
 use alloc::vec::Vec;
 use blake2::Blake2s256;
 use digest::Digest;

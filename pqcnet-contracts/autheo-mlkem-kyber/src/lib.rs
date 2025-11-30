@@ -3,9 +3,7 @@
 extern crate alloc;
 
 mod types;
-pub use types::{
-    KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult,
-};
+pub use types::{KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult};
 
 #[cfg(feature = "deterministic")]
 mod deterministic;

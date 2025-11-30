@@ -94,11 +94,7 @@ impl SignatureManager {
     }
 
     /// Install a pre-provisioned signing key (used for replaying real data).
-    pub fn install_external_key(
-        &mut self,
-        now_ms: TimestampMs,
-        pair: MlDsaKeyPair,
-    ) -> DsaKeyState {
+    pub fn install_external_key(&mut self, now_ms: TimestampMs, pair: MlDsaKeyPair) -> DsaKeyState {
         let id = self.compute_key_id(&pair.public_key, now_ms);
         let state = DsaKeyState {
             id,

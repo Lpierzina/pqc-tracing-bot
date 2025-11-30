@@ -30,14 +30,11 @@ include!(concat!(env!("OUT_DIR"), "/recorded_trace.rs"));
 
 pub(super) fn build_contract_state() -> PqcResult<ContractState> {
     let kem_engine = MlKemEngine::new(Box::new(RecordedMlKem::new(&RECORDED_SAMPLES)));
-    let mut key_manager =
-        KeyManager::new(kem_engine, THRESHOLD, TRACE_ROTATION_INTERVAL_MS);
+    let mut key_manager = KeyManager::new(kem_engine, THRESHOLD, TRACE_ROTATION_INTERVAL_MS);
 
     let first_sample = RECORDED_SAMPLES
         .first()
-        .ok_or(PqcError::InternalError(
-            "recorded ml-kem samples missing",
-        ))?;
+        .ok_or(PqcError::InternalError("recorded ml-kem samples missing"))?;
     let first_ts = BASE_TIMESTAMP_MS + first_sample.offset_ms;
     let _ = key_manager.keygen_and_install(first_ts)?;
 

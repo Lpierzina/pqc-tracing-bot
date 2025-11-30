@@ -1,8 +1,6 @@
 #![cfg(all(feature = "liboqs", not(target_arch = "wasm32")))]
 
-use crate::types::{
-    KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult,
-};
+use crate::types::{KyberEncapsulation, KyberError, KyberKeyPair, KyberLevel, KyberResult};
 use alloc::vec::Vec;
 use oqs::kem;
 use std::sync::Once;

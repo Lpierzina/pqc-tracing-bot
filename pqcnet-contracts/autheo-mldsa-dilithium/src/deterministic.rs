@@ -1,8 +1,6 @@
 #![cfg(feature = "deterministic")]
 
-use crate::types::{
-    DilithiumError, DilithiumKeyPair, DilithiumLevel, DilithiumResult,
-};
+use crate::types::{DilithiumError, DilithiumKeyPair, DilithiumLevel, DilithiumResult};
 use alloc::vec::Vec;
 use blake2::Blake2s256;
 use digest::Digest;

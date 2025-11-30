@@ -1207,8 +1207,14 @@ dependencies = [
 name = "pqcnet-qs-dag"
 version = "0.1.0"
 dependencies = [
+ "autheo-pqcnet-5dqeh",
+ "autheo-pqcnet-chronosync",
+ "autheo-pqcnet-icosuple",
+ "autheo-pqcnet-qrng",
+ "autheo-pqcnet-tuplechain",
  "blake3",
  "serde",
+ "serde_json",
  "spin",
 ]
 
