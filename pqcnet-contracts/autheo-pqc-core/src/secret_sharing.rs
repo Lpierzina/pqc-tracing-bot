@@ -129,6 +129,7 @@ fn validate_secret(secret_key: &[u8]) -> PqcResult<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn validate_threshold(policy: ThresholdPolicy) -> PqcResult<()> {
     if policy.t == 0 || policy.n == 0 {
         return Err(PqcError::InvalidInput(
