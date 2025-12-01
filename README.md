@@ -126,8 +126,13 @@ subgraph TCStack["TupleChain → Chronosync → 5D-QEH"]
   Chrono["autheo-pqcnet-chronosync"]
   FiveDqeh["autheo-pqcnet-5dqeh"]
 end
+WavenEvidence["WAVEN-Integrated CHSH & 5D-QEH Evidence"]
 Tuplechain --> Icosuple --> Chrono --> FiveDqeh
 Chrono --> QsDag
+FiveDqeh --> WavenEvidence
+QsDag --> WavenEvidence
+Telemetry --> WavenEvidence
+QRNG --> WavenEvidence
 subgraph Shared["Shared Assets"]
   Docs["docs/"]
   Protos["protos/"]
@@ -147,7 +152,7 @@ AIPComms --> Relayer
 AIPComms --> Qstp
 classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
 classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
-class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs completed;
+class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence completed;
 class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 ```
 
