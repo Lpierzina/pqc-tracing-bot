@@ -66,13 +66,6 @@ subgraph AIPP["DID AIPP Spec Flows"]
   AIPOverlays["AIPP: Network Overlays"]
   AIPComms["AIPP: Comms & Transport Protocols"]
 end
-Wallet --> DIDCore --> AIPId
-Wallet --> AIPAuth
-AIPId --> AIPKeys
-AIPKeys --> AIPAuth
-AIPAuth --> AIPRec
-AIPId --> AIPOverlays
-AIPComms --> AIPOverlays
 subgraph Engines["PQC Engines & Entropy"]
   Kyber["autheo-mlkem-kyber"]
   Dilithium["autheo-mldsa-dilithium"]
@@ -88,6 +81,47 @@ subgraph Enclave["Autheo PQC Enclave"]
   QFkh["pqcnet-qfkh"]
   Crypto["pqcnet-crypto"]
 end
+subgraph Runtime["PQCNet Runtime & Ops"]
+  Qstp["pqcnet-qstp"]
+  QsDag["pqcnet-qs-dag"]
+  Sentry["pqcnet-sentry"]
+  Net["pqcnet-networking"]
+  Relayer["pqcnet-relayer"]
+  Telemetry["pqcnet-telemetry"]
+  QACE["pqcnet-qace"]
+end
+subgraph TCStack["TupleChain → Chronosync → 5D-QEH"]
+  Tuplechain["autheo-pqcnet-tuplechain"]
+  Icosuple["autheo-pqcnet-icosuple"]
+  Chrono["autheo-pqcnet-chronosync"]
+  FiveDqeh["autheo-pqcnet-5dqeh"]
+end
+WavenEvidence["WAVEN-Integrated CHSH & 5D-QEH Evidence"]
+subgraph Shared["Shared Assets"]
+  Docs["docs/"]
+  Protos["protos/"]
+  Configs["configs/"]
+end
+subgraph Flow["Cross-Layer Flow Steps"]
+  Flow1["(1) DID Auth Request\n(AIPP profiles + proofs)"]
+  Flow2["(2) PQC Handshake Envelope\n(QFKH-ready Kyber/Dilithium)"]
+  Flow3["(3) QSTP Tunnel & Route Plan\n(QACE-mutable mesh)"]
+  Flow4["(4) Tuple Receipt & Hypergraph Anchor\n(TupleChain → Chronosync → 5D-QEH)"]
+  Flow5["(5) Evidence & Recovery Hooks\n(QS-DAG + WAVEN attestations)"]
+end
+Wallet --> DIDCore --> AIPId
+Wallet --> AIPAuth
+Wallet --> Flow1
+Flow1 --> DIDCore
+Flow1 --> AIPId
+Flow1 --> AIPAuth
+Flow1 --> AIPComms
+Flow1 --> Flow2
+AIPId --> AIPKeys
+AIPKeys --> AIPAuth
+AIPAuth --> AIPRec
+AIPId --> AIPOverlays
+AIPComms --> AIPOverlays
 Kyber --> PqcCore
 Dilithium --> PqcCore
 Falcon --> PqcCore
@@ -100,15 +134,6 @@ PqcEntropy --> PqcCore
 PqcEntropy --> QFkh
 PqcCore --> PqcWasm
 PqcCore --> Crypto
-subgraph Runtime["PQCNet Runtime & Ops"]
-  Qstp["pqcnet-qstp"]
-  QsDag["pqcnet-qs-dag"]
-  Sentry["pqcnet-sentry"]
-  Net["pqcnet-networking"]
-  Relayer["pqcnet-relayer"]
-  Telemetry["pqcnet-telemetry"]
-  QACE["pqcnet-qace"]
-end
 PqcWasm --> Qstp
 QFkh --> Qstp
 Crypto --> Qstp
@@ -120,24 +145,12 @@ Relayer --> Telemetry
 Net --> Telemetry
 Telemetry --> QACE
 QsDag --> Sentry
-subgraph TCStack["TupleChain → Chronosync → 5D-QEH"]
-  Tuplechain["autheo-pqcnet-tuplechain"]
-  Icosuple["autheo-pqcnet-icosuple"]
-  Chrono["autheo-pqcnet-chronosync"]
-  FiveDqeh["autheo-pqcnet-5dqeh"]
-end
-WavenEvidence["WAVEN-Integrated CHSH & 5D-QEH Evidence"]
 Tuplechain --> Icosuple --> Chrono --> FiveDqeh
 Chrono --> QsDag
 FiveDqeh --> WavenEvidence
 QsDag --> WavenEvidence
 Telemetry --> WavenEvidence
 QRNG --> WavenEvidence
-subgraph Shared["Shared Assets"]
-  Docs["docs/"]
-  Protos["protos/"]
-  Configs["configs/"]
-end
 Docs --> Engines
 Docs --> Runtime
 Docs --> TCStack
@@ -150,12 +163,46 @@ AIPRec --> QsDag
 AIPOverlays --> Net
 AIPComms --> Relayer
 AIPComms --> Qstp
+Flow2 --> PqcCore
+Flow2 --> PqcWasm
+Flow2 --> QFkh
+Flow2 --> Crypto
+Flow2 --> Flow3
+PqcWasm --> Flow3
+QFkh --> Flow3
+Crypto --> Flow3
+Flow3 --> Qstp
+Flow3 --> Net
+Flow3 --> Relayer
+Flow3 --> QACE
+Flow3 --> Flow4
+Qstp --> Flow4
+Relayer --> Flow4
+Flow4 --> Tuplechain
+Flow4 --> Icosuple
+Flow4 --> Chrono
+Flow4 --> FiveDqeh
+Flow4 --> QsDag
+Flow4 --> Flow5
+QsDag --> Flow5
+Telemetry --> Flow5
+Flow5 --> WavenEvidence
+Flow5 --> AIPRec
 classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
 classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
+classDef flowStep fill:#dbeafe,stroke:#1d4ed8,stroke-dasharray:4 3;
 class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence completed;
 class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
+class Flow1,Flow2,Flow3,Flow4,Flow5 flowStep;
 ```
 
+**Flow guide**
+
+- `(1) DID auth request` – wallets package DID profiles, recovery data, and channel metadata before handing them to the AIPP overlays.
+- `(2) PQC handshake envelope` – AIPP identity/auth modules trigger the Kyber/Dilithium + QFKH ceremony inside `autheo-pqc-core`/`autheo-pqc-wasm`.
+- `(3) QSTP tunnel & route plan` – the handshake output hydrates QSTP tunnels, networking overlays, and QACE so meshes get a mutable but encrypted transport plan.
+- `(4) Tuple receipt & hypergraph anchor` – QSTP payloads and relayers commit tuple receipts that Chronosync inflates into 5D-QEH anchors plus QS-DAG edges.
+- `(5) Evidence & recovery hooks` – QS-DAG, telemetry, and WAVEN evidence feed recovery/social-recovery policies so DID controllers can prove every hop.
 ## Production Enclave Snapshot
 
 - **Entropy + QRNG** – `autheo-entropy-core` budgets hardware feeds into `autheo-entropy-wasm`, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
