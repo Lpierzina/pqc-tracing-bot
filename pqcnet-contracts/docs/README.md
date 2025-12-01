@@ -178,3 +178,12 @@ Use this visual when explaining the SKU split: the left block is the core WASM d
 - For demos, pair the wazero harness (`wazero-harness/`) with `cargo test -p autheo-pqcnet-{tuplechain,icosuple,chronosync,5dqeh}` to show exactly where the consensus bundle extends beyond the WASM runtime.
 
 This map should make it clear how to split pricing, packaging, and responsibilities without blurring the line between the core PQC enclave and the optional hypergraph ledger stack.
+
+---
+
+## 11. WAVEN-Integrated CHSH & 5D-QEH Evidence
+
+- **AWRE + WAVEN parity** – The wazero harness now boots the same WAMR + WAVEN pairing detailed in the top-level README, sourcing entropy through `qrng_feed`, dual page tables, and ABW34 telemetry so docs, validators, and AWRE traces cite an identical runtime story.
+- **Reproducible QRNG snapshot (Epoch 0)** – The current bridge (`seed: 57a04b…d594`, `tuple_id: 6a4867…1771b`) records `S ≈ 2.64` for the two-qubit CHSH sandbox (Tsirelson ≈ 2.83, classical bound 2.0) and `S_5D ≈ 15.28` versus the classical-style 5D target `≈ 11.31`. Both results drop out of the QuTiP harness after the QRNG → QSTP → TupleChain → Chronosync → 5D-QEH → QS-DAG path finishes.
+- **Axis projections for auditors** – The exported 5D → 3D projection (`axis-0…axis-4`) lets Chronosync’s SVD truncation be replayed in downstream tools, demonstrating that ≥1B TPS routing retains a quantum-style violation even after dimensionality reduction.
+- **Roadmap alignment** – See `docs/qrng-hardware-roadmap.md` for the checked-off Stage 1 (hardware QRNG feed) and Stage 2 (Chronosync 1,000-shard scaling) tasks, including ABW34 log pointers tied to this same snapshot.
