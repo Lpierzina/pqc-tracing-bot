@@ -14,6 +14,38 @@ Ken’s Raspberry Pi QRNG bring-up lands in two stages: validating physical entr
 - **Scaling probe** – `cargo run -p autheo-pqcnet-chronosync --example scaling_probe` ingests the TOML, computes per-shard throughput, and optionally emits ABW34 entries plus a JSON report for docs/papers. It is parameterized so we can flip to hardware QRNG seeds or custom shard counts without editing the crate.
 - **Noise + QACE instrumentation** – the harness exposes `--noise-ratio`, `--shards`, `--tps-per-shard`, and `--qace-reroutes` so we can reproduce the “50% noise with QACE reroutes” scenario while the Chronosync probe reports the same metrics into ABW34.
 
+## Windows harness invocation + end-to-end test recipe
+
+Ken hit a PowerShell quirk when trying to pass flags after `go run`. PowerShell treated the trailing tokens as separate commands because they were entered on new lines without a continuation character. On Windows, keep every flag on one line or use backticks (`` ` ``) for line continuation:
+
+```
+go run . `
+  -wasm ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm `
+  -entropy ../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_entropy_wasm.wasm `
+  -qrng-bridge <bridge_json_from_pi> -qrng-results <results_json_from_pi> `
+  -qrng-source hardware:rpi-alpha `
+  -abw34-log ../pqcnet-contracts/target/abw34_log.jsonl `
+  -shards 1000 -noise-ratio 0.5 -qace-reroutes 120 -tps-per-shard 1500000
+```
+
+With that invocation the harness seeds WAMR/WAVEN with the Pi feed (`QrngFeed`), signs the PQC1 envelope, and logs the run to ABW34 without any extra code changes.
+
+### How to test the full AWRE + Chronosync path
+
+1. **Build AWRE artifacts**
+   ```
+   cd pqcnet-contracts
+   rustup target add wasm32-unknown-unknown
+   cargo build --release -p autheo-pqc-wasm --target wasm32-unknown-unknown
+   cargo build --release -p autheo-entropy-wasm --target wasm32-unknown-unknown
+   ```
+2. **Produce CHSH evidence** – run `quantum/chsh_sandbox.py` (or the Pi daemon) to emit `chsh_bridge_state.json` + `chsh_results.json`. `QrngFeed` expects the same schema (tuple ids, epochs, 4 KiB hyper-tuples, CHSH stats).
+3. **Run the wazero harness** – use the `go run` command above, pointing `-qrng-bridge` / `-qrng-results` at the sandbox files or the Pi capture folder. This exercises WAMR + WAVEN + ABW34 end to end; set `-qrng-source hardware:rpi-alpha` once the Pi feed is live.
+4. **Chronosync scaling probe** – `cargo run -p autheo-pqcnet-chronosync --example scaling_probe -- --config pqcnet-contracts/configs/chronosync-shards.toml --abw34-log pqcnet-contracts/target/abw34_log.jsonl --report-json pqcnet-contracts/target/chronosync_profiles.json`. Remember the `--` separator so Clap owns the probe flags.
+5. **Regression tests** – `cargo test -p autheo-pqcnet-chronosync`, `cargo run -p autheo-pqcnet-qrng --example qrng_demo`, `cargo test -p pqcnet-telemetry`, and `go test ./wazero-harness/...` keep WAVEN + QRNG plumbing green.
+
+Once the Pi daemon emits the bridge/results JSON, swap the paths and the `qrng_source = "hardware:rpi-alpha"` entries in `configs/chronosync-shards.toml`; ABW34 logs will then capture hardware provenance for the paper’s throughput numbers.
+
 ## Publish-ready checklist
 
 1. **Hardware CHSH violations** – run `quantum/chsh_sandbox.py` against the Pi feed, confirm `p < 10^-154`, and log the tuple id + epoch via the ABW34 logger.
