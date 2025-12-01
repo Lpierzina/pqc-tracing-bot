@@ -5,6 +5,11 @@
 //! can be hoisted into its own repository later. The simulation intentionally references Kyber and
 //! Dilithium security levels to mirror what downstream tuplechain / icosuple components expect.
 
+pub mod feed;
+pub use feed::{
+    ChshResultSummary, QrngFeed, QrngFeedConfig, QrngFeedError, QrngFeedSample, QrngFeedSource,
+};
+
 use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};

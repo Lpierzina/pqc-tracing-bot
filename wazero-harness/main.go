@@ -7,10 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tetratelabs/wazero"
@@ -28,6 +32,14 @@ func main() {
 	wasmPath := flag.String("wasm", defaultWasm, "path to the built pqcnet WASM module")
 	defaultEntropy := "../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_entropy_wasm.wasm"
 	entropyPath := flag.String("entropy", defaultEntropy, "path to the built entropy WASM module")
+	qrngBridge := flag.String("qrng-bridge", "../pqcnet-contracts/target/chsh_bridge_state.json", "path to the QRNG bridge snapshot JSON")
+	qrngResults := flag.String("qrng-results", "../pqcnet-contracts/target/chsh_results.json", "optional path to the CHSH sandbox results JSON (empty to skip)")
+	qrngSource := flag.String("qrng-source", "sandbox", "label for the QRNG source (e.g., sandbox or hardware:rpi-alpha)")
+	abw34Log := flag.String("abw34-log", "../pqcnet-contracts/target/abw34_log.jsonl", "file to append ABW34 telemetry (empty to disable)")
+	shardCount := flag.Int("shards", 10, "active shard count for the current run")
+	noiseRatio := flag.Float64("noise-ratio", 0.0, "synthetic noise ratio injected into the load generator (0.0-1.0)")
+	qaceReroutes := flag.Int("qace-reroutes", 0, "number of QACE reroutes observed during the run")
+	perShardTps := flag.Float64("tps-per-shard", 1_500_000, "observed TPS per shard under current conditions")
 	flag.Parse()
 
 	wasmBytes, err := os.ReadFile(*wasmPath)
@@ -56,8 +68,20 @@ func main() {
 	defer entropyModule.Close(ctx)
 
 	entropyNode := newEntropyNode(entropyModule)
-	if err := entropyNode.seedWithRandom(ctx); err != nil {
+	qrngSample, err := loadQrngSample(*qrngBridge, *qrngResults, *qrngSource)
+	if err != nil {
+		log.Fatalf("load QRNG feed: %v", err)
+	}
+	if err := entropyNode.seedWithBytes(ctx, qrngSample.Seed); err != nil {
 		log.Fatalf("seed entropy node: %v", err)
+	}
+	fmt.Printf("QRNG feed loaded → source=%s epoch=%d tuple=%s shard=%d seed=%s bits=%d\n",
+		qrngSample.Source, qrngSample.Epoch, qrngSample.TupleID, qrngSample.ShardID, qrngSample.SeedHex, qrngSample.Bits)
+	if qrngSample.TwoQubitExact > 0 && qrngSample.FiveDExact > 0 {
+		fmt.Printf("  CHSH two-qubit exact=%.4f sampled=%.4f · 5D exact=%.4f sampled=%.4f shots=%d depolarizing=%.3f\n",
+			qrngSample.TwoQubitExact, qrngSample.TwoQubitSampled,
+			qrngSample.FiveDExact, qrngSample.FiveDSampled,
+			qrngSample.Shots, qrngSample.Depolarizing)
 	}
 	if err := entropyNode.ensureHealthy(ctx); err != nil {
 		log.Fatalf("entropy node health check failed: %v", err)
@@ -136,6 +160,33 @@ func main() {
 	}
 
 	fmt.Printf("QS-DAG anchor stored for edge=%s signer=%s\n", request.edgeID, envelope.SigningKeyID.Hex())
+
+	if err := appendAbw34Record(*abw34Log, abw34Record{
+		TimestampMs:         time.Now().UnixMilli(),
+		QrngSource:          qrngSample.Source,
+		QrngEpoch:           qrngSample.Epoch,
+		QrngTupleID:         qrngSample.TupleID,
+		QrngSeedHex:         qrngSample.SeedHex,
+		QrngBits:            qrngSample.Bits,
+		QrngShardID:         qrngSample.ShardID,
+		ShardCount:          *shardCount,
+		NoiseRatio:          clamp01(*noiseRatio),
+		QaceReroutes:        *qaceReroutes,
+		ObservedTpsShard:    *perShardTps,
+		ObservedTpsGlobal:   *perShardTps * float64(*shardCount),
+		KemKeyID:            envelope.KemKeyID.Hex(),
+		SigningKeyID:        envelope.SigningKeyID.Hex(),
+		KemCreatedAt:        envelope.KemCreatedAt,
+		KemExpiresAt:        envelope.KemExpiresAt,
+		ChshTwoQubitExact:   qrngSample.TwoQubitExact,
+		ChshTwoQubitSampled: qrngSample.TwoQubitSampled,
+		ChshFiveDExact:      qrngSample.FiveDExact,
+		ChshFiveDSampled:    qrngSample.FiveDSampled,
+		ChshShots:           qrngSample.Shots,
+		ChshDepolarizing:    qrngSample.Depolarizing,
+	}); err != nil {
+		log.Fatalf("record ABW34 telemetry: %v", err)
+	}
 }
 
 type handshakeInput struct {
@@ -438,6 +489,163 @@ func (d *dagHost) verifyAndAnchor(edgeID string, signer keyID, signature []byte,
 	key := fmt.Sprintf("%s::%s", edgeID, signer.Hex())
 	d.anchors[key] = append(d.anchors[key], append([]byte(nil), signature...))
 	return nil
+}
+
+type qrngSample struct {
+	Source          string
+	Epoch           uint64
+	Seed            []byte
+	SeedHex         string
+	TupleID         string
+	ShardID         uint16
+	Bits            int
+	HyperBits       int
+	TwoQubitExact   float64
+	TwoQubitSampled float64
+	FiveDExact      float64
+	FiveDSampled    float64
+	Shots           int
+	Depolarizing    float64
+}
+
+type bridgeSnapshot struct {
+	QrngEpoch      uint64       `json:"qrng_epoch"`
+	QrngSeedHex    string       `json:"qrng_seed_hex"`
+	QrngBits       int          `json:"qrng_bits"`
+	HyperTupleBits int          `json:"hyper_tuple_bits"`
+	TupleReceipt   tupleReceipt `json:"tuple_receipt"`
+}
+
+type tupleReceipt struct {
+	TupleID string `json:"tuple_id"`
+	ShardID uint16 `json:"shard_id"`
+}
+
+type chshResultsFile struct {
+	TwoQubit     *chshSection `json:"two_qubit"`
+	FiveD        *chshSection `json:"five_d"`
+	Shots        int          `json:"shots"`
+	Depolarizing float64      `json:"depolarizing"`
+}
+
+type chshSection struct {
+	Exact   float64 `json:"exact"`
+	Sampled float64 `json:"sampled"`
+}
+
+func loadQrngSample(bridgePath, resultsPath, source string) (*qrngSample, error) {
+	data, err := os.ReadFile(bridgePath)
+	if err != nil {
+		return nil, err
+	}
+	var snapshot bridgeSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return nil, err
+	}
+	trimmed := strings.TrimSpace(snapshot.QrngSeedHex)
+	if len(trimmed) < 64 {
+		return nil, fmt.Errorf("qrng seed hex too short: %s", trimmed)
+	}
+	seedHex := trimmed[:64]
+	seed, err := hex.DecodeString(seedHex)
+	if err != nil {
+		return nil, fmt.Errorf("decode seed hex: %w", err)
+	}
+	sample := &qrngSample{
+		Source:    source,
+		Epoch:     snapshot.QrngEpoch,
+		Seed:      seed,
+		SeedHex:   seedHex,
+		TupleID:   snapshot.TupleReceipt.TupleID,
+		ShardID:   snapshot.TupleReceipt.ShardID,
+		Bits:      snapshot.QrngBits,
+		HyperBits: snapshot.HyperTupleBits,
+	}
+
+	if resultsPath != "" {
+		if err := applyChshResults(resultsPath, sample); err != nil {
+			return nil, err
+		}
+	}
+
+	return sample, nil
+}
+
+func applyChshResults(path string, sample *qrngSample) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	var file chshResultsFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return err
+	}
+	if file.TwoQubit != nil {
+		sample.TwoQubitExact = file.TwoQubit.Exact
+		sample.TwoQubitSampled = file.TwoQubit.Sampled
+	}
+	if file.FiveD != nil {
+		sample.FiveDExact = file.FiveD.Exact
+		sample.FiveDSampled = file.FiveD.Sampled
+	}
+	sample.Shots = file.Shots
+	sample.Depolarizing = file.Depolarizing
+	return nil
+}
+
+type abw34Record struct {
+	TimestampMs         int64   `json:"timestamp_ms"`
+	QrngSource          string  `json:"qrng_source"`
+	QrngEpoch           uint64  `json:"qrng_epoch"`
+	QrngTupleID         string  `json:"qrng_tuple_id"`
+	QrngSeedHex         string  `json:"qrng_seed_hex"`
+	QrngBits            int     `json:"qrng_bits"`
+	QrngShardID         uint16  `json:"qrng_shard_id"`
+	ShardCount          int     `json:"shard_count"`
+	NoiseRatio          float64 `json:"noise_ratio"`
+	QaceReroutes        int     `json:"qace_reroutes"`
+	ObservedTpsShard    float64 `json:"observed_tps_per_shard"`
+	ObservedTpsGlobal   float64 `json:"observed_tps_global"`
+	KemKeyID            string  `json:"kem_key_id"`
+	SigningKeyID        string  `json:"signing_key_id"`
+	KemCreatedAt        uint64  `json:"kem_created_at"`
+	KemExpiresAt        uint64  `json:"kem_expires_at"`
+	ChshTwoQubitExact   float64 `json:"chsh_two_qubit_exact,omitempty"`
+	ChshTwoQubitSampled float64 `json:"chsh_two_qubit_sampled,omitempty"`
+	ChshFiveDExact      float64 `json:"chsh_five_d_exact,omitempty"`
+	ChshFiveDSampled    float64 `json:"chsh_five_d_sampled,omitempty"`
+	ChshShots           int     `json:"chsh_shots,omitempty"`
+	ChshDepolarizing    float64 `json:"chsh_depolarizing,omitempty"`
+}
+
+func appendAbw34Record(path string, record abw34Record) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(record)
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 func registerHostEntropy(ctx context.Context, runtime wazero.Runtime, node *entropyNode) (api.Module, error) {

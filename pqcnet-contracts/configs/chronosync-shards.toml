@@ -1,0 +1,26 @@
+# Profiles for staged Chronosync shard-scaling experiments.
+# `autheo-pqcnet-chronosync/examples/scaling_probe.rs` consumes this file.
+
+[[profile]]
+name = "baseline-10"
+shards = 10
+target_tps_global = 15000000
+noise_ratio = 0.10
+qace_reroutes = 4
+qrng_source = "sandbox"
+
+[[profile]]
+name = "expansion-100"
+shards = 100
+target_tps_global = 150000000
+noise_ratio = 0.30
+qace_reroutes = 24
+qrng_source = "sandbox"
+
+[[profile]]
+name = "icosuple-1000"
+shards = 1000
+target_tps_global = 1500000000
+noise_ratio = 0.50
+qace_reroutes = 120
+qrng_source = "hardware:rpi-alpha"

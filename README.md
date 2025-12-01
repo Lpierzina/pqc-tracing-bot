@@ -22,6 +22,12 @@ It provides:
 - **Tuple & hypergraph data** – TupleChain receipts, Chronosync elections, and 5D-QEH anchors reuse the same QRNG-assisted randomness captured in ops, so DAG anchoring tests and wazero demos use indistinguishable data paths.
 - **Harness verification** – The `wazero-harness` boots `autheo-entropy-wasm`, loads `autheo_pqc_wasm.wasm`, and measures the exact telemetry counters (`pqcnet-telemetry`) that live validators emit, giving CI a direct comparison against production signals.
 
+## AWRE Runtime Stack (WAMR + WAVEN)
+
+- **WAMR core** – Autheo WASM Runtime Engine (AWRE) keeps WebAssembly execution on `wasm-micro-runtime` for its sub-MB footprint, interpreter/AOT/JIT tiers, and instant cold starts across x86/ARM/RISC-V. The wazero harness now seeds the enclave via the new `qrng_feed` pipeline so every AWRE build runs on attested entropy.
+- **WAVEN memory virtualization** – WAVEN’s software MMU layers atop WAMR to enable dual page tables, exception pages, and page-level sharing inside enclaves. This lets PQCNet overlays (PQCNet, Chronosync, RPCNet) run multi-tenant workloads without 30% bounds-check overhead.
+- **Secure telemetry** – ABW34 records tie QRNG seeds, shard counts, noise ratios, and QACE reroutes to each handshake so the AWRE stack can prove how Dilithium/Kyber epochs line up with hardware entropy—vital for Ken’s Raspberry Pi QRNG path and the 1,000-shard Chronosync expansion.
+
 ### Core Enclave Real-Data Flow
 
 See `autheo-pqc-core/README.md` for the full code-flow diagram that the default build path now exercises. In short:

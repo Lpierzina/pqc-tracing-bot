@@ -14,6 +14,8 @@
 //! assert_eq!(snapshot.latencies_ms["pipeline"], vec![42]);
 //! ```
 
+pub mod abw34;
+
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
