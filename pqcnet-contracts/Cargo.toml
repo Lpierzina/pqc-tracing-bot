@@ -16,7 +16,16 @@ members = [
     "pqcnet-telemetry",
     "pqcnet-sentry",
     "pqcnet-relayer",
-    "pqcnet-qace", "pqcnet-qs-dag", "pqcnet-qstp", "pqcnet-qfkh", "pqcnet-entropy", "autheo-entropy-wasm", "autheo-privacynet", "autheo-privacynet-network-overlay",
+    "pqcnet-qace",
+    "pqcnet-qs-dag",
+    "pqcnet-qstp",
+    "pqcnet-qfkh",
+    "pqcnet-entropy",
+    "autheo-entropy-wasm",
+    "autheo-privacynet",
+    "autheo-privacynet-network-overlay",
+    "autheo-dw3b-mesh",
+    "autheo-dw3b-overlay",
 ]
 resolver = "2"
 
