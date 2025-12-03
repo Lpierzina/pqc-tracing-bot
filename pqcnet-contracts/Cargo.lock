@@ -317,6 +317,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "autheo-privacynet-network-overlay"
+version = "0.1.0"
+dependencies = [
+ "autheo-pqc-core",
+ "autheo-pqcnet-5dqeh",
+ "autheo-privacynet",
+ "blake3",
+ "hex",
+ "pqcnet-networking",
+ "pqcnet-qstp",
+ "pqcnet-telemetry",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
