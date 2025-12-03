@@ -1,0 +1,18 @@
+[package]
+name = "autheo-privacynet"
+version = "0.1.0"
+edition = "2021"
+description = "Autheo PrivacyNet production stack integrating DP, FHE, and EZPH manifolds"
+license = "Apache-2.0"
+
+[dependencies]
+autheo-pqcnet-5dezph = { path = "../autheo-pqcnet-5dezph" }
+autheo-pqcnet-5dqeh = { path = "../autheo-pqcnet-5dqeh" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+rand = { version = "0.8", features = ["std"] }
+rand_chacha = "0.3"
+rand_distr = "0.4"
+blake3 = "1.5"
+tracing = "0.1"
