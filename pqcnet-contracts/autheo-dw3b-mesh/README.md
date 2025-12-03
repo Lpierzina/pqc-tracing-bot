@@ -24,6 +24,46 @@ Chua/Rössler chaos perturbations, and Bloom-filter backed anonymity proofs.
 - **Compression pipeline** – applies Zstandard with DW3B markers plus a fractal
   projection stub to keep ciphertext expansion ≤ 4:1 before CDN/Index caching.
 
+## Code flow
+
+```mermaid
+---
+config:
+  theme: forest
+---
+flowchart LR
+    Request["MeshAnonymizeRequest"]
+    Budget["Privacy clamps\n(epsilon/delta/stake)"]
+    Entropy["QuantumEntropyPool"]
+    Topology["MeshTopology"]
+    PrivacyNet["autheo-privacynet"]
+    FiveDEzph["autheo-pqcnet-5dezph\n(5D-EZPH)"]
+    Bloom["MeshBloomFilter"]
+    Noise["NoiseInjector"]
+    Chaos["ChaosObfuscator"]
+    Proof["AnonymityProof\n+ route plan"]
+    Compression["CompressionPipeline"]
+    Response["MeshAnonymizeResponse"]
+
+    Request --> Budget --> Topology
+    Budget --> PrivacyNet
+    PrivacyNet --> FiveDEzph
+    Entropy -->|seeds| Topology
+    Entropy --> Noise
+    Entropy --> Chaos
+    Topology --> Bloom
+    Bloom --> Proof
+    Noise --> Proof
+    Chaos --> Proof
+    FiveDEzph --> Proof
+    Proof --> Compression --> Response
+```
+
+Requests enter through privacy budget clamps, are routed through the mesh
+topology with entropy-derived seeds, and ultimately fuse PrivacyNet responses,
+5D-EZPH entanglement metadata, Bloom summaries, noise, and chaos trajectories
+into a deterministic DW3B `MeshAnonymizeResponse`.
+
 ## Using the engine
 
 ```rust
@@ -44,6 +84,15 @@ See `examples/dw3b_walkthrough.rs` for a narrated run that prints:
 - Route plan with DW3B node kinds and Poisson mixnet decoys
 - Entangled proof metadata (Halo2 digest, STARK fallback, Bloom hash)
 
+## Examples
+
+```
+cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough
+```
+
+The walkthrough streams anonymize + QTAID results, the Lyapunov trace, and the
+5D-EZPH entanglement references that Chronosync consumes downstream.
+
 ## Testing
 
 ```
@@ -51,5 +100,6 @@ cargo test -p autheo-dw3b-mesh
 ```
 
 `tests/mesh.rs` exercises anonymization flows, Bloom filter math, entropy
-beacons, and QTAID proofs to guarantee the crate behaves deterministically even
+beacons, QTAID proofs, and the obfuscation helpers (payload reversal +
+fingerprint binding) to guarantee the crate behaves deterministically even
 without live OpenFHE/Halo2 integrations (those plug in via the exposed traits).

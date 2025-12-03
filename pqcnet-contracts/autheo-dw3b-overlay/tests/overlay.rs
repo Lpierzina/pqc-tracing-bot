@@ -1,5 +1,6 @@
 use autheo_dw3b_overlay::{
-    config::Dw3bOverlayConfig, overlay::Dw3bOverlayNode, transport::loopback_gateways,
+    config::Dw3bOverlayConfig, overlay::Dw3bOverlayNode, parse_statement, Dw3bOverlayRpc,
+    transport::loopback_gateways,
 };
 use serde_json::json;
 
@@ -56,4 +57,81 @@ fn dw3b_qtaid_flow() {
     }
     assert_eq!(response["id"].as_i64(), Some(7));
     assert!(response["result"]["tokens"].as_array().unwrap().len() >= 3);
+}
+
+#[test]
+fn grapplang_parses_anonymize_overrides() {
+    let rpc = parse_statement(
+        "dw3b-anonymize dw3b::attribute \
+         --did did:autheo:alice \
+         --payload pii-record \
+         --route-layers 6 \
+         --bloom-capacity 4096 \
+         --fp-rate 0.02 \
+         --stake-threshold 64000 \
+         --lamport 777",
+    )
+    .expect("parse dw3b-anonymize");
+
+    match rpc {
+        Dw3bOverlayRpc::AnonymizeQuery(params) => {
+            assert_eq!(params.did, "did:autheo:alice");
+            assert_eq!(params.payload, "pii-record");
+            assert_eq!(params.route_layers, 6);
+            assert_eq!(params.bloom_capacity, Some(4096));
+            assert_eq!(params.bloom_fp_rate, Some(0.02));
+            assert_eq!(params.stake_threshold, Some(64000));
+            assert_eq!(params.lamport_hint, Some(777));
+        }
+        other => panic!("unexpected rpc variant: {other:?}"),
+    }
+}
+
+#[test]
+fn grapplang_parses_qtaid_bits_and_owner() {
+    let rpc = parse_statement(
+        "qtaid-prove \"BRCA1=negative\" \
+         --owner did:autheo:genome \
+         --genome AGCTTAGCTA \
+         --bits 6",
+    )
+    .expect("parse qtaid command");
+
+    match rpc {
+        Dw3bOverlayRpc::QtaidProve(params) => {
+            assert_eq!(params.owner_did, "did:autheo:genome");
+            assert_eq!(params.genome_segment, "AGCTTAGCTA");
+            assert_eq!(params.bits_per_snp, Some(6));
+        }
+        other => panic!("unexpected rpc variant: {other:?}"),
+    }
+}
+
+#[test]
+fn dw3b_entropy_loopback_via_qstp() {
+    let config = Dw3bOverlayConfig::demo();
+    let (gateway, mut remote) = loopback_gateways(&config.qstp).expect("loopback");
+    let mut node = Dw3bOverlayNode::new(config, gateway);
+    let entropy = json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "dw3b_entropyRequest",
+        "params": { "samples": 2, "dimension5": true }
+    });
+
+    remote.seal_json(&entropy).unwrap();
+    let response = node
+        .try_handle_qstp()
+        .expect("qstp processing")
+        .expect("entropy response");
+
+    assert_eq!(response["id"].as_i64(), Some(9));
+    let vrbs = response["result"]["vrbs"].as_array().expect("vrb array");
+    assert_eq!(vrbs.len(), 2);
+    assert!(vrbs.iter().all(|value| {
+        value
+            .as_str()
+            .map(|hex| hex.len() == 1024)
+            .unwrap_or_default()
+    }));
 }

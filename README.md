@@ -11,6 +11,12 @@ It provides:
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
 - **Full PQCNet enclave coverage** across `autheo-entropy-wasm`, `autheo-pqc-core`, `autheo-pqc-wasm`, `autheo-pqcnet-{tuplechain,icosuple,chronosync,5dqeh,qrng}`, `pqcnet-{entropy,qfkh,qstp,qace,crypto,networking,relayer,telemetry,qs-dag,sentry}`, plus configs, docs, and protos.
 
+This pass also documents how the PrivacyNet stack (`autheo-privacynet`,
+`autheo-privacynet-network-overlay`), the Dark Web Privacy Network (`autheo-dw3b-mesh`)
+and its overlay (`autheo-dw3b-overlay`), and the 5D-EZPH entanglement layer
+(`autheo-pqcnet-5dezph`) slot between the DID/AIPP flows and the TupleChain →
+Chronosync → 5D-QEH pipeline so readers can see the entire evidence path end-to-end.
+
 > ⚠️ `autheo-pqc-core` now ships with the `real_data` feature enabled by default, embedding the latest QFKH production trace (`data/qfkh_prod_trace.json`) directly into `runtime::recorded`.  
 > Deterministic ML-KEM/ML-DSA stubs are still available for reproducible sims by building with `--no-default-features`, but every default build/test now exercises the recorded data path end-to-end.  
 > Native deployments can continue swapping the traits over to Autheo’s audited engines or the optional `liboqs` bindings (`cargo build -p autheo-pqc-core --features liboqs`) without touching the contract logic.
@@ -28,6 +34,35 @@ It provides:
 - **WAVEN memory virtualization** – WAVEN’s software MMU layers atop WAMR to enable dual page tables, exception pages, and page-level sharing inside enclaves. This lets PQCNet overlays (PQCNet, Chronosync, RPCNet) run multi-tenant workloads without 30% bounds-check overhead.
 - **Secure telemetry** – ABW34 records tie QRNG seeds, shard counts, noise ratios, and QACE reroutes to each handshake so the AWRE stack can prove how Dilithium/Kyber epochs line up with hardware entropy—vital for Ken’s Raspberry Pi QRNG path and the 1,000-shard Chronosync expansion.
 - **WAVEN-integrated harness** – The same dual page-table + `qrng_feed` plumbing now powers the wazero + QuTiP CHSH sandbox, so AWRE traces, docs, and validator workloads cite the identical WAMR+WAVEN stack when presenting QRNG-seeded evidence.
+
+## PrivacyNet & DW3B Overlays
+
+- `autheo-privacynet/` – PrivacyNet’s differential-privacy pipeline that feeds
+  CKKS/Rényi accountants, JSON policy exports, and enhanced Icosuples into the PQC
+  enclave. It is now explicitly referenced by the DID/AIPP diagrams so wallet
+  authors can map profile requests to the privacy budget steps.
+- `autheo-privacynet-network-overlay/` – Network facade that translates DID/AIPP
+  overlay calls (Grapplang, Zer0veil, RPCNet) into PrivacyNet requests before they
+  touch PQC transports. The overlay keeps the same JSON schemas the DW3B overlay
+  consumes, which makes it trivial to chain the two stacks.
+- `autheo-dw3b-mesh/` – Implements the Dark Web Privacy Network (DW3B) mesh engine
+  and integrates the PrivacyNet output with routing, Bloom filters, chaos, and the
+  5D-EZPH anchors. See `pqcnet-contracts/autheo-dw3b-mesh/README.md` for the new
+  flow diagram and run `cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough`
+  for a narrated anonymize/QTAID trace.
+- `autheo-dw3b-overlay/` – JSON-RPC/QSTP facade that exposes DW3B RPCs, Grapplang
+  parsing, and telemetry hooks. The README now includes the code-flow diagram plus
+  an example; try `cargo run -p autheo-dw3b-overlay --example loopback_overlay`
+  and `cargo test -p autheo-dw3b-overlay` to exercise the loopback entropy +
+  Grapplang paths covered in the updated tests.
+- `autheo-pqcnet-5dezph/` – The 5D-EZPH orchestrator that pairs Chronosync/5D-QEH
+  vertices with entangled privacy proofs before they surface in DW3B overlays.
+  It now shows up in the DID & AIPP diagram to highlight how the privacy overlays
+  feed the hypergraph evidence plane.
+
+These components sit between the DID/AIPP overlays and the TupleChain →
+Chronosync stages, so auditors can trace a DID request through PrivacyNet, DW3B
+mesh routing, and the entangled 5D evidence referenced in `autheo-pqcnet-5dezph`.
 
 ### Core Enclave Real-Data Flow
 
@@ -65,6 +100,13 @@ subgraph AIPP["DID AIPP Spec Flows"]
   AIPRec["AIPP: Recovery / Social Recovery"]
   AIPOverlays["AIPP: Network Overlays"]
   AIPComms["AIPP: Comms & Transport Protocols"]
+end
+subgraph Privacy["PrivacyNet & DW3B Overlays"]
+  PrivacyNet["autheo-privacynet"]
+  PrivacyOverlay["autheo-privacynet-network-overlay"]
+  Dw3bMesh["autheo-dw3b-mesh\n(Dark Web Privacy Network)"]
+  Dw3bOverlay["autheo-dw3b-overlay"]
+  Ezph["autheo-pqcnet-5dezph\n(5D-EZPH)"]
 end
 subgraph Engines["PQC Engines & Entropy"]
   Kyber["autheo-mlkem-kyber"]
@@ -122,6 +164,11 @@ AIPKeys --> AIPAuth
 AIPAuth --> AIPRec
 AIPId --> AIPOverlays
 AIPComms --> AIPOverlays
+AIPOverlays --> PrivacyOverlay
+PrivacyOverlay --> PrivacyNet
+PrivacyNet --> Dw3bMesh
+Dw3bMesh --> Dw3bOverlay
+Dw3bMesh --> Ezph
 Kyber --> PqcCore
 Dilithium --> PqcCore
 Falcon --> PqcCore
@@ -146,6 +193,7 @@ Net --> Telemetry
 Telemetry --> QACE
 QsDag --> Sentry
 Tuplechain --> Icosuple --> Chrono --> FiveDqeh
+Ezph --> FiveDqeh
 Chrono --> QsDag
 FiveDqeh --> WavenEvidence
 QsDag --> WavenEvidence
@@ -168,6 +216,9 @@ Flow2 --> PqcWasm
 Flow2 --> QFkh
 Flow2 --> Crypto
 Flow2 --> Flow3
+Flow2 --> PrivacyOverlay
+Flow2 --> PrivacyNet
+Flow3 --> Dw3bOverlay
 PqcWasm --> Flow3
 QFkh --> Flow3
 Crypto --> Flow3
@@ -176,6 +227,9 @@ Flow3 --> Net
 Flow3 --> Relayer
 Flow3 --> QACE
 Flow3 --> Flow4
+Dw3bOverlay --> Qstp
+Dw3bOverlay --> Net
+Dw3bOverlay --> Telemetry
 Qstp --> Flow4
 Relayer --> Flow4
 Flow4 --> Tuplechain
@@ -191,18 +245,18 @@ Flow5 --> AIPRec
 classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
 classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
 classDef flowStep fill:#dbeafe,stroke:#1d4ed8,stroke-dasharray:4 3;
-class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence completed;
+class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence,PrivacyNet,PrivacyOverlay,Dw3bMesh,Dw3bOverlay,Ezph completed;
 class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 class Flow1,Flow2,Flow3,Flow4,Flow5 flowStep;
 ```
 
 **Flow guide**
 
-- `(1) DID auth request` – wallets package DID profiles, recovery data, and channel metadata before handing them to the AIPP overlays.
-- `(2) PQC handshake envelope` – AIPP identity/auth modules trigger the Kyber/Dilithium + QFKH ceremony inside `autheo-pqc-core`/`autheo-pqc-wasm`.
-- `(3) QSTP tunnel & route plan` – the handshake output hydrates QSTP tunnels, networking overlays, and QACE so meshes get a mutable but encrypted transport plan.
-- `(4) Tuple receipt & hypergraph anchor` – QSTP payloads and relayers commit tuple receipts that Chronosync inflates into 5D-QEH anchors plus QS-DAG edges.
-- `(5) Evidence & recovery hooks` – QS-DAG, telemetry, and WAVEN evidence feed recovery/social-recovery policies so DID controllers can prove every hop.
+- `(1) DID auth request` – wallets package DID profiles, recovery data, and channel metadata before handing them to the AIPP overlays, which now explicitly flow into `autheo-privacynet-network-overlay`.
+- `(2) PQC handshake envelope` – AIPP identity/auth modules trigger the Kyber/Dilithium + QFKH ceremony inside `autheo-pqc-core`/`autheo-pqc-wasm` and feed the resulting budget + policy hints into `autheo-privacynet`.
+- `(3) QSTP tunnel & route plan` – the handshake output hydrates QSTP tunnels, networking overlays, QACE, and the DW3B facade (`autheo-dw3b-overlay` + `autheo-dw3b-mesh`) so meshes get a mutable but encrypted transport plan.
+- `(4) Tuple receipt & hypergraph anchor` – QSTP payloads, relayers, and DW3B proofs commit tuple receipts that Chronosync inflates into 5D-QEH anchors, with `autheo-pqcnet-5dezph` (5D-EZPH) binding the privacy evidence to each vertex.
+- `(5) Evidence & recovery hooks` – QS-DAG, telemetry, and WAVEN evidence feed recovery/social-recovery policies so DID controllers can prove every hop and cite both the privacy and hypergraph overlays.
 ## Production Enclave Snapshot
 
 - **Entropy + QRNG** – `autheo-entropy-core` budgets hardware feeds into `autheo-entropy-wasm`, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
@@ -309,6 +363,24 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 - `autheo-entropy-core/` – validator/relayer entropy control plane that budgets HSM/RNG feeds and backs the `autheo-entropy-wasm` + `pqcnet-entropy` pipeline with real hardware data.
 - `pqcnet-entropy/` – no_std entropy trait + host import bridge used by every PQC module, with deterministic dev-only sources for tests.
 - `autheo-pqcnet-qrng/` – quantum RNG harness that mixes photon/vacuum telemetry, Shake256 whitening, and Kyber/Dilithium envelopes (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
+
+### Privacy meshes & overlays
+
+- `autheo-privacynet/` – PrivacyNet DP/FHE pipeline whose README details the policy
+  stages that now appear in the DID & AIPP diagram. Run `cargo test -p autheo-privacynet`
+  to exercise the policy math before feeding DW3B meshes.
+- `autheo-privacynet-network-overlay/` – overlay facade that translates Zer0veil or
+  Grapplang commands into PrivacyNet requests and persists the policy hashes that
+  later show up in DW3B telemetry.
+- `autheo-dw3b-mesh/` – Dark Web Privacy Network engine that orchestrates routing,
+  Bloom filters, noise, chaos, and 5D-EZPH hooks around `autheo-privacynet`
+  responses. See its README for the new code-flow diagram and run
+  `cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough`.
+- `autheo-dw3b-overlay/` – JSON-RPC/QSTP wrapper around the DW3B mesh. The new
+  `examples/loopback_overlay.rs` demo plus the expanded tests show how Grapplang
+  parsing, anonymize, QTAID, and entropy requests travel over loopback QSTP links.
+- `autheo-pqcnet-5dezph/` – 5D-EZPH entanglement orchestrator that binds DW3B proofs
+  to Chronosync/5D-QEH vertices before QS-DAG anchoring.
 
 ### Core enclave & ABI
 
@@ -1024,10 +1096,10 @@ flowchart LR
 #### Flow walkthrough
 
 1. **Entropy & QRNG intake** – `autheo-entropy-core` budgets validator HSM, `/dev/hwrng`, and QRNG feeds, `autheo-entropy-wasm` serves the WASM ABI, and `pqcnet-entropy` presents the `HostEntropySource` used by every crate, so Kyber/Dilithium keys, TupleChain pruning, and Chronosync elections all share the same randomness budget exposed by `autheo-pqcnet-qrng`.
-2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule.
-3. **Tunnels & crypto glue** – `pqcnet-crypto` binds the enclave outputs to `pqcnet-qstp`, while QSTP frames inherit QFKh hops and TupleChain pointers for downstream auditors.
+2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule while `autheo-privacynet-network-overlay` captures the DID/AIPP context for the downstream privacy pipelines.
+3. **Privacy overlays + tunnels** – `autheo-privacynet` hydrates DP/FHE jobs, `autheo-dw3b-mesh` + `autheo-dw3b-overlay` turn them into DW3B proofs, `autheo-pqcnet-5dezph` binds the entangled metadata, and `pqcnet-crypto` feeds the whole envelope into `pqcnet-qstp` so the resulting tunnels inherit QFKH hops and TupleChain pointers for downstream auditors.
 4. **Tuple receipts** – `autheo-pqcnet-tuplechain` writes canonical receipts that `autheo-pqcnet-icosuple` inflates into hyper-tuples before Chronosync consumes them.
-5. **Chronosync + 5D-QEH** – `autheo-pqcnet-chronosync` applies Temporal Weight math, pumps QRNG entropy into `autheo-pqcnet-5dqeh`, and anchors each vertex through `pqcnet-qs-dag`.
+5. **Chronosync + 5D-QEH** – `autheo-pqcnet-chronosync` applies Temporal Weight math, pumps QRNG entropy into `autheo-pqcnet-5dqeh`, lets `autheo-pqcnet-5dezph` attach the DW3B entanglement evidence, and anchors each vertex through `pqcnet-qs-dag`.
 6. **Routing & mesh** – `pqcnet-networking` and `pqcnet-qace` transport QSTP payloads and mutate routes without forcing new ML-KEM handshakes.
 7. **Relays, telemetry, watchers** – `pqcnet-relayer` ferries PQC envelopes and QEH receipts outward, `pqcnet-telemetry` captures counters from tunnels + Chronosync, and `pqcnet-sentry` monitors DAG anchors for policy enforcement.
 8. **Configs & schemas** – `configs/`, `docs/`, and `protos/` keep relayers, sentries, RPCNet routers, and dashboards consistent across deployments (the wazero harness exercises the same artifacts end-to-end).

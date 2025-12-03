@@ -35,3 +35,37 @@ fn entropy_beacon_has_expected_width() {
     assert_eq!(samples.len(), 4);
     assert_eq!(samples[0].len(), 512);
 }
+
+#[test]
+fn obfuscate_route_reverses_payload_and_appends_fingerprint() {
+    let mut engine = Dw3bMeshEngine::new(Dw3bMeshConfig::production());
+    let payload = b"dw3b-obfuscate-test";
+    let routed = engine
+        .obfuscate_route(payload, 4, 0.9)
+        .expect("obfuscate route");
+
+    let (reversed, fingerprint) = routed.split_at(payload.len());
+    let mut expected = payload.to_vec();
+    expected.reverse();
+    assert_eq!(reversed, expected.as_slice());
+    assert_eq!(fingerprint.len(), 32);
+}
+
+#[test]
+fn qtaid_bits_override_updates_tokens() {
+    let mut engine = Dw3bMeshEngine::new(Dw3bMeshConfig::production());
+    let proof = engine
+        .qtaid_prove(QtaidProveRequest {
+            owner_did: "did:autheo:traits".into(),
+            trait_name: "BRCA1=negative".into(),
+            genome_segment: "AGCTTAGCTA".into(),
+            bits_per_snp: 6,
+        })
+        .expect("qtaid proof");
+
+    assert_eq!(proof.bits_per_snp, 6);
+    assert!(proof
+        .tokens
+        .iter()
+        .all(|token| token.starts_with("qtaid:6:")));
+}
