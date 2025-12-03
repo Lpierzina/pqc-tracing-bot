@@ -4,6 +4,11 @@ relayer:
   max-queue-depth: 512
   retry-backoff-ms: 250
 
+runtime:
+  awre-profile: awre-waven
+  waven-dual-pt: true
+  qrng-feed-path: /var/pqcnet/qrng_feed
+
 crypto:
   node-id: relayer-a
   secret-seed: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

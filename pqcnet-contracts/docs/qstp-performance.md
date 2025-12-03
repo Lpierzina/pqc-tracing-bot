@@ -18,3 +18,4 @@ deterministic Kyber/Dilithium adapters.
 - TLS measurements use rustls 0.21 with an in-memory pipe to eliminate IO noise.
 - QSTP numbers include the TupleChain encryption, adaptive routing bookkeeping,
   and deterministic AES-GCM derivations per frame.
+- All QSTP perf runs are executed inside the AWRE (wasm-micro-runtime) stack with WAVEN dual page tables enabled and `qrng_feed` entropy seeded through the wazero harness. That way the runtime posture, interpreter/AOT/JIT tiering, and ABW34 telemetry match what DAO-governed deployments enforce.

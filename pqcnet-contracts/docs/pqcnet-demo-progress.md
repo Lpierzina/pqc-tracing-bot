@@ -16,6 +16,7 @@ This note gives you a company-wide-safe storyline to demo PQCNet progress from t
 - High-level architecture (reuse `docs/pqcnet-architecture-integration.md` diagrams for context).
 - Demo outputs generated from sample configs (`Config::sample()` et al.) and in-repo fixtures.
 - Aggregate telemetry (counter names, flush cadence) without raw traces.
+- AWRE/WAVEN runtime facts that already appear in the public README (e.g., `qrng_feed` path, dual page tables, wazero harness parity). Stick to what’s documented—no unreleased HW SKUs.
 
 **Keep redacted**
 - Real route policies, validator IDs, or prod key fingerprints.
@@ -30,8 +31,9 @@ This note gives you a company-wide-safe storyline to demo PQCNet progress from t
 4. **Relayer Throughput (pqcnet-relayer):** `cargo run -p pqcnet-relayer --example pipeline` streams delivered/buffered counts plus telemetry snapshots, proving our queueing works.
 5. **Control Plane Convergence (pqcnet-networking):** `cargo run -p pqcnet-networking --example control_plane` shows QS-DAG state sync across three simulated nodes.
 6. **Watcher Quorum + Telemetry (pqcnet-sentry):** `cargo run -p pqcnet-sentry --example quorum_demo` highlights quorum thresholds and shared telemetry plumbing.
-7. **Visual Touchpoint (WASM demo):** Load `autheo-mldsa-dilithium/wasm-demo/dilithium.html` locally to show the browser module that wraps ML-KEM/ML-DSA without exposing any prod endpoints.
-8. **Close:** Reinforce that everything above runs with mock configs, so we keep IP safe while still shipping demonstrable progress.
+7. **Runtime Parity Callout (wazero harness):** Mention that the harness backing these demos boots the same AWRE (wasm-micro-runtime) build plus WAVEN dual page tables as the production deployment blueprint. If time allows, show `wazero-harness` logs proving `qrng_feed` + ABW34 tuples are emitted during the run.
+8. **Visual Touchpoint (WASM demo):** Load `autheo-mldsa-dilithium/wasm-demo/dilithium.html` locally to show the browser module that wraps ML-KEM/ML-DSA without exposing any prod endpoints.
+9. **Close:** Reinforce that everything above runs with mock configs, so we keep IP safe while still shipping demonstrable progress.
 
 ## Two-Week Progress Snapshot
 
@@ -48,6 +50,7 @@ This note gives you a company-wide-safe storyline to demo PQCNet progress from t
 - **Watcher quorum loop.** `pqcnet-sentry/examples/quorum_demo.rs` exercises the same telemetry handle as the relayer, so you can point out that ops has one counter/latency surface across binaries.
 - **Telemetry library polish.** `pqcnet-telemetry/src/lib.rs` now enforces feature exclusivity, default flush cadences, and counter overflow detection—talking points for “we already built the hooks for observability.”
 - **WASM packaging storyline.** The `autheo-mldsa-dilithium/wasm-demo/README.md` scoping doc explains exactly what ships in the browser module (Kyber + Dilithium only), which is safe to mention when describing front-end readiness.
+- **AWRE/WAVEN validation.** `wazero-harness/` emits the AWRE + WAVEN measurement hash, `qrng_feed` tuple id, and ABW34 seed lineage every run, so we can tell the audience we demo against the same runtime stack cited in `docs/pqcnet-deployment-governance.md`.
 
 ## Demo Checklist
 
@@ -58,6 +61,7 @@ This note gives you a company-wide-safe storyline to demo PQCNet progress from t
 | Relayer queue | `cargo run -p pqcnet-relayer --example pipeline` | Demonstrates batching knobs (`RelayerMode::Bidirectional`, batch size) plus telemetry flush. |
 | Control plane | `cargo run -p pqcnet-networking --example control_plane` | Prints discovery + state-sync logs to prove QS-DAG convergence. |
 | Watcher quorum | `cargo run -p pqcnet-sentry --example quorum_demo` | Highlights quorum threshold + counters and ties back to telemetry. |
+| Runtime parity proof | `cd wazero-harness && go run . -qrng-feed ../fixtures/qrng/epoch0.bin` | Prints AWRE/WAVEN profile hash, dual page-table status, and ABW34 tuple IDs that match deployment docs. |
 | Web touchpoint | `python3 -m http.server 8000` inside `autheo-mldsa-dilithium/wasm-demo` then open `dilithium.html` | Browser form factors are real but limited to ML-KEM/ML-DSA scope. |
 
 _Tip:_ Run everything from a clean `cargo` workspace with `RUST_LOG=info` to keep logs terse. When showing the WASM demo, mention that the module intentionally excludes legacy crypto per the README.
@@ -69,13 +73,15 @@ _Tip:_ Run everything from a clean `cargo` workspace with `RUST_LOG=info` to kee
 - **04:00 – Resilience proof:** Switch to secret sharing demo for the rotation story.
 - **06:00 – Throughput proof:** Relayer pipeline output + telemetry counters.
 - **08:00 – Network proof:** Control-plane convergence + watcher quorum loop.
-- **10:00 – UX glimpse:** WASM page that proves the same primitives load in a browser enclave.
+- **09:30 – Runtime parity:** Show the wazero harness log excerpt with AWRE profile + WAVEN dual page-table hash so leadership can tie the demo back to governance docs.
+- **11:00 – UX glimpse:** WASM page that proves the same primitives load in a browser enclave.
 - **11:30 – Close:** Invite deep-dives and point everyone to this doc + `docs/pqcnet-architecture-integration.md`.
 
 ## Back-Pocket Answers
 
 - **“Is this production data?”** No. Every demo uses `Config::sample()` or generated keys; nothing maps to real validators.
 - **“Can customers run it today?”** Crypto + networking crates already run as Rust binaries; packaging/ops hardening is underway.
+- **“How do we know the runtime matches mainnet?”** Point to the AWRE/WAVEN hash + ABW34 tuple emitted by the wazero harness run—the values map 1:1 to the deployment/governance blueprint.
 - **“What’s next?”** GA heuristics + policy editors stay private, but we can share perf numbers once telemetry exports land.
 - **“How is IP protected?”** We only show binaries built from OSS-friendly crates, mock IDs, and wasm bundles scoped to ML-KEM/ML-DSA.
 

@@ -3,6 +3,11 @@ watchers = ["relayer-a", "relayer-b"]
 poll-interval-ms = 1500
 quorum-threshold = 2
 
+[runtime]
+awre-profile = "awre-waven"
+qrng-feed-path = "/var/pqcnet/qrng_feed"
+abw34-export = "/var/pqcnet/abw34"
+
 [crypto]
 node-id = "sentry-a"
 secret-seed = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

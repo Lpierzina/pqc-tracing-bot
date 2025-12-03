@@ -35,7 +35,10 @@ This blueprint promotes PQCNet from internal prototype to sovereign mainnet unde
 3. **Observability**
    - Deploy `docker-compose.alpha.yml` with Prometheus, Loki, Tempo, Grafana; auto-scrape `pqcnet-telemetry` exporter at `:9427`.
    - Local alert rules: QSTP tunnel failure, TPM attestation mismatch, QRNG entropy < threshold.
-4. **Deliverables**
+4. **AWRE/WAVEN runtime prep**
+   - `bootstrap_pi.sh` pulls the `awre-waven` profile, pins WAMR (`wasm-micro-runtime`) plus WAVEN MMU modules, and reenables interpreter/AOT/JIT tiers sized for Raspberry Pi enclaves.
+   - The playbook primes the `qrng_feed` path before PQCNet overlays start, verifies WAVEN dual page-table + exception page toggles, and pushes those measurements to Autheo so DAO voters can audit runtime posture.
+5. **Deliverables**
    - `docs/alpha-rpi-runbook.md` (per-node checklist), Prometheus dashboards, Loki parsing rules.
 
 ### Beta: Hybrid Staging + Multi-Region
@@ -50,6 +53,8 @@ This blueprint promotes PQCNet from internal prototype to sovereign mainnet unde
   - GitHub Actions job `deploy-beta` → builds ARM64/AMD64 images, runs `cargo test` matrix, executes `terraform plan` for each region, and triggers `helm upgrade --install` in staging clusters.
 - **Monitoring**
   - Central Grafana per region; global SLO board calculating <60 ms tunnel latency and throughput overhead ≤20% vs TLS baseline (data from `wazero-harness`).
+- **AWRE/WAVEN parity**
+  - Helm chart values include `awre.runtime=frozen` and `waven.dual_pt=true`, ensuring the same runtime flags as Alpha. Each canary release runs a `wazero-harness` job that compares QRNG entropy recorded via `qrng_feed` with Chronosync shard snapshots so multi-region staging proves WAVEN virtualization before DAO promotion.
 
 ### Mainnet: Sovereign Mesh & Native QS-DAG
 
@@ -61,6 +66,8 @@ This blueprint promotes PQCNet from internal prototype to sovereign mainnet unde
 - **Lifecycle ops**
   - Canary jobs run `pqcnet-qs-dag state_walkthrough` hourly; failure triggers rollback workflow plus DAO alert stream.
   - `wazero-harness` smoke tests executed post-rollout to compare telemetry vs baseline (<5% drift).
+- **Runtime attestation**
+  - DAO proposals that alter `mainnet.yaml` must prove AWRE + WAVEN measurement stability. GitOps reconciles only after Flux receives Autheo evidence that dual page tables, page-sharing policies, and `qrng_feed` seals match the approved hash.
 
 ---
 
@@ -71,6 +78,7 @@ This blueprint promotes PQCNet from internal prototype to sovereign mainnet unde
    - **Security**: run `liboqs` Known Answer Tests, `cargo audit`, `npm audit` (docs assets), SBOM via Syft.
    - **Package**: build OCI images for `pqcnode`, `relayer`, `sentry`, `telemetry`, `wazero-harness`; sign with cosign + Dilithium hardware key.
    - **Tests**: `wazero-harness` integration, `pqcnet-qstp` targeted tests, Helm chart template validation, Terraform unit tests (`terratest`).
+   - **Runtime stack validation**: `scripts/awre_waven_verify.sh` enforces WAMR version drift bounds, ensures WAVEN exception-page policies are enabled, and replays the `qrng_feed` attestation that ties ABW34 records to the artifacts slated for deployment.
    - **Staging Deploy**: push to staging cluster via GitHub OIDC → cloud IAM; run smoke tests (QSTP handshake, QS-DAG anchor, DAO contract ping).
    - **Governance Bridge**: if PR touches `mainnet/` directories, post artifact hash to DAO proposal queue (via `gh workflow run governance-bridge`).
    - **Promotion**: after DAO vote success, job `promote_mainnet` re-tags images, runs Helmfile apply, waits for canary health, flips traffic weights, and records QS-DAG event.
@@ -149,6 +157,9 @@ stateDiagram-v2
    - `pqcnet-sentry` watchers monitor QS-DAG edges; outdated PQ primitives trigger PagerDuty + DAO observer feed.
    - Grafana alerts for KAT failure, entropy shortfall, TPM attestation drift.
 
+4. **WAVEN telemetry proofs**
+   - AWRE runtimes emit ABW34 tuples that capture WAVEN dual page-table hashes, exception-page fault counts, and QRNG seed lineage. Validators upload these tuples to DAO proposals touching runtime code, giving observers cryptographic evidence that WAVEN virtualization stayed aligned with Dilithium/Kyber epochs.
+
 ---
 
 ## Performance, Monitoring & SLAs
@@ -165,6 +176,15 @@ stateDiagram-v2
 
 ---
 
+## AWRE Runtime Stack (WAMR + WAVEN)
+
+- **WAMR core / Autheo WASM Runtime Engine (AWRE)** – Production nodes keep all WebAssembly execution inside wasm-micro-runtime for its sub-megabyte footprint, interpreter/AOT/JIT tiers, and instant cold starts on x86, ARM, and RISC-V. The `wazero-harness` now seeds each enclave through the `qrng_feed` pipeline so every AWRE build launches with attested entropy prior to executing PQCNet overlays.
+- **WAVEN memory virtualization** – WAVEN’s software MMU layers on top of WAMR to deliver dual page tables, exception pages, and page-level sharing in enclave mode. That design lets PQCNet overlays (`PQCNet`, `Chronosync`, `RPCNet`) co-host multi-tenant workloads without the historical 30% bounds-check penalty.
+- **Secure telemetry hooks** – ABW34 recorder tuples tie QRNG seeds, shard counts, noise ratios, and QACE reroutes to each QSTP handshake so the AWRE stack can prove how Dilithium/Kyber epochs align with underlying hardware entropy. This traceability is critical for Ken’s Raspberry Pi QRNG supply path and the upcoming 1,000-shard Chronosync expansion.
+- **WAVEN-integrated harness** – The same dual page-table plus `qrng_feed` plumbing powers the `wazero + QuTiP CHSH` sandbox, ensuring AWRE traces, docs, validator workloads, and QRNG-seeded evidence all cite the identical WAMR+WAVEN stack when auditors review runtime lineage.
+
+---
+
 ## Integration Surfaces & Autheo Anchoring
 
 1. **RPC Endpoints**
@@ -175,6 +195,8 @@ stateDiagram-v2
    - Sentry nodes terminate Dilithium-authenticated TLS; rotate certs via DAO-managed secrets (vault sealed with PQC keys).
 3. **Autheo integration**
    - DAO registry + node metadata mirrored into Autheo governance APIs; watchers expose upgrade proofs + metrics (QRNG stats, QSTP liveness). Autheo dashboards query Chronosync/5D-QEH receipts for transparency.
+4. **AWRE/WAVEN evidence**
+   - Runtime traces, `qrng_feed` attestations, and WAVEN MMU stats flow into the same Autheo datasets as QS-DAG events (ABW34 schema). Validator docs, wazero harness artifacts, and runbooks can therefore cite an identical WAMR+WAVEN lineage when presenting QRNG-seeded evidence to auditors or partner chains.
 
 ---
 

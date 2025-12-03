@@ -11,6 +11,12 @@ PQCNet already ships PQC handshakes (`autheo-pqc-core` + `autheo-pqc-wasm`), QST
 - **Operator incentives** – Relayers meter traffic volume per customer/channel; governance contracts consume this data for THEO rewards and potential slashing.
 - **Operational hardening** – Remote attestation, key custody (HSM or Shamir shares), Docker/Kubernetes deliverables, and a complete runbook.
 
+### AWRE/WAVEN runtime alignment
+
+- **Single runtime story** – Both sentry and relayer containers boot the Autheo WASM Runtime Engine (AWRE) atop wasm-micro-runtime with WAVEN’s dual page-table MMU. That keeps enclave measurements identical to the wazero harness and to the PQCNet production nodes referenced in `docs/pqcnet-deployment-governance.md`.
+- **Entropy + telemetry continuity** – `qrng_feed` is initialized before the overlay binaries start, so ABW34 tuples can tie each DePIN session back to the same QRNG seeds, shard counts, and QACE reroutes tracked in the DAO pipeline.
+- **Harness parity** – Chaos and throughput simulations that fuel this doc now run via the WAVEN-integrated wazero harness, meaning every scaling claim inherits the same interpreter/AOT/JIT tiers, exception-page behavior, and page-level sharing knobs validated in mainnet rollouts.
+
 ---
 
 ## 2. Node Roles & Behaviors
@@ -24,6 +30,7 @@ Rate limiting | Embed a dual-layer limiter (per-client token bucket + global con
 Privacy policy enforcement | Interpose an `IdentitySanitizer` middleware that strips, hashes, or replaces identity metadata per tenant policy before forwarding. Policies are hashed and anchored in QS-DAG for auditability.
 Attestation logging | Each sentry emits `AttestationEvent` records (Dilithium-signed measurement + enclave hash) via QS-DAG and the Layer-0 anchoring adapter. Events include monotonic counters for slashing evidence.
 RPC proxying | QSTP tunnels terminate at the sentry; proxied RPCs onward to validators or application-specific backends reuse ephemeral AES keys derived from the tunnel.
+Runtime posture | Sentries pin an `awre-waven` profile (documented in the deployment blueprint) so WAVEN dual page tables + exception pages stay enabled, and they surface the ABW34 tuple id for each RPC epoch in Prometheus.
 
 ### 2.2 Relayer Nodes (Sharded Transport & Accounting)
 
@@ -34,6 +41,7 @@ Ordering & dedup | The new `RelayerShardWorker` module tracks per-topic sequence
 Volume metrics | Workers emit `VolumeRecord` structs (customer, channel, bytes, frames, QoS hints) to a Prometheus counter + QS-DAG log. THEO reward calculators pull aggregated stats via gRPC.
 Backpressure & persistence | Kafka partitions (or Redis consumer groups) absorb bursts. Flow control signals propagate back through QSTP tunnels (Suspend/Resume frames) to enforce <5% packet loss during churn tests.
 Operator incentives | Volume proofs and attestation receipts are combined into `RelayerPerformanceReport` objects signed via Dilithium and published for governance staking/slashing.
+Runtime posture | Relayers export the same AWRE/WAVEN measurement hash as sentries. DAO watchers can therefore look at QS-DAG tuples or ABW34 telemetry and confirm the DePIN overlay is reusing the hardened runtime from production PQCNet nodes.
 
 ---
 
@@ -49,6 +57,7 @@ Operator incentives | Volume proofs and attestation receipts are combined into `
    - Attestation record store with append-only edges
    - Meta-routing tables (per-topic shard owners, QoS hints)
 4. **Linear Scaling** – Each new relayer shard only needs Kafka/Redis partition metadata + QS-DAG anchor; sentries maintain lightweight pointer caches ensuring O(log n) routing updates. Regression coverage now leans on `cargo test -p pqcnet-qstp` (reroutes, tuple proofs) plus scripted `wazero-harness` runs that drive the Waku adapter across ≥1,000 virtual nodes to validate scaling and recovery.
+5. **Runtime equivalence** – The WAVEN-integrated wazero harness is the canonical chaos harness for this overlay. Every mesh simulation captures `qrng_feed` seed lineage, WAVEN dual page-table toggles, and AWRE interpreter/AOT/JIT mode so DePIN proofs can be replayed against the identical runtime stack auditors see in PQCNet deployment artifacts.
 
 ---
 
@@ -110,6 +119,7 @@ Kubernetes manifests | Helm chart with subcharts per role. Values for: rate limi
 Secrets management | Guidance for Vault + Transit, AWS KMS, or SOPS-managed Shamir shares. Includes init containers that fetch shares/keys before node bootstrap.
 Observability | Prometheus metrics (rate limits, queue depth, attestation status, QACE decisions), Grafana dashboards, Loki log aggregation hooks.
 Operator runbook | Covers onboarding (stake, attestation), upgrades (rolling with health gates), incident response (force re-attestation, isolate shard, revoke node), and manual failover drills.
+Runtime evidence kit | Ship an `awre-waven` profile file + `scripts/awre_waven_verify.sh` so ops can prove sentry/relayer pods booted the sanctioned WAMR + WAVEN versions, recorded QRNG tuples, and emitted ABW34 measurement IDs that match DAO proposals.
 
 ---
 

@@ -7,6 +7,7 @@ This note is meant for the whole team (engineering, product, GTM) so you can wal
 - **Zer0veil shell + PQCNode** act as the secure wrapper where DID wallets or partner APIs land. Everything else fans out from that shell.
 - **pqcnet-crypto / networking / telemetry / sentry / relayer** map one-to-one to the code in this repo; they are also the moving parts the story hinges on.
 - **PQCNet** provides the QS-DAG trust fabric plus QSTP “quantum tunnels.” Those tunnels spin up quantum endpoints (a quantum VM abstraction) so payloads stay inside PQC-protected lanes even when the physical mesh hops.
+- **AWRE + WAVEN runtime** keeps every PQCNode, harness demo, and validator workload on the same wasm-micro-runtime + WAVEN MMU pairing, so entropy proofs and telemetry line up with the deployment/governance blueprint.
 - **DID monetization path**: once we bundle the PQCNode, a customer can drop it under zer0veil, register their DID, and immediately sell DID-backed access to the PQC tunnel without touching core crypto code.
 
 ## End-to-End Sequence
@@ -70,7 +71,7 @@ sequenceDiagram
 
 4. **Quantum tunnel = quantum VM for endpoints**  
    - Once the envelope lands, the QSTP runtime (implemented inside `pqcnet_qstp`) spins up a “quantum tunnel.” Think of it as a quantum VM: endpoint A lives next to the initiating PQCNode, endpoint B lives near the counterparty validator.  
-   - The tunnel hydrates Quantum Endpoint B with the shared secret, enforces TupleChain policies, and gives us per-route AES-256-GCM channels.  
+   - The tunnel hydrates Quantum Endpoint B with the shared secret, enforces TupleChain policies, and gives us per-route AES-256-GCM channels. This all executes inside AWRE (wasm-micro-runtime) with WAVEN’s dual page tables, so the wasm enclave is identical whether you run the wazero demo, a Raspberry Pi node, or a hyperscale validator.  
    - Because the tunnel can reroute via QACE (genetic algorithm controller), the endpoints behave like a live VM that follows the session wherever the network sends it, without re-running the PQC handshake.
 
 5. **QS-DAG anchoring & watcher quorum (`pqcnet-sentry`)**  
@@ -87,6 +88,7 @@ sequenceDiagram
 
 ## Component Cheat Sheet
 
+- **AWRE (Autheo WASM Runtime Engine) + WAVEN MMU** – The wasm-micro-runtime build plus WAVEN virtualization layer that hosts every PQC crate. Recorder tuples (ABW34) capture `qrng_feed` seeds, dual page-table hashes, and exception-page toggles so DAO voters and auditors can prove a given PQCNode ran the sanctioned runtime stack.
 - **PQCNode (bundled binary)** – Hosts `autheo-pqc-core`, exposes the WASM ABI, and drives the rest of the crates. This is what we sell/ship.  
 - **`pqcnet-crypto`** – Owns deterministic key generation, rotation, and signing. Maps directly to `KeyManager` + `SignatureManager`.  
 - **`pqcnet-relayer`** – A bounded queue for handshake envelopes, QSTP payloads, and TupleChain updates. Lets us absorb bursty API traffic and smooth it onto the mesh.  

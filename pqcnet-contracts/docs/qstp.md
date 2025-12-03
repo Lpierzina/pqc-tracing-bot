@@ -25,6 +25,7 @@ directional AES keys from the same salt (`TunnelId || route_hash || epoch`) and
 retain their role (`Initiator` vs `Responder`) to keep send/receive nonces in
 lock-step.
 
+All of the above executes under the Autheo WASM Runtime Engine (AWRE) with WAVEN’s dual page-table MMU. The wasm-micro-runtime build ships with interpreter/AOT/JIT tiers tuned for sub-MB enclaves, and the WAVEN layer provides exception pages plus page-level sharing so PQCNet overlays can co-host multiple tenants without reworking bounds-checking. The runtime is seeded through `qrng_feed` before `establish_runtime_tunnel` runs so every session inherits an attested entropy tuple (ABW34) the DAO can audit.
 ## Handshake Flow (Kyber + Dilithium)
 
 Outside the WASM ABI you can now run the exact same ML-KEM/ML-DSA flow with the
@@ -117,7 +118,13 @@ cd wazero-harness && go run . -wasm ../pqcnet-contracts/target/wasm32-unknown-un
 - The Go-based `wazero-harness` invocation is the canonical host-level smoke
   test: it loads the WASM contract, invokes the same handshake ABI, and validates
   persisted TupleChain pointers against QS-DAG semantics—all without relying on
-  synthetic overlays.
+  synthetic overlays. The harness also stamps the AWRE profile hash, WAVEN dual page-table status, and `qrng_feed` tuple ID into ABW34 telemetry so you can prove the test used the same runtime as production deployments.
+
+## Runtime Parity (AWRE + WAVEN)
+
+- **Profile + verification** – Ship `AWRE_PROFILE=awre-waven` (or `--awre-profile awre-waven`) with every QSTP node. Run `scripts/awre_waven_verify.sh` in CI and during rollouts; it enforces the wasm-micro-runtime commit, WAVEN MMU toggles, and qrng_feed wiring before tunnels spin up.
+- **Telemetry coupling** – `pqcnet-telemetry` exports the AWRE/WAVEN measurement hash and ABW34 tuple id next to tunnel latency metrics. DAO observers can correlate those fields with governance proposals to confirm that any tunnel diff kept the sanctioned runtime story.
+- **Harness reuse** – The same AWRE + WAVEN pairing powers the wazero harness, the QuTiP CHSH sandbox, and the validator workloads referenced in `README.md`. That keeps regression data, documentation, and validator evidence aligned when auditors ask how QSTP interacts with the enclave runtime.
 
 ## Proto Contract
 
