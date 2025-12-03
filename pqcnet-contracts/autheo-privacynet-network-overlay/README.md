@@ -13,13 +13,22 @@ Production-grade shell that wraps the `autheo-privacynet` engine with the transp
 
 ```mermaid
 flowchart LR
-    Client[[JSON-RPC or Grapplang]] -->|parse_statement / decode_request| OverlayNode
-    OverlayNode -->|compose_request| PrivacyNetEngine
-    PrivacyNetEngine -->|handle_request| {DP Engine / FHE / EZPH Pipeline}
-    {DP Engine / FHE / EZPH Pipeline} -->|PrivacyNetResponse| OverlayNode
-    OverlayNode -->|OverlayFrame + telemetry| PQCNetNetworking
-    OverlayNode -->|seal_json| QSTPGateway
-    QSTPGateway -->|QSTP Frames| MeshTransport
+    Client[[JSON-RPC or Grapplang]]
+    OverlayNode[PrivacyNet Overlay Node]
+    Engine[PrivacyNetEngine]
+    Pipeline{{DP Engine / FHE / EZPH Pipeline}}
+    Net[PQCNetNetworking]
+    Gateway[QSTP Gateway]
+    Mesh[MeshTransport]
+
+    Client -->|parse_statement / decode_request| OverlayNode
+    OverlayNode -->|compose_request| Engine
+    Engine -->|handle_request| Pipeline
+    Pipeline -->|PrivacyNetResponse| OverlayNode
+    OverlayNode -->|OverlayFrame + telemetry| Net
+    OverlayNode -->|seal_json| Gateway
+    Gateway -->|QSTP Frames| Mesh
+
 ```
 
 ## Quick Start
