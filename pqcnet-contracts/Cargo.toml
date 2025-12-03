@@ -10,6 +10,7 @@ members = [
     "autheo-pqcnet-icosuple",
     "autheo-pqcnet-qrng",
     "autheo-pqcnet-5dqeh",
+    "autheo-pqcnet-5dezph",
     "pqcnet-crypto",
     "pqcnet-networking",
     "pqcnet-telemetry",

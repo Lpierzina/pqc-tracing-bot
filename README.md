@@ -322,6 +322,7 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 - `autheo-pqcnet-icosuple/` – HyperTuple builder that inflates TupleChain receipts + Chronosync telemetry into canonical 4,096-byte payloads.
 - `autheo-pqcnet-chronosync/` – Chronosync consensus primer + keeper that feeds QS-DAG elections, verification pools, and RPCNet endpoints.
 - `autheo-pqcnet-5dqeh/` – Five-Dimensional Qubit-Enhanced Hypergraph state machine, storage layout helpers, and RPC-friendly anchor edge types.
+- `autheo-pqcnet-5dezph/` – Five-Dimensional *Entangled* Zero-Knowledge Privacy Hypergraph orchestrator that layers ZK/FHE bindings + chaos manifolds on top of 5D-QEH for the PrivacyNet overlay.
 
 ### PQCNet runtime & ops
 

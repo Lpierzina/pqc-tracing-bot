@@ -66,10 +66,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let bytes = fs::read(&args.config)
         .with_context(|| format!("failed to read {}", args.config.display()))?;
-    let config: ScalingConfig = toml::from_str(
-        &String::from_utf8(bytes).context("profile TOML is not valid UTF-8")?,
-    )
-    .context("failed to parse shard profile TOML")?;
+    let config: ScalingConfig =
+        toml::from_str(&String::from_utf8(bytes).context("profile TOML is not valid UTF-8")?)
+            .context("failed to parse shard profile TOML")?;
     if config.profiles.is_empty() {
         anyhow::bail!("no profiles defined in {}", args.config.display());
     }
