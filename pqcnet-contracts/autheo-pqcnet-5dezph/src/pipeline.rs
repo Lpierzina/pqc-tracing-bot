@@ -7,18 +7,54 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     chaos::{ChaosEngine, LorenzChuaChaos},
-    config::{EzphConfig, ZkConfig},
+    config::{EzphConfig, FheBackendKind, ZkConfig, ZkProverKind},
     error::{EzphError, EzphResult},
-    fhe::{FheCiphertext, FheEvaluator, MockCkksEvaluator},
+    fhe::{FheCiphertext, FheEvaluator, MockCkksEvaluator, TfheCkksEvaluator},
     manifold::{project_dimensions, DimensionProjection, EzphManifoldState},
     privacy::{evaluate_privacy, EzphPrivacyReport},
-    zk::{MockCircomProver, ZkProof, ZkProver, ZkStatement},
+    zk::{Halo2ZkProver, MockCircomProver, ZkProof, ZkProver, ZkStatement},
 };
 
-pub type DefaultEzphPipeline = EzphPipeline<MockCircomProver, MockCkksEvaluator, LorenzChuaChaos>;
+pub enum DefaultEzphPipeline {
+    Production(EzphPipeline<Halo2ZkProver, TfheCkksEvaluator, LorenzChuaChaos>),
+    Mock(EzphPipeline<MockCircomProver, MockCkksEvaluator, LorenzChuaChaos>),
+}
+
+pub type MockEzphPipeline = EzphPipeline<MockCircomProver, MockCkksEvaluator, LorenzChuaChaos>;
+pub type ProductionEzphPipeline = EzphPipeline<Halo2ZkProver, TfheCkksEvaluator, LorenzChuaChaos>;
+
+impl DefaultEzphPipeline {
+    pub fn new(config: EzphConfig) -> Self {
+        if config.zk_prover == ZkProverKind::MockCircom
+            || config.fhe_evaluator == FheBackendKind::MockCkks
+        {
+            Self::Mock(EzphPipeline::mock(config))
+        } else {
+            Self::Production(EzphPipeline::production(config))
+        }
+    }
+
+    pub fn entangle_and_anchor(
+        &self,
+        module: &mut HypergraphModule,
+        request: EzphRequest,
+    ) -> EzphResult<EzphOutcome> {
+        match self {
+            Self::Production(pipeline) => pipeline.entangle_and_anchor(module, request),
+            Self::Mock(pipeline) => pipeline.entangle_and_anchor(module, request),
+        }
+    }
+
+    pub fn config(&self) -> &EzphConfig {
+        match self {
+            Self::Production(pipeline) => &pipeline.config,
+            Self::Mock(pipeline) => &pipeline.config,
+        }
+    }
+}
 
 pub struct EzphPipeline<P, F, C> {
-    config: EzphConfig,
+    pub(crate) config: EzphConfig,
     zk: P,
     fhe: F,
     chaos: C,
@@ -26,8 +62,27 @@ pub struct EzphPipeline<P, F, C> {
 
 impl EzphPipeline<MockCircomProver, MockCkksEvaluator, LorenzChuaChaos> {
     pub fn new(config: EzphConfig) -> Self {
+        Self::mock(config)
+    }
+
+    pub fn mock(config: EzphConfig) -> Self {
         let zk = MockCircomProver::new(config.zk.clone());
         let fhe = MockCkksEvaluator::new(config.fhe.clone());
+        let chaos = LorenzChuaChaos::new(config.chaos.clone());
+        Self {
+            config,
+            zk,
+            fhe,
+            chaos,
+        }
+    }
+}
+
+impl EzphPipeline<Halo2ZkProver, TfheCkksEvaluator, LorenzChuaChaos> {
+    pub fn production(config: EzphConfig) -> Self {
+        let zk = Halo2ZkProver::new(config.zk.clone())
+            .unwrap_or_else(|err| panic!("failed to initialize Halo2 prover: {err}"));
+        let fhe = TfheCkksEvaluator::new(config.fhe.clone());
         let chaos = LorenzChuaChaos::new(config.chaos.clone());
         Self {
             config,

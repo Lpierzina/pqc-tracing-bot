@@ -10,6 +10,10 @@ pub struct EzphConfig {
     pub privacy: PrivacyBounds,
     pub zk: ZkConfig,
     pub fhe: FheConfig,
+    #[serde(default)]
+    pub zk_prover: ZkProverKind,
+    #[serde(default)]
+    pub fhe_evaluator: FheBackendKind,
 }
 
 impl Default for EzphConfig {
@@ -21,6 +25,8 @@ impl Default for EzphConfig {
             privacy: PrivacyBounds::default(),
             zk: ZkConfig::default(),
             fhe: FheConfig::default(),
+            zk_prover: ZkProverKind::default(),
+            fhe_evaluator: FheBackendKind::default(),
         }
     }
 }
@@ -30,6 +36,38 @@ impl EzphConfig {
     pub fn with_qeh(mut self, qeh: QehConfig) -> Self {
         self.qeh = qeh;
         self
+    }
+
+    pub fn with_backends(mut self, zk: ZkProverKind, fhe: FheBackendKind) -> Self {
+        self.zk_prover = zk;
+        self.fhe_evaluator = fhe;
+        self
+    }
+}
+
+/// Selects which ZK prover backend the EZPH pipeline should instantiate.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ZkProverKind {
+    MockCircom,
+    Halo2,
+}
+
+impl Default for ZkProverKind {
+    fn default() -> Self {
+        Self::Halo2
+    }
+}
+
+/// Selects which FHE evaluator backend powers the EZPH slots.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FheBackendKind {
+    MockCkks,
+    Tfhe,
+}
+
+impl Default for FheBackendKind {
+    fn default() -> Self {
+        Self::Tfhe
     }
 }
 

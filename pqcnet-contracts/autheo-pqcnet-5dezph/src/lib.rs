@@ -13,10 +13,15 @@ pub mod privacy;
 pub mod zk;
 
 pub use chaos::{ChaosEngine, ChaosVector, LorenzChuaChaos};
-pub use config::EzphConfig;
+pub use config::{
+    ChaosConfig, EzphConfig, FheBackendKind, FheConfig, ManifoldConfig, ZkConfig, ZkProverKind,
+};
 pub use error::{EzphError, EzphResult};
-pub use fhe::{FheCiphertext, FheEvaluator, MockCkksEvaluator};
+pub use fhe::{FheCiphertext, FheEvaluator, MockCkksEvaluator, TfheCkksEvaluator};
 pub use manifold::{DimensionKind, DimensionProjection, EzphManifoldState};
-pub use pipeline::{DefaultEzphPipeline, EzphOutcome, EzphPipeline, EzphRequest};
+pub use pipeline::{
+    DefaultEzphPipeline, EzphOutcome, EzphPipeline, EzphRequest, MockEzphPipeline,
+    ProductionEzphPipeline,
+};
 pub use privacy::EzphPrivacyReport;
-pub use zk::{MockCircomProver, ZkProof, ZkProver, ZkStatement};
+pub use zk::{Halo2ZkProver, MockCircomProver, ZkProof, ZkProver, ZkStatement};

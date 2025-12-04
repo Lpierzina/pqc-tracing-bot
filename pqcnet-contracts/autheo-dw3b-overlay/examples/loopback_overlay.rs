@@ -1,6 +1,6 @@
 use autheo_dw3b_overlay::{
-    config::Dw3bOverlayConfig, parse_statement, Dw3bOverlayNode, Dw3bOverlayRpc, OverlayResult,
-    loopback_gateways,
+    config::Dw3bOverlayConfig, loopback_gateways, parse_statement, Dw3bOverlayNode, Dw3bOverlayRpc,
+    OverlayResult,
 };
 use serde_json::json;
 

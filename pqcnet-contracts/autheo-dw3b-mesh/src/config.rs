@@ -1,3 +1,4 @@
+use autheo_pqcnet_5dezph::config::{FheBackendKind, ZkProverKind};
 use autheo_privacynet::config::PrivacyNetConfig;
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -110,15 +111,21 @@ pub struct Dw3bMeshConfig {
     pub primitives: PrivacyPrimitiveConfig,
     pub mesh_weights: MeshNodeWeights,
     pub entropy: QuantumEntropyConfig,
+    #[serde(default)]
+    pub zk_prover: ZkProverKind,
 }
 
 impl Dw3bMeshConfig {
     pub fn production() -> Self {
+        let mut privacy = PrivacyNetConfig::default();
+        privacy.ezph.zk_prover = ZkProverKind::Halo2;
+        privacy.ezph.fhe_evaluator = FheBackendKind::Tfhe;
         Self {
-            privacy: PrivacyNetConfig::default(),
+            privacy,
             primitives: PrivacyPrimitiveConfig::default(),
             mesh_weights: MeshNodeWeights::default(),
             entropy: QuantumEntropyConfig::default(),
+            zk_prover: ZkProverKind::Halo2,
         }
     }
 }

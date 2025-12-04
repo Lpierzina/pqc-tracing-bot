@@ -3,7 +3,7 @@
 `autheo-dw3b-mesh` implements the DW3B privacy mesh engine that pairs the
 Autheo PrivacyNet pipeline with the dark-web overlay guarantees defined in the
 Autheo PrivacyNet + DW3B Mesh primer. The crate exposes a deterministic
-`Dw3bMeshEngine` that orchestrates CKKS FHE jobs, Rényi/Gaussian differential
+`Dw3bMeshEngine` that orchestrates TFHE-backed homomorphic slots, Rényi/Gaussian differential
 privacy, recursive Halo2 + RISC Zero proof stubs, Zstandard/fractal compression,
 Chua/Rössler chaos perturbations, and Bloom-filter backed anonymity proofs.
 
@@ -77,6 +77,9 @@ let response = engine.anonymize_query(MeshAnonymizeRequest::demo())?;
 println!("proof_id={} route_layers={}", response.proof.proof_id, response.route_plan.hops.len());
 ```
 
+`Dw3bMeshConfig::zk_prover` threads directly into `PrivacyNetConfig::ezph.zk_prover`, so you can
+switch between the Halo2+TFHE path and the mock pipeline without touching engine code.
+
 See `examples/dw3b_walkthrough.rs` for a narrated run that prints:
 
 - DP budget claims + Rényi accountant
@@ -101,5 +104,6 @@ cargo test -p autheo-dw3b-mesh
 
 `tests/mesh.rs` exercises anonymization flows, Bloom filter math, entropy
 beacons, QTAID proofs, and the obfuscation helpers (payload reversal +
-fingerprint binding) to guarantee the crate behaves deterministically even
-without live OpenFHE/Halo2 integrations (those plug in via the exposed traits).
+fingerprint binding). The in-process Halo2 prover + TFHE evaluator run by default;
+flip `Dw3bMeshConfig::zk_prover`/`privacy.ezph.fhe_evaluator` if you need the deterministic mock
+backends for regression tests.

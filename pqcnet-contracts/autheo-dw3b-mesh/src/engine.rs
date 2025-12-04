@@ -35,13 +35,15 @@ impl Dw3bMeshEngine {
         let mut entropy = QuantumEntropyPool::new(config.entropy.clone());
         let noise_seed = entropy.next_seed(b"dw3b-noise");
         let chaos_seed = entropy.next_seed(b"dw3b-chaos");
+        let mut privacy_cfg = config.privacy.clone();
+        privacy_cfg.ezph.zk_prover = config.zk_prover.clone();
         Self {
             topology: MeshTopology::new(config.mesh_weights.clone())
                 .with_bloom(1 << 20, 0.01)
                 .with_stake(10_000)
                 .with_lambda(10.0),
             compressor: CompressionPipeline::new(11),
-            privacy: PrivacyNetEngine::new(config.privacy.clone()),
+            privacy: PrivacyNetEngine::new(privacy_cfg),
             noise: NoiseInjector::new(config.primitives.clone(), noise_seed),
             chaos: ChaosObfuscator::new(chaos_seed),
             state: MeshState::default(),

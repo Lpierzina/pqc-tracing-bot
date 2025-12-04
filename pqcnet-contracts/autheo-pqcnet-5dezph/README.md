@@ -11,8 +11,8 @@ anchor quantum privacy overlays directly inside Chronosync.
   noise, quantum entropy pools, chaotic perturbations, and homomorphic layers.
 - **Chaos primitives** – deterministic Lorenz + Chua attractors plus a logistic map feed the privacy
   manifold and laser telemetry, matching the AUTHEO PRIMER spec.
-- **ZK/FHE bridges** – mock CKKS evaluator and Circom-style prover surfaces let engineers plug
-  production CKKS/Halo2 engines without touching the hypergraph glue.
+- **ZK/FHE bridges** – Halo2 proving + TFHE slot encryption ship as the default `DefaultEzphPipeline`
+  backend, while the legacy mock evaluators remain available for deterministic testing.
 - **Privacy metrics** – computes Rényi divergences, hockey-stick deltas, and privacy amplification
   bounds (< `1e-154`) before accepting a vertex; violations abort the anchor.
 - **Projection helpers** – deterministic 5D→3D projections keep Pi-class nodes honest about
@@ -79,13 +79,16 @@ icosuple payloads that Chronosync would ingest.
 
 ## Integration points
 
-- **Rust hosts** embed [`EzphPipeline`](src/pipeline.rs) and feed it `EzphRequest` structs sourced
-  from TupleChain, AutheoID, or AIPP overlays.
+- **Rust hosts** embed [`DefaultEzphPipeline`](src/pipeline.rs) and feed it `EzphRequest` structs
+  sourced from TupleChain, AutheoID, or AIPP overlays. Toggle `EzphConfig::zk_prover` /
+  `EzphConfig::fhe_evaluator` to switch between the Halo2/TFHE backends and the mock pipeline.
 - **Python quantum harness** (`quantum/ezph_pipeline.py`) mirrors the same chaos + QuTiP stack for
   lab validation, taking the JSON emitted by `pqcnet-qs-dag` examples.
 - **Telemetry** can record `EzphOutcome::privacy` to prove that every anchored vertex satisfied the
   advertised `ε < 0.01`, `δ ≈ 0` bounds even under Lorenz/Chua chaos injection.
 
-Swap `MockCircomProver` / `MockCkksEvaluator` for production engines by implementing the `ZkProver`
-and `FheEvaluator` traits; the pipeline automatically threads the proofs/ciphertexts into the
-icosuple payloads and PQC signatures.
+Swap `MockCircomProver` / `MockCkksEvaluator` for production engines by flipping
+`EzphConfig::zk_prover` / `EzphConfig::fhe_evaluator`. The Halo2 + TFHE implementation now backs the
+default pipeline, and additional backends can keep using the same `ZkProver`/`FheEvaluator` traits so
+the pipeline automatically threads the proofs/ciphertexts into the icosuple payloads and PQC
+signatures.

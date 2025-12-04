@@ -6,8 +6,8 @@ PrivacyNet is the orchestration layer that braids differential privacy, CKKS/BFV
 
 - **DP + budget governance** &mdash; `PrivacyBudgetLedger` tracks per-session eps/delta budgets before a DP query is run.
 - **Deterministic chaos** &mdash; `ChaosOracle` injects Lorenz/Chua guidance into DP/FHE noise so repeated runs converge to the same envelope for auditing.
-- **Homomorphic compute** &mdash; `FheLayer` wraps CKKS-scale slots or mock evaluators before ciphertexts are fed into EZPH manifolds.
-- **EZPH anchoring** &mdash; Every request becomes an `EzphRequest` that is anchored via `autheo-pqcnet-5dezph`, yielding Chronosync receipts and privacy proof metadata.
+- **Homomorphic compute** &mdash; `FheLayer` now wraps the TFHE-backed evaluator (`TfheCkksEvaluator`) so ciphertexts are actually encrypted before the EZPH manifolds consume them.
+- **EZPH anchoring** &mdash; Every request becomes an `EzphRequest` that is anchored via `autheo-pqcnet-5dezph`, yielding Chronosync receipts, Halo2 proof bytes, and privacy metadata. Set `PrivacyNetConfig::ezph.zk_prover` / `fhe_evaluator` to fall back to mocks when running deterministic tests.
 
 ## How it works
 
@@ -15,7 +15,7 @@ PrivacyNet is the orchestration layer that braids differential privacy, CKKS/BFV
 2. **Budget reservation** &mdash; `PrivacyBudgetLedger::claim` enforces `session_epsilon`, `session_delta`, and query counts before a DP mechanism executes.
 3. **Chaos + DP execution** &mdash; `ChaosOracle` samples a deterministic attractor trajectory per request seed and `DifferentialPrivacyEngine` runs the configured mechanism (Gaussian/Laplace, etc.) against the tenant query.
 4. **Homomorphic prep** &mdash; Slots from the request go through `FheLayer::execute`, returning a ciphertext ready for manifold projection.
-5. **EZPH entanglement** &mdash; `DefaultEzphPipeline::entangle_and_anchor` produces the manifold state, CKKS metadata, zk proof, and Chronosync vertex receipt.
+5. **EZPH entanglement** &mdash; `DefaultEzphPipeline::entangle_and_anchor` spins up the Halo2 prover + TFHE evaluator, produces the manifold state, encrypted slots, zk proof, and Chronosync vertex receipt.
 6. **Response assembly** &mdash; `PrivacyEnhancedIcosuple::assemble` fuses DP samples, chaos traces, budget claims, and EZPH metadata so tenants can verify that every privacy guardrail was honored.
 
 ## Code flow diagram
@@ -46,7 +46,7 @@ flowchart LR
 
 `PrivacyNetConfig` bundles every subsystem:
 
-- `ezph` &mdash; `EzphConfig` forwarded to `autheo-pqcnet-5dezph` (`privacy.max_entropy_leak_bits`, `manifold.projection_rank`, etc.).
+- `ezph` &mdash; `EzphConfig` forwarded to `autheo-pqcnet-5dezph` (`privacy.max_entropy_leak_bits`, `manifold.projection_rank`, etc.) along with the new `zk_prover` / `fhe_evaluator` switches that decide whether Halo2+TFHE or the mock engines run in-process.
 - `dp` &mdash; Mechanism selection, sigma/epsilon defaults, and RNG seeds.
 - `fhe` &mdash; Slot counts, multiplicative depth, bootstrap period for the circuit runner.
 - `budget` &mdash; Session epsilon/delta guardrails and max query count per tenant.
@@ -70,6 +70,6 @@ The walkthrough prints the chaos sample, DP sample, privacy budget claim, and th
 
 ## Extending / integrating
 
-- **Bring your own ZK or FHE** by implementing the traits exported from `autheo-pqcnet-5dezph` and wiring them into `PrivacyNetConfig::ezph` and `FheLayerConfig`.
+- **Bring your own ZK or FHE** by implementing the traits exported from `autheo-pqcnet-5dezph` and wiring them into `PrivacyNetConfig::ezph` (via `zk_prover` / `fhe_evaluator`) and `FheLayerConfig`.
 - **Swap DP mechanisms** via `DpQuery`/`DpMechanism`; the engine auto-derives noise from the seeded attractor state.
 - **Observe privacy telemetry** by logging the `PrivacyNetResponse.privacy_report` plus the `DpQueryResult.zk_proof_digest` to prove which trait bound was enforced per query.
