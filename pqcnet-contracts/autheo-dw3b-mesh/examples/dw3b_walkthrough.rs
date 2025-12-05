@@ -3,8 +3,7 @@ use autheo_dw3b_mesh::{
 };
 use serde::de::DeserializeOwned;
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
