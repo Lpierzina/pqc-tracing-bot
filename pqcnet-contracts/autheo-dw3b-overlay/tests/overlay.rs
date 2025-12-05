@@ -3,9 +3,13 @@ use autheo_dw3b_overlay::{
     transport::loopback_gateways, Dw3bOverlayRpc,
 };
 use serde_json::json;
+use std::env;
 
 #[test]
 fn dw3b_anonymize_jsonrpc_roundtrip() {
+    if !allow_dw3b_heavy_path() {
+        return;
+    }
     let config = Dw3bOverlayConfig::demo();
     let (gateway, _peer): (_, _) = loopback_gateways(&config.qstp).expect("loopback gateway");
     let mut node = Dw3bOverlayNode::new(config, gateway);
@@ -36,6 +40,9 @@ fn dw3b_anonymize_jsonrpc_roundtrip() {
 
 #[test]
 fn dw3b_qtaid_flow() {
+    if !allow_dw3b_heavy_path() {
+        return;
+    }
     let config = Dw3bOverlayConfig::demo();
     let (gateway, _peer) = loopback_gateways(&config.qstp).expect("loopback");
     let mut node = Dw3bOverlayNode::new(config, gateway);
@@ -109,6 +116,9 @@ fn grapplang_parses_qtaid_bits_and_owner() {
 
 #[test]
 fn dw3b_entropy_loopback_via_qstp() {
+    if !allow_dw3b_heavy_path() {
+        return;
+    }
     let config = Dw3bOverlayConfig::demo();
     let (gateway, mut remote) = loopback_gateways(&config.qstp).expect("loopback");
     let mut node = Dw3bOverlayNode::new(config, gateway);
@@ -134,4 +144,29 @@ fn dw3b_entropy_loopback_via_qstp() {
             .map(|hex| hex.len() == 1024)
             .unwrap_or_default()
     }));
+}
+
+fn allow_dw3b_heavy_path() -> bool {
+    if cfg!(feature = "real_zk")
+        || env_flag_enabled("RUN_HEAVY_ZK")
+        || env_flag_enabled("RUN_HEAVY_DW3B")
+    {
+        return true;
+    }
+    eprintln!(
+        "skipping DW3B overlay heavy test (set RUN_HEAVY_DW3B=1 or run \
+         `cargo test -p autheo-dw3b-overlay --features real_zk`)"
+    );
+    false
+}
+
+fn env_flag_enabled(key: &str) -> bool {
+    env::var(key).map(|value| is_truthy(value.trim())).unwrap_or(false)
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }

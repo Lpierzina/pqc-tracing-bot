@@ -382,6 +382,9 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 - `autheo-dw3b-overlay/` – JSON-RPC/QSTP wrapper around the DW3B mesh. The new
   `examples/loopback_overlay.rs` demo plus the expanded tests show how Grapplang
   parsing, anonymize, QTAID, and entropy requests travel over loopback QSTP links.
+  Opt into the full ZK proof coverage by exporting `RUN_HEAVY_DW3B=1`
+  (or `RUN_HEAVY_ZK=1`) or compiling with `--features real_zk`; the default test
+  sweep now skips those paths to keep `cargo test` responsive.
 - `autheo-pqcnet-5dezph/` – 5D-EZPH entanglement orchestrator that binds DW3B proofs
   to Chronosync/5D-QEH vertices before QS-DAG anchoring.
 

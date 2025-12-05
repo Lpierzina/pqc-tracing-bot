@@ -103,7 +103,12 @@ println!("{response}");
 cargo test -p autheo-dw3b-overlay
 ```
 
+The default sweep now skips the heavy DW3B ZK proof paths so `cargo test` stays fast.
+Set `RUN_HEAVY_DW3B=1` (or the broader `RUN_HEAVY_ZK=1`) before running the tests,
+or build with `--features real_zk`, to opt into the full anonymize/QTAID/entropy
+integration cases.
+
 `tests/overlay.rs` now drives anonymize + QTAID flows, verifies Grapplang parsing,
 and exercises the QSTP loopback entropy path. The added coverage ensures the
 overlay clamps privacy budgets, parses CLI statements, and returns VRB beacons
-exactly the way the README diagrams describe.
+exactly the way the README diagrams describe once the heavy tests are enabled.
