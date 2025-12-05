@@ -10,6 +10,7 @@ pub struct EntropySnapshot {
     pub samples_generated: u64,
     pub amplification_floor: f64,
     pub last_seed: [u8; 32],
+    pub beacon_url: String,
 }
 
 pub struct QuantumEntropyPool {
@@ -67,6 +68,7 @@ impl QuantumEntropyPool {
             samples_generated: self.generated,
             amplification_floor: self.config.amplification_target,
             last_seed: self.last_seed,
+            beacon_url: self.config.beacon_url.clone(),
         }
     }
 

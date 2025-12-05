@@ -92,6 +92,7 @@ pub struct QuantumEntropyConfig {
     pub samples_per_request: u32,
     pub amplification_target: f64,
     pub vrb_size_bits: u16,
+    pub beacon_url: String,
 }
 
 impl Default for QuantumEntropyConfig {
@@ -101,6 +102,7 @@ impl Default for QuantumEntropyConfig {
             samples_per_request: 64,
             amplification_target: 1e-154,
             vrb_size_bits: 512,
+            beacon_url: "https://entropy.autheo.dev/v1/beacon".into(),
         }
     }
 }
@@ -113,6 +115,8 @@ pub struct Dw3bMeshConfig {
     pub entropy: QuantumEntropyConfig,
     #[serde(default)]
     pub zk_prover: ZkProverKind,
+    #[serde(default)]
+    pub fhe_backend: FheBackendKind,
 }
 
 impl Dw3bMeshConfig {
@@ -126,6 +130,7 @@ impl Dw3bMeshConfig {
             mesh_weights: MeshNodeWeights::default(),
             entropy: QuantumEntropyConfig::default(),
             zk_prover: ZkProverKind::Halo2,
+            fhe_backend: FheBackendKind::Tfhe,
         }
     }
 }

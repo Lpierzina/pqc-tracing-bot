@@ -1,4 +1,6 @@
 use autheo_pqcnet_5dezph::{
+    config::FheConfig as EzphFheConfig,
+    fhe::TfheCkksEvaluator,
     pipeline::{DefaultEzphPipeline, EzphRequest},
     EzphPrivacyReport,
 };
@@ -16,6 +18,8 @@ use crate::{
     icosuple::PrivacyEnhancedIcosuple,
 };
 
+type ProductionFheLayer = FheLayer<TfheCkksEvaluator>;
+
 pub struct PrivacyNetEngine {
     config: PrivacyNetConfig,
     pipeline: DefaultEzphPipeline,
@@ -23,7 +27,7 @@ pub struct PrivacyNetEngine {
     budgets: PrivacyBudgetLedger,
     chaos: ChaosOracle,
     dp_engine: DifferentialPrivacyEngine,
-    fhe_layer: FheLayer,
+    fhe_layer: ProductionFheLayer,
 }
 
 impl PrivacyNetEngine {
@@ -33,9 +37,15 @@ impl PrivacyNetEngine {
         seed_bytes.copy_from_slice(dp_seed.as_bytes());
         let pipeline = DefaultEzphPipeline::new(config.ezph.clone());
         let module = HypergraphModule::new(config.ezph.qeh.clone(), TemporalWeightModel::default());
+        let fhe_params = EzphFheConfig {
+            polynomial_degree: config.fhe.ring_dimension,
+            ciphertext_scale: config.fhe.ciphertext_scale,
+        };
+        let fhe_layer =
+            FheLayer::with_evaluator(config.fhe.clone(), TfheCkksEvaluator::new(fhe_params));
         Self {
             dp_engine: DifferentialPrivacyEngine::new(config.dp.clone(), seed_bytes),
-            fhe_layer: FheLayer::new(config.fhe.clone()),
+            fhe_layer,
             budgets: PrivacyBudgetLedger::new(config.budget.clone()),
             chaos: ChaosOracle::new(config.chaos.clone()),
             pipeline,
@@ -52,7 +62,12 @@ impl PrivacyNetEngine {
         let ezph_request = request.to_ezph_request();
         let seed = derive_seed(&ezph_request);
         let chaos_sample = self.chaos.sample(&seed);
-        let budget_claim = self.budgets.claim(request.session_id, &request.dp_query)?;
+        let budget_claim = self.budgets.claim(
+            request.session_id,
+            &request.tenant_id,
+            request.chain_epoch,
+            &request.dp_query,
+        )?;
         let dp_sample = self.dp_engine.execute(&request.dp_query, &chaos_sample)?;
         let fhe_ct = self
             .fhe_layer

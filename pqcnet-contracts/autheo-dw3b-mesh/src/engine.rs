@@ -37,6 +37,7 @@ impl Dw3bMeshEngine {
         let chaos_seed = entropy.next_seed(b"dw3b-chaos");
         let mut privacy_cfg = config.privacy.clone();
         privacy_cfg.ezph.zk_prover = config.zk_prover.clone();
+        privacy_cfg.ezph.fhe_evaluator = config.fhe_backend.clone();
         Self {
             topology: MeshTopology::new(config.mesh_weights.clone())
                 .with_bloom(1 << 20, 0.01)

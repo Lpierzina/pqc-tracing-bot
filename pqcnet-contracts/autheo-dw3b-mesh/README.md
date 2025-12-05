@@ -72,13 +72,25 @@ use autheo_dw3b_mesh::{
     engine::{Dw3bMeshEngine, MeshAnonymizeRequest},
 };
 
-let mut engine = Dw3bMeshEngine::new(Dw3bMeshConfig::production());
-let response = engine.anonymize_query(MeshAnonymizeRequest::demo())?;
-println!("proof_id={} route_layers={}", response.proof.proof_id, response.route_plan.hops.len());
+let config: Dw3bMeshConfig = toml::from_str(&std::fs::read_to_string("config/dw3b.toml")?)?;
+let request: MeshAnonymizeRequest = serde_yaml::from_str(
+    &std::fs::read_to_string("config/examples/dw3b_request.yaml")?,
+)?;
+let mut engine = Dw3bMeshEngine::new(config);
+let response = engine.anonymize_query(request)?;
+println!(
+    "proof_id={} route_layers={}",
+    response.proof.proof_id,
+    response.route_plan.hops.len()
+);
 ```
 
-`Dw3bMeshConfig::zk_prover` threads directly into `PrivacyNetConfig::ezph.zk_prover`, so you can
-switch between the Halo2+TFHE path and the mock pipeline without touching engine code.
+`Dw3bMeshConfig::zk_prover` / `fhe_backend` thread directly into `PrivacyNetConfig::ezph`, so you
+can switch between the Halo2+TFHE path and the mock pipeline without touching engine code.
+
+Sample hardened configs live under `config/dw3b.{toml,yaml}` and the walkthrough example will
+auto-load them (or honor `DW3B_CONFIG`). Provide a request manifest via
+`config/examples/dw3b_request.{toml,yaml}` or override the `DW3B_REQUEST` env var.
 
 See `examples/dw3b_walkthrough.rs` for a narrated run that prints:
 

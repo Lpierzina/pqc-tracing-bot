@@ -7,6 +7,7 @@ pub struct FheLayerConfig {
     pub bootstrap_period: u32,
     pub ciphertext_scale: f64,
     pub max_multiplications: u32,
+    pub slots_per_ciphertext: usize,
 }
 
 impl Default for FheLayerConfig {
@@ -16,6 +17,7 @@ impl Default for FheLayerConfig {
             bootstrap_period: 10_000,
             ciphertext_scale: 2f64.powi(40),
             max_multiplications: 1_000_000,
+            slots_per_ciphertext: 4_096,
         }
     }
 }
@@ -67,8 +69,12 @@ impl<E: FheEvaluator> FheLayer<E> {
 
     pub fn execute(&self, job: HomomorphicJob) -> Result<FheCiphertext, FheError> {
         match job {
-            HomomorphicJob::Slots(slots) => self.evaluator.encrypt(&slots),
+            HomomorphicJob::Slots(slots) => {
+                self.enforce_slot_count(slots.len())?;
+                self.evaluator.encrypt(&slots)
+            }
             HomomorphicJob::Circuit(intent, slots) => {
+                self.enforce_slot_count(slots.len())?;
                 let ciphertext = self.evaluator.encrypt(&slots)?;
                 if intent.depth as u32 > self.config.bootstrap_period {
                     return Err(FheError::new("circuit depth exceeds bootstrap budget"));
@@ -89,5 +95,16 @@ impl<E: FheEvaluator> FheLayer<E> {
 
     pub fn config(&self) -> &FheLayerConfig {
         &self.config
+    }
+
+    fn enforce_slot_count(&self, slots: usize) -> Result<(), FheError> {
+        if slots > self.config.slots_per_ciphertext {
+            Err(FheError::new(format!(
+                "slot count {slots} exceeds configured limit {}",
+                self.config.slots_per_ciphertext
+            )))
+        } else {
+            Ok(())
+        }
     }
 }

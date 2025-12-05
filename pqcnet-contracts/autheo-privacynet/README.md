@@ -46,12 +46,14 @@ flowchart LR
 
 `PrivacyNetConfig` bundles every subsystem:
 
-- `ezph` &mdash; `EzphConfig` forwarded to `autheo-pqcnet-5dezph` (`privacy.max_entropy_leak_bits`, `manifold.projection_rank`, etc.) along with the new `zk_prover` / `fhe_evaluator` switches that decide whether Halo2+TFHE or the mock engines run in-process.
+- `ezph` &mdash; `EzphConfig` forwarded to `autheo-pqcnet-5dezph` (`privacy.max_entropy_leak_bits`, `manifold.projection_rank`, etc.) plus the `zk_prover` / `fhe_evaluator` switches that flip between Halo2+TFHE (default) and the deterministic mocks for reproducible sims.
 - `dp` &mdash; Mechanism selection, sigma/epsilon defaults, and RNG seeds.
 - `fhe` &mdash; Slot counts, multiplicative depth, bootstrap period for the circuit runner.
-- `budget` &mdash; Session epsilon/delta guardrails and max query count per tenant.
+- `budget` &mdash; Session epsilon/delta guardrails *and* tenant-wide rolling ceilings (epsilon/delta/query count) enforced per chain epoch window.
 - `chaos` &mdash; Lorenz/Chua parameters controlling deterministic perturbations.
 - `api` &mdash; Payload limits and public input ceilings for the RPC surface.
+
+Hardened defaults now live under `config/privacynet.toml` / `config/privacynet.yaml`. The walkthrough example (and binaries embedding this crate) will auto-load whichever file exists or respect the `PRIVACYNET_CONFIG` env var. Halo2 parameters plus proving/verifying keys are cached under `config/crypto/` the first time the prover spins up so auditors can reuse the same artifacts.
 
 ## How to test it
 
@@ -66,7 +68,7 @@ cargo test -p autheo-privacynet
 cargo test -p autheo-privacynet tests::privacynet
 ```
 
-The walkthrough prints the chaos sample, DP sample, privacy budget claim, and the resulting EZPH receipt so you can verify every stage without real CKKS/ZK engines.
+The walkthrough prints the chaos sample, DP sample, privacy budget claim, and the resulting EZPH receipt so you can verify every stage with the Halo2 + TFHE backends (or override them via config when you need deterministic mocks).
 
 ## Extending / integrating
 

@@ -169,7 +169,9 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
+ "serde_yaml",
  "thiserror",
+ "toml",
  "tracing",
  "zstd",
 ]
@@ -368,7 +370,9 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
+ "serde_yaml",
  "thiserror",
+ "toml",
  "tracing",
 ]
 
