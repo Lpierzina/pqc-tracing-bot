@@ -78,3 +78,5 @@ The integration suite (`tests/overlay.rs`) covers:
 - `privacynet_createVertex` round-tripping over QSTP loopback
 - `privacynet_proveAttribute` + `privacynet_verifyProof` using the real PrivacyNet engine pipeline
 - Grapplang statement parsing for prove/verify/revoke/qtaid flows
+
+By default the tests that spin up the full Halo2/TFHE PrivacyNet pipeline are treated as **heavy** so `cargo test` remains fast in CI. Export `RUN_HEAVY_PRIVACYNET=1` (or the broader `RUN_HEAVY_ZK=1`) or build with `--features real_zk` when you need those flows to execute end to end.

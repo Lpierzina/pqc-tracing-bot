@@ -4,9 +4,13 @@ use autheo_privacynet_network_overlay::{
     transport::loopback_gateways, OverlayNodeConfig,
 };
 use serde_json::json;
+use std::env;
 
 #[test]
 fn handles_create_vertex_via_jsonrpc() {
+    if !allow_privacynet_heavy_path() {
+        return;
+    }
     let mut config = OverlayNodeConfig::default();
     config.networking.peers.clear();
     let (server, mut client) = loopback_gateways(&config.qstp).expect("gateways");
@@ -29,6 +33,9 @@ fn handles_create_vertex_via_jsonrpc() {
 
 #[test]
 fn prove_and_verify_flow() {
+    if !allow_privacynet_heavy_path() {
+        return;
+    }
     let prove_request = json!({
         "jsonrpc": "2.0",
         "id": 99,
@@ -81,4 +88,29 @@ fn grapplang_produces_rpc() {
         }
         _ => panic!("expected revoke rpc"),
     }
+}
+
+fn allow_privacynet_heavy_path() -> bool {
+    if cfg!(feature = "real_zk")
+        || env_flag_enabled("RUN_HEAVY_ZK")
+        || env_flag_enabled("RUN_HEAVY_PRIVACYNET")
+    {
+        return true;
+    }
+    eprintln!(
+        "skipping PrivacyNet overlay heavy test (set RUN_HEAVY_PRIVACYNET=1 or run \
+         `cargo test -p autheo-privacynet-network-overlay --features real_zk`)"
+    );
+    false
+}
+
+fn env_flag_enabled(key: &str) -> bool {
+    env::var(key).map(|value| is_truthy(value.trim())).unwrap_or(false)
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }

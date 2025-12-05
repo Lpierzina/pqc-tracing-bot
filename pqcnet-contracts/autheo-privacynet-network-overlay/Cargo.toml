@@ -18,3 +18,7 @@ thiserror = "1.0"
 hex = "0.4"
 tracing = "0.1"
 blake3 = "1.5"
+
+[features]
+default = []
+real_zk = ["autheo-privacynet/real_zk"]
