@@ -25,3 +25,7 @@ statrs = "0.16"
 [dev-dependencies]
 anyhow = "1.0"
 approx = "0.5"
+
+[features]
+default = []
+real_zk = []
