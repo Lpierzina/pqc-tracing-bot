@@ -77,6 +77,18 @@ pub trait ZkProver: Send + Sync {
     }
 }
 
+/// Generates the Halo2 parameter/proving artifacts on disk without booting the
+/// entire EZPH pipeline. Call this during deployment so subsequent runs can skip
+/// the expensive keygen path.
+pub fn warm_halo2_key_cache(config: &ZkConfig) -> Result<(), ZkError> {
+    Halo2ZkProver::limit_rayon_threads();
+    let k = Halo2ZkProver::derive_k(config);
+    let params = Halo2ZkProver::load_or_create_params(config, k)?;
+    let pk = Halo2ZkProver::build_pk(config, &params)?;
+    Halo2ZkProver::persist_key_material(config, k, &params, &pk)?;
+    Ok(())
+}
+
 pub struct MockCircomProver {
     config: ZkConfig,
 }

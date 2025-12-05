@@ -92,6 +92,24 @@ The prover now installs a single-threaded global Rayon pool automatically (unles
 you set `RAYON_NUM_THREADS` or `AUTHEO_RAYON_THREADS`), so the heavy path no longer deadlocks when
 Halo2 tries to spawn 128 workers on a cramped CI host.
 
+### Pre-generate Halo2 keys
+
+You can now prime the Halo2 cache without spinning up the full pipeline by calling
+`warm_halo2_key_cache` with your `ZkConfig`:
+
+```rust
+use autheo_pqcnet_5dezph::{warm_halo2_key_cache, EzphConfig};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = EzphConfig::default();
+    warm_halo2_key_cache(&config.zk)?;
+    Ok(())
+}
+```
+
+This writes `config/crypto/halo2.{params,pk,vk}` ahead of time so later runs of `Halo2ZkProver::new`
+can skip key generation entirely (and simply verify the cached `k` value).
+
 When enabled, the suite stands up a `HypergraphModule`, runs
 `DefaultEzphPipeline::entangle_and_anchor` with `EzphRequest::demo`, and asserts that a
 vertex is anchored only when `EzphOutcome::privacy.satisfied` remains true. The walkthrough

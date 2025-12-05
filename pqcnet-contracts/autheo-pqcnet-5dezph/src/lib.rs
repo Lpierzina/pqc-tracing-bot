@@ -24,4 +24,6 @@ pub use pipeline::{
     ProductionEzphPipeline,
 };
 pub use privacy::EzphPrivacyReport;
-pub use zk::{Halo2ZkProver, MockCircomProver, ZkProof, ZkProver, ZkStatement};
+pub use zk::{
+    warm_halo2_key_cache, Halo2ZkProver, MockCircomProver, ZkProof, ZkProver, ZkStatement,
+};
