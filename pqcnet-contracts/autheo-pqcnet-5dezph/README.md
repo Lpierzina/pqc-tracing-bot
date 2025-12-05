@@ -88,6 +88,10 @@ RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_EZPH=1 \
   cargo test -p autheo-pqcnet-5dezph --features real_zk
 ```
 
+The prover now installs a single-threaded global Rayon pool automatically (unless
+you set `RAYON_NUM_THREADS` or `AUTHEO_RAYON_THREADS`), so the heavy path no longer deadlocks when
+Halo2 tries to spawn 128 workers on a cramped CI host.
+
 When enabled, the suite stands up a `HypergraphModule`, runs
 `DefaultEzphPipeline::entangle_and_anchor` with `EzphRequest::demo`, and asserts that a
 vertex is anchored only when `EzphOutcome::privacy.satisfied` remains true. The walkthrough

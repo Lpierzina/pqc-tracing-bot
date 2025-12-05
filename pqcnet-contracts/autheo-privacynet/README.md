@@ -80,6 +80,10 @@ RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_PRIVACYNET=1 \
   cargo test -p autheo-privacynet --features real_zk
 ```
 
+`autheo-pqcnet-5dezph` automatically installs a single-threaded Rayon pool (unless you override
+`RAYON_NUM_THREADS` or `AUTHEO_RAYON_THREADS`), so the Halo2 prover won’t stall heavy tests on
+resource-constrained runners.
+
 ## Extending / integrating
 
 - **Bring your own ZK or FHE** by implementing the traits exported from `autheo-pqcnet-5dezph` and wiring them into `PrivacyNetConfig::ezph` (via `zk_prover` / `fhe_evaluator`) and `FheLayerConfig`.

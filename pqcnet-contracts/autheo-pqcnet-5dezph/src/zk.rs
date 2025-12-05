@@ -3,7 +3,7 @@ use std::{
     fs::{self, create_dir_all, File},
     io::{BufReader, BufWriter, Read},
     path::Path,
-    sync::Arc,
+    sync::{Arc, Once},
 };
 
 use blake3::Hasher;
@@ -18,6 +18,7 @@ use halo2_proofs::{
 };
 use halo2curves::bn256::{Fr, G1Affine};
 use rand_core::OsRng;
+use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -146,10 +147,23 @@ impl Halo2ZkProver {
 
 impl Halo2ZkProver {
     fn limit_rayon_threads() {
-        const KEY: &str = "RAYON_NUM_THREADS";
-        if env::var_os(KEY).is_none() {
-            env::set_var(KEY, "1");
-        }
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            if env::var_os("RAYON_NUM_THREADS").is_some() {
+                return;
+            }
+            let threads = env::var("AUTHEO_RAYON_THREADS")
+                .ok()
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(1);
+            if let Err(err) = ThreadPoolBuilder::new().num_threads(threads).build_global() {
+                eprintln!(
+                    "halo2 prover: failed to configure Rayon thread pool \
+                     (requested {threads} threads): {err}"
+                );
+            }
+        });
     }
 
     fn ensure_parent(path: &Path) -> Result<(), ZkError> {

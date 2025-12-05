@@ -140,3 +140,7 @@ Match Ken’s guidance when wiring Halo2 + Rayon by capping both the test harnes
 RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_DW3B=1 \
   cargo test -p autheo-dw3b-mesh --features real_zk
 ```
+
+You can also override the automatic single-threaded Rayon pool that the Halo2 prover now installs by
+setting `AUTHEO_RAYON_THREADS` (or the upstream `RAYON_NUM_THREADS`) before spinning up the heavy
+suite.
