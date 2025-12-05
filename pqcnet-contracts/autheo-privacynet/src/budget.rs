@@ -11,6 +11,10 @@ pub enum BudgetError {
     Exhausted { session_id: u64 },
     #[error("query limit exceeded for session {session_id}")]
     QueryLimit { session_id: u64 },
+    #[error("tenant {tenant_id} exceeded daily privacy budget")]
+    TenantExhausted { tenant_id: String },
+    #[error("tenant {tenant_id} exceeded max queries in rolling window")]
+    TenantQueryLimit { tenant_id: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,6 +31,9 @@ pub struct BudgetClaim {
     pub epsilon_remaining: f64,
     pub delta_remaining: f64,
     pub composed_epsilon: f64,
+    pub tenant_epsilon_remaining: f64,
+    pub tenant_delta_remaining: f64,
+    pub tenant_queries_remaining: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -46,9 +53,38 @@ impl SessionBudget {
     }
 }
 
+#[derive(Clone, Debug)]
+struct TenantBudget {
+    epsilon_spent: f64,
+    delta_spent: f64,
+    queries: u32,
+    window_start_epoch: u64,
+}
+
+impl TenantBudget {
+    fn new(start: u64) -> Self {
+        Self {
+            epsilon_spent: 0.0,
+            delta_spent: 0.0,
+            queries: 0,
+            window_start_epoch: start,
+        }
+    }
+
+    fn reset_if_needed(&mut self, epoch: u64, window: u64) {
+        if window == 0 {
+            return;
+        }
+        if epoch.saturating_sub(self.window_start_epoch) >= window {
+            *self = TenantBudget::new(epoch);
+        }
+    }
+}
+
 pub struct PrivacyBudgetLedger {
     config: BudgetConfig,
     sessions: HashMap<u64, SessionBudget>,
+    tenants: HashMap<String, TenantBudget>,
 }
 
 impl PrivacyBudgetLedger {
@@ -56,10 +92,17 @@ impl PrivacyBudgetLedger {
         Self {
             config,
             sessions: HashMap::new(),
+            tenants: HashMap::new(),
         }
     }
 
-    pub fn claim(&mut self, session_id: u64, query: &DpQuery) -> Result<BudgetClaim, BudgetError> {
+    pub fn claim(
+        &mut self,
+        session_id: u64,
+        tenant_id: &str,
+        chain_epoch: u64,
+        query: &DpQuery,
+    ) -> Result<BudgetClaim, BudgetError> {
         let state = self
             .sessions
             .entry(session_id)
@@ -73,13 +116,42 @@ impl PrivacyBudgetLedger {
         if epsilon_total > self.config.session_epsilon || delta_total > self.config.session_delta {
             return Err(BudgetError::Exhausted { session_id });
         }
+        let tenant = self
+            .tenants
+            .entry(tenant_id.to_string())
+            .or_insert_with(|| TenantBudget::new(chain_epoch));
+        tenant.reset_if_needed(chain_epoch, self.config.tenant_epoch_window);
+        if tenant.queries >= self.config.max_queries_per_tenant {
+            return Err(BudgetError::TenantQueryLimit {
+                tenant_id: tenant_id.to_string(),
+            });
+        }
+        let tenant_epsilon_total = tenant.epsilon_spent + query.epsilon;
+        let tenant_delta_total = tenant.delta_spent + query.delta;
+        if tenant_epsilon_total > self.config.tenant_daily_epsilon
+            || tenant_delta_total > self.config.tenant_daily_delta
+        {
+            return Err(BudgetError::TenantExhausted {
+                tenant_id: tenant_id.to_string(),
+            });
+        }
         state.epsilon_spent = epsilon_total;
         state.delta_spent = delta_total;
         state.queries += 1;
+        tenant.epsilon_spent = tenant_epsilon_total;
+        tenant.delta_spent = tenant_delta_total;
+        tenant.queries += 1;
         Ok(BudgetClaim {
             epsilon_remaining: (self.config.session_epsilon - epsilon_total).max(0.0),
             delta_remaining: (self.config.session_delta - delta_total).max(0.0),
             composed_epsilon: composed,
+            tenant_epsilon_remaining: (self.config.tenant_daily_epsilon - tenant_epsilon_total)
+                .max(0.0),
+            tenant_delta_remaining: (self.config.tenant_daily_delta - tenant_delta_total).max(0.0),
+            tenant_queries_remaining: self
+                .config
+                .max_queries_per_tenant
+                .saturating_sub(tenant.queries),
         })
     }
 

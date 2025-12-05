@@ -1,0 +1,79 @@
+ezph:
+  zk_prover: Halo2
+  fhe_evaluator: Tfhe
+  qeh:
+    max_parent_links: 48
+    ann_similarity_threshold: 0.85
+    crystalline_offload_after_ms: 604800000
+    crystalline_payload_threshold: 4096
+    laser_channels: 64
+    vector_dimensions: 4096
+    vector_similarity_floor: 0.92
+    quantum_coordinate_scale_mm: 4.5
+    temporal_precision_ps: 0.25
+    crystalline_density_tb_per_cm3: 512.0
+    laser_latency_ps: 0.42
+    laser_throughput_gbps: 1800000.0
+  manifold:
+    spatial_radius_mm: 5.5
+    entropy_register: 64
+    projection_rank: 5
+    homomorphic_scale: 0.85
+  chaos:
+    lorenz_sigma: 11.0
+    lorenz_rho: 30.0
+    lorenz_beta: 2.9
+    chua_alpha: 9.0
+    chua_beta: 14.0
+    chua_gamma: 0.2
+    logistic_r: 3.995
+    iterations: 256
+  privacy:
+    max_entropy_leak_bits: 1.0e-9
+    min_reyni_divergence: 64.0
+    hockey_stick_delta: 1.0e-18
+    amplification_gain: 256.0
+    reyni_alpha: 1.15
+  zk:
+    circuit_id: autheo/ezph/kyc-age
+    soundness: 1.5e-77
+    curve: BN254
+    proof_system: Halo2
+    params_path: config/crypto/halo2.params
+    proving_key_path: config/crypto/halo2.pk
+    verifying_key_path: config/crypto/halo2.vk
+  fhe:
+    polynomial_degree: 16384
+    ciphertext_scale: 1099511627776.0
+fhe:
+  ring_dimension: 16384
+  bootstrap_period: 2048
+  ciphertext_scale: 1099511627776.0
+  max_multiplications: 65536
+  slots_per_ciphertext: 2048
+dp:
+  gaussian_epsilon: 5.0e-7
+  gaussian_delta: 1.0e-18
+  laplace_epsilon: 5.0e-5
+  exponential_epsilon: 5.0e-4
+  renyi_alpha: 16.0
+  renyi_epsilon: 5.0e-6
+budget:
+  session_epsilon: 5.0e-6
+  session_delta: 1.0e-18
+  max_queries_per_session: 512
+  tenant_daily_epsilon: 1.0e-4
+  tenant_daily_delta: 1.0e-12
+  max_queries_per_tenant: 2048
+  tenant_epoch_window: 86400
+chaos:
+  chua_alpha: 9.0
+  chua_beta: 14.0
+  chua_gamma: 0.19
+  rossler_a: 0.24
+  rossler_b: 0.3
+  rossler_c: 5.6
+  lyapunov_floor: 6.0
+api:
+  max_payload_bytes: 4096
+  max_public_inputs: 16

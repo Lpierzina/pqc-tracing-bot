@@ -1,3 +1,6 @@
 # Build artifacts
 /target/
 **/target/
+config/crypto/*.params
+config/crypto/*.pk
+config/crypto/*.vk

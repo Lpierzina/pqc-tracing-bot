@@ -1,4 +1,9 @@
-use std::sync::Arc;
+use std::{
+    fs::{self, create_dir_all, File},
+    io::{BufReader, BufWriter},
+    path::Path,
+    sync::Arc,
+};
 
 use blake3::Hasher;
 use halo2_proofs::{
@@ -16,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::config::ZkConfig;
+use serde_json::json;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkStatement {
@@ -118,25 +124,10 @@ pub struct Halo2ZkProver {
 impl Halo2ZkProver {
     pub fn new(config: ZkConfig) -> Result<Self, ZkError> {
         let k = Self::derive_k(&config);
-        let params = Params::<G1Affine>::new(k);
-        let circuit = StatementEqualityCircuit::default();
-        let vk = keygen_vk(&params, &circuit).map_err(|err| {
-            ZkError::new(format!(
-                "failed building Halo2 VK for {}: {err}",
-                config.circuit_id
-            ))
-        })?;
-        let pk = keygen_pk(&params, vk, &circuit).map_err(|err| {
-            ZkError::new(format!(
-                "failed building Halo2 PK for {}: {err}",
-                config.circuit_id
-            ))
-        })?;
-        Ok(Self {
-            config,
-            params: Arc::new(params),
-            pk: Arc::new(pk),
-        })
+        let params = Arc::new(Self::load_or_create_params(&config, k)?);
+        let pk = Arc::new(Self::build_pk(&config, params.as_ref())?);
+        Self::persist_key_material(&config, k, params.as_ref(), pk.as_ref())?;
+        Ok(Self { config, params, pk })
     }
 
     fn derive_k(config: &ZkConfig) -> u32 {
@@ -148,6 +139,128 @@ impl Halo2ZkProver {
     fn scalar_for(statement: &ZkStatement) -> Fr {
         let hash = statement.hash();
         Fr::from_bytes(&hash).unwrap_or_else(|| Fr::zero())
+    }
+}
+
+impl Halo2ZkProver {
+    fn ensure_parent(path: &Path) -> Result<(), ZkError> {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                create_dir_all(parent).map_err(|err| {
+                    ZkError::new(format!(
+                        "failed to create directory {}: {err}",
+                        parent.display()
+                    ))
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    fn load_or_create_params(config: &ZkConfig, k: u32) -> Result<Params<G1Affine>, ZkError> {
+        let path = config.params_path.as_path();
+        if path.exists() {
+            let mut reader = BufReader::new(File::open(path).map_err(|err| {
+                ZkError::new(format!(
+                    "failed to open Halo2 params {}: {err}",
+                    path.display()
+                ))
+            })?);
+            Params::<G1Affine>::read(&mut reader).map_err(|err| {
+                ZkError::new(format!(
+                    "failed to deserialize Halo2 params {}: {err}",
+                    path.display()
+                ))
+            })
+        } else {
+            Self::ensure_parent(path)?;
+            let params = Params::<G1Affine>::new(k);
+            let mut writer = BufWriter::new(File::create(path).map_err(|err| {
+                ZkError::new(format!(
+                    "failed to create Halo2 params {}: {err}",
+                    path.display()
+                ))
+            })?);
+            params
+                .write(&mut writer)
+                .map_err(|err| ZkError::new(format!("failed to write Halo2 params: {err}")))?;
+            Ok(params)
+        }
+    }
+
+    fn build_pk(
+        config: &ZkConfig,
+        params: &Params<G1Affine>,
+    ) -> Result<ProvingKey<G1Affine>, ZkError> {
+        let circuit = StatementEqualityCircuit::default();
+        let vk = keygen_vk(params, &circuit).map_err(|err| {
+            ZkError::new(format!(
+                "failed building Halo2 VK for {}: {err}",
+                config.circuit_id
+            ))
+        })?;
+        keygen_pk(params, vk, &circuit).map_err(|err| {
+            ZkError::new(format!(
+                "failed building Halo2 PK for {}: {err}",
+                config.circuit_id
+            ))
+        })
+    }
+
+    fn persist_key_material(
+        config: &ZkConfig,
+        k: u32,
+        _params: &Params<G1Affine>,
+        pk: &ProvingKey<G1Affine>,
+    ) -> Result<(), ZkError> {
+        Self::ensure_parent(&config.verifying_key_path)?;
+        Self::ensure_parent(&config.proving_key_path)?;
+        let pinned = format!("{:?}", pk.get_vk().pinned());
+        let vk_payload = json!({
+            "circuit_id": config.circuit_id,
+            "proof_system": config.proof_system,
+            "curve": config.curve,
+            "soundness": config.soundness,
+            "params_bits": k,
+            "pinned": pinned,
+        });
+        let vk_bytes = serde_json::to_vec_pretty(&vk_payload).map_err(|err| {
+            ZkError::new(format!(
+                "failed to serialize verifying key metadata for {}: {err}",
+                config.circuit_id
+            ))
+        })?;
+        fs::write(&config.verifying_key_path, vk_bytes).map_err(|err| {
+            ZkError::new(format!(
+                "failed to write verifying key metadata {}: {err}",
+                config.verifying_key_path.display()
+            ))
+        })?;
+
+        let digest = blake3::hash(
+            serde_json::to_string(&vk_payload)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        let pk_payload = json!({
+            "circuit_id": config.circuit_id,
+            "proof_system": config.proof_system,
+            "curve": config.curve,
+            "vk_digest": digest.to_hex().to_string(),
+            "params_path": config.params_path,
+        });
+        let pk_bytes = serde_json::to_vec_pretty(&pk_payload).map_err(|err| {
+            ZkError::new(format!(
+                "failed to serialize proving key metadata for {}: {err}",
+                config.circuit_id
+            ))
+        })?;
+        fs::write(&config.proving_key_path, pk_bytes).map_err(|err| {
+            ZkError::new(format!(
+                "failed to write proving key metadata {}: {err}",
+                config.proving_key_path.display()
+            ))
+        })
     }
 }
 

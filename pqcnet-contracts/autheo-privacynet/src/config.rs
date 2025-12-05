@@ -35,6 +35,10 @@ pub struct BudgetConfig {
     pub session_epsilon: f64,
     pub session_delta: f64,
     pub max_queries_per_session: u32,
+    pub tenant_daily_epsilon: f64,
+    pub tenant_daily_delta: f64,
+    pub max_queries_per_tenant: u32,
+    pub tenant_epoch_window: u64,
 }
 
 impl Default for BudgetConfig {
@@ -43,6 +47,10 @@ impl Default for BudgetConfig {
             session_epsilon: 1e-5,
             session_delta: 2f64.powi(-40),
             max_queries_per_session: 10_000,
+            tenant_daily_epsilon: 1e-3,
+            tenant_daily_delta: 1e-12,
+            max_queries_per_tenant: 50_000,
+            tenant_epoch_window: 86_400,
         }
     }
 }

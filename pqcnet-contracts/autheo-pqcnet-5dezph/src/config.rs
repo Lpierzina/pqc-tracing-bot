@@ -1,5 +1,6 @@
 use autheo_pqcnet_5dqeh::QehConfig;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Composite configuration for the 5D-EZPH orchestrator.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -148,6 +149,9 @@ pub struct ZkConfig {
     pub soundness: f64,
     pub curve: String,
     pub proof_system: String,
+    pub params_path: PathBuf,
+    pub proving_key_path: PathBuf,
+    pub verifying_key_path: PathBuf,
 }
 
 impl Default for ZkConfig {
@@ -157,6 +161,9 @@ impl Default for ZkConfig {
             soundness: 2f64.powi(-256),
             curve: "BLS12-381".into(),
             proof_system: "Halo2".into(),
+            params_path: PathBuf::from("config/crypto/halo2.params"),
+            proving_key_path: PathBuf::from("config/crypto/halo2.pk"),
+            verifying_key_path: PathBuf::from("config/crypto/halo2.vk"),
         }
     }
 }
