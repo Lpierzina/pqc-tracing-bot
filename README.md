@@ -378,7 +378,10 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
   responses. See its README for the new code-flow diagram, run
   `cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough`, and export
   `RUN_HEAVY_DW3B=1` (or use `--features real_zk`) when you want the full mesh
-  integration tests instead of the default fast sweep.
+  integration tests instead of the default fast sweep. The Halo2 prover now
+  caches its params + pinned key metadata under `config/crypto/` and expects the
+  heavy suite to run with `RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1` so Rayon
+  doesn’t try to spawn 128 workers per proof.
 - `autheo-dw3b-overlay/` – JSON-RPC/QSTP wrapper around the DW3B mesh. The new
   `examples/loopback_overlay.rs` demo plus the expanded tests show how Grapplang
   parsing, anonymize, QTAID, and entropy requests travel over loopback QSTP links.

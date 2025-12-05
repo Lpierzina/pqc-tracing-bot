@@ -105,7 +105,9 @@ fn allow_privacynet_heavy_path() -> bool {
 }
 
 fn env_flag_enabled(key: &str) -> bool {
-    env::var(key).map(|value| is_truthy(value.trim())).unwrap_or(false)
+    env::var(key)
+        .map(|value| is_truthy(value.trim()))
+        .unwrap_or(false)
 }
 
 fn is_truthy(value: &str) -> bool {

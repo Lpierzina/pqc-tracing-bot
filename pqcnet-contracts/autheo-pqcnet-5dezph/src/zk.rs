@@ -1,6 +1,7 @@
 use std::{
+    env,
     fs::{self, create_dir_all, File},
-    io::{BufReader, BufWriter},
+    io::{BufReader, BufWriter, Read},
     path::Path,
     sync::Arc,
 };
@@ -123,6 +124,7 @@ pub struct Halo2ZkProver {
 
 impl Halo2ZkProver {
     pub fn new(config: ZkConfig) -> Result<Self, ZkError> {
+        Self::limit_rayon_threads();
         let k = Self::derive_k(&config);
         let params = Arc::new(Self::load_or_create_params(&config, k)?);
         let pk = Arc::new(Self::build_pk(&config, params.as_ref())?);
@@ -143,6 +145,13 @@ impl Halo2ZkProver {
 }
 
 impl Halo2ZkProver {
+    fn limit_rayon_threads() {
+        const KEY: &str = "RAYON_NUM_THREADS";
+        if env::var_os(KEY).is_none() {
+            env::set_var(KEY, "1");
+        }
+    }
+
     fn ensure_parent(path: &Path) -> Result<(), ZkError> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -160,6 +169,30 @@ impl Halo2ZkProver {
     fn load_or_create_params(config: &ZkConfig, k: u32) -> Result<Params<G1Affine>, ZkError> {
         let path = config.params_path.as_path();
         if path.exists() {
+            let mut encoded_k = [0u8; 4];
+            {
+                let mut header = BufReader::new(File::open(path).map_err(|err| {
+                    ZkError::new(format!(
+                        "failed to open Halo2 params {}: {err}",
+                        path.display()
+                    ))
+                })?);
+                header.read_exact(&mut encoded_k).map_err(|err| {
+                    ZkError::new(format!(
+                        "failed to read Halo2 params header {}: {err}",
+                        path.display()
+                    ))
+                })?;
+            }
+            let existing_k = u32::from_le_bytes(encoded_k);
+            if existing_k != k {
+                return Err(ZkError::new(format!(
+                    "Halo2 params {} were generated with k={} but config requires k={}",
+                    path.display(),
+                    existing_k,
+                    k
+                )));
+            }
             let mut reader = BufReader::new(File::open(path).map_err(|err| {
                 ZkError::new(format!(
                     "failed to open Halo2 params {}: {err}",

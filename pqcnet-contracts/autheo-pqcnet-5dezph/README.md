@@ -77,6 +77,17 @@ The `tests/pipeline.rs` suite now treats the Halo2/TFHE path as a **heavy** test
 `RUN_HEAVY_ZK=1`) or build with `--features real_zk` when you want the full pipeline run.
 Without one of those switches the test prints a skip message instead of hanging on the prover.
 
+The Halo2 prover now persists its parameters + pinned verifying metadata under
+`config/crypto/halo2.{params,pk,vk}` the first time it runs. The next invocation reuses those files
+and refuses to proceed if the on-disk Powers-of-Tau (`k`) no longer matches the requested soundness.
+When you opt into the heavy suite, cap Rayon’s global thread-pool so the host doesn’t try to spawn
+128 workers for a single proof:
+
+```
+RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_EZPH=1 \
+  cargo test -p autheo-pqcnet-5dezph --features real_zk
+```
+
 When enabled, the suite stands up a `HypergraphModule`, runs
 `DefaultEzphPipeline::entangle_and_anchor` with `EzphRequest::demo`, and asserts that a
 vertex is anchored only when `EzphOutcome::privacy.satisfied` remains true. The walkthrough
