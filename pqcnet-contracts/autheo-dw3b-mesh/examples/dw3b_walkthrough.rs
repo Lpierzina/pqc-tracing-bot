@@ -2,7 +2,11 @@ use autheo_dw3b_mesh::{
     Dw3bMeshConfig, Dw3bMeshEngine, MeshAnonymizeRequest, MeshError, MeshResult, QtaidProveRequest,
 };
 use serde::de::DeserializeOwned;
-use std::{env, fs, path::Path};
+use std::{
+    env,
+    fs,
+    path::{Path, PathBuf},
+};
 
 fn main() -> MeshResult<()> {
     let config_path = resolve_config_path();
@@ -38,30 +42,22 @@ fn main() -> MeshResult<()> {
 }
 
 fn resolve_config_path() -> String {
-    if let Ok(env_path) = env::var("DW3B_CONFIG") {
-        return env_path;
-    }
-    for candidate in ["config/dw3b.toml", "config/dw3b.yaml"] {
-        if Path::new(candidate).exists() {
-            return candidate.to_string();
-        }
-    }
-    "config/dw3b.toml".into()
+    locate_file(
+        "DW3B_CONFIG",
+        &["config/dw3b.toml", "config/dw3b.yaml"],
+        "config/dw3b.toml",
+    )
 }
 
 fn resolve_request_path() -> String {
-    if let Ok(env_path) = env::var("DW3B_REQUEST") {
-        return env_path;
-    }
-    for candidate in [
-        "config/examples/dw3b_request.toml",
+    locate_file(
+        "DW3B_REQUEST",
+        &[
+            "config/examples/dw3b_request.toml",
+            "config/examples/dw3b_request.yaml",
+        ],
         "config/examples/dw3b_request.yaml",
-    ] {
-        if Path::new(candidate).exists() {
-            return candidate.to_string();
-        }
-    }
-    "config/examples/dw3b_request.yaml".into()
+    )
 }
 
 fn load_config<T: DeserializeOwned>(path: &str) -> Result<T, Box<dyn std::error::Error>> {
@@ -75,4 +71,32 @@ fn load_config<T: DeserializeOwned>(path: &str) -> Result<T, Box<dyn std::error:
         "yaml" | "yml" => Ok(serde_yaml::from_str(&contents)?),
         ext => Err(format!("unsupported config extension '{ext}' for {path}").into()),
     }
+}
+
+fn locate_file(env_key: &str, candidates: &[&str], default_path: &str) -> String {
+    if let Ok(env_path) = env::var(env_key) {
+        return env_path;
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut search_roots = vec![PathBuf::from(".")];
+    search_roots.push(manifest_dir.clone());
+
+    if let Some(parent) = manifest_dir.parent() {
+        search_roots.push(parent.to_path_buf());
+        if let Some(grandparent) = parent.parent() {
+            search_roots.push(grandparent.to_path_buf());
+        }
+    }
+
+    for root in search_roots {
+        for candidate in candidates {
+            let path = root.join(candidate);
+            if path.exists() {
+                return path.to_string_lossy().into_owned();
+            }
+        }
+    }
+
+    default_path.to_string()
 }

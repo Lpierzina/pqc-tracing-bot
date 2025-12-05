@@ -58,17 +58,20 @@ Hardened defaults now live under `config/privacynet.toml` / `config/privacynet.y
 ## How to test it
 
 ```bash
-# Run the walkthrough example (shows DP + EZPH anchoring end-to-end)
+# Run the walkthrough example (auto-detects configs under ./config or ../config)
 cargo run -p autheo-privacynet --example privacynet_walkthrough
 
-# Execute the crate's full test suite
+# Fast test sweep (unit tests + light integrations, heavy ZK skipped)
 cargo test -p autheo-privacynet
 
-# Focused integration test that exercises DP -> EZPH wiring
-cargo test -p autheo-privacynet tests::privacynet
+# Opt into the full Halo2/TFHE path via env flag
+RUN_HEAVY_PRIVACYNET=1 cargo test -p autheo-privacynet tests::privacynet
+
+# …or with the explicit `real_zk` feature enabled
+cargo test -p autheo-privacynet --features real_zk
 ```
 
-The walkthrough prints the chaos sample, DP sample, privacy budget claim, and the resulting EZPH receipt so you can verify every stage with the Halo2 + TFHE backends (or override them via config when you need deterministic mocks).
+`tests/privacynet.rs` now detects `RUN_HEAVY_PRIVACYNET` / `RUN_HEAVY_ZK` (or the `real_zk` feature) before spinning up the Halo2 prover. That keeps `cargo test` snappy while still making the full proof/FHE walk available on demand. The walkthrough prints the chaos sample, DP sample, privacy budget claim, and the resulting EZPH receipt so you can verify every stage with the Halo2 + TFHE backends (or override them via config when you need deterministic mocks). The example now walks up to the workspace root when resolving `config/privacynet.{toml,yaml}`, so it works whether you invoke it from `pqcnet-contracts/` or the workspace root; set `PRIVACYNET_CONFIG` to point elsewhere.
 
 ## Extending / integrating
 

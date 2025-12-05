@@ -1,7 +1,16 @@
 use autheo_privacynet::{DpQuery, PrivacyNetConfig, PrivacyNetEngine, PrivacyNetRequest};
+use std::env;
 
 #[test]
 fn integrates_dp_and_ezph() {
+    if !run_heavy_halo2_path() {
+        eprintln!(
+            "skipping heavy PrivacyNet Halo2 test (set RUN_HEAVY_PRIVACYNET=1 \
+             or run `cargo test -p autheo-privacynet --features real_zk`)"
+        );
+        return;
+    }
+
     let mut config = PrivacyNetConfig::default();
     config.ezph.qeh.vector_dimensions = 64;
     let mut engine = PrivacyNetEngine::new(config);
@@ -27,4 +36,21 @@ fn integrates_dp_and_ezph() {
     let response = engine.handle_request(request).expect("privacy pipeline");
     assert!(response.privacy_report.satisfied);
     assert!(response.dp_result.sample.noisy_vector.len() >= 1);
+}
+
+fn run_heavy_halo2_path() -> bool {
+    cfg!(feature = "real_zk")
+        || env_flag_enabled("RUN_HEAVY_ZK")
+        || env_flag_enabled("RUN_HEAVY_PRIVACYNET")
+}
+
+fn env_flag_enabled(key: &str) -> bool {
+    env::var(key).map(|value| is_truthy(value.trim())).unwrap_or(false)
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }

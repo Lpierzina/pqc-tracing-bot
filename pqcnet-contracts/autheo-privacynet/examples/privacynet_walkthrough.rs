@@ -1,6 +1,11 @@
 use autheo_privacynet::{DpQuery, PrivacyNetConfig, PrivacyNetEngine, PrivacyNetRequest};
 use serde::de::DeserializeOwned;
-use std::{env, error::Error, fs, path::Path};
+use std::{
+    env,
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config_path = resolve_config_path();
@@ -47,15 +52,11 @@ fn hexify(id: &[u8; 32]) -> String {
 }
 
 fn resolve_config_path() -> String {
-    if let Ok(env_path) = env::var("PRIVACYNET_CONFIG") {
-        return env_path;
-    }
-    for candidate in ["config/privacynet.toml", "config/privacynet.yaml"] {
-        if Path::new(candidate).exists() {
-            return candidate.to_string();
-        }
-    }
-    "config/privacynet.toml".into()
+    locate_file(
+        "PRIVACYNET_CONFIG",
+        &["config/privacynet.toml", "config/privacynet.yaml"],
+        "config/privacynet.toml",
+    )
 }
 
 fn load_config<T: DeserializeOwned>(path: &str) -> Result<T, Box<dyn Error>> {
@@ -69,4 +70,32 @@ fn load_config<T: DeserializeOwned>(path: &str) -> Result<T, Box<dyn Error>> {
         "yaml" | "yml" => Ok(serde_yaml::from_str(&contents)?),
         ext => Err(format!("unsupported config extension '{ext}' for {path}").into()),
     }
+}
+
+fn locate_file(env_key: &str, candidates: &[&str], default_path: &str) -> String {
+    if let Ok(env_path) = env::var(env_key) {
+        return env_path;
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut search_roots = vec![PathBuf::from(".")];
+    search_roots.push(manifest_dir.clone());
+
+    if let Some(parent) = manifest_dir.parent() {
+        search_roots.push(parent.to_path_buf());
+        if let Some(grandparent) = parent.parent() {
+            search_roots.push(grandparent.to_path_buf());
+        }
+    }
+
+    for root in search_roots {
+        for candidate in candidates {
+            let path = root.join(candidate);
+            if path.exists() {
+                return path.to_string_lossy().into_owned();
+            }
+        }
+    }
+
+    default_path.to_string()
 }

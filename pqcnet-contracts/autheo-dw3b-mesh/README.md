@@ -106,16 +106,28 @@ cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough
 ```
 
 The walkthrough streams anonymize + QTAID results, the Lyapunov trace, and the
-5D-EZPH entanglement references that Chronosync consumes downstream.
+5D-EZPH entanglement references that Chronosync consumes downstream. It now
+searches `./config` as well as `../config` (relative to the crate) so invoking it
+from the workspace root or from `pqcnet-contracts/` “just works”; override paths
+via `DW3B_CONFIG` / `DW3B_REQUEST`.
 
 ## Testing
 
 ```
+# Fast unit + lightweight integration tests (heavy Halo2 path skipped)
 cargo test -p autheo-dw3b-mesh
+
+# Force the heavy path via env flag
+RUN_HEAVY_DW3B=1 cargo test -p autheo-dw3b-mesh tests::mesh
+
+# …or enable it via the explicit `real_zk` feature
+cargo test -p autheo-dw3b-mesh --features real_zk
 ```
 
-`tests/mesh.rs` exercises anonymization flows, Bloom filter math, entropy
-beacons, QTAID proofs, and the obfuscation helpers (payload reversal +
-fingerprint binding). The in-process Halo2 prover + TFHE evaluator run by default;
-flip `Dw3bMeshConfig::zk_prover`/`privacy.ezph.fhe_evaluator` if you need the deterministic mock
-backends for regression tests.
+`tests/mesh.rs` now checks `RUN_HEAVY_DW3B` / `RUN_HEAVY_ZK` (or the `real_zk`
+feature) before instantiating the full Halo2/TFHE stack, so default `cargo test`
+stays responsive. Once enabled, the suite exercises anonymization flows, Bloom
+filter math, entropy beacons, QTAID proofs, and the obfuscation helpers (payload
+reversal + fingerprint binding). Flip `Dw3bMeshConfig::zk_prover` /
+`privacy.ezph.fhe_evaluator` if you need the deterministic mock backends for
+regression tests.

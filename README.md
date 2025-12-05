@@ -368,14 +368,17 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 
 - `autheo-privacynet/` – PrivacyNet DP/FHE pipeline whose README details the policy
   stages that now appear in the DID & AIPP diagram. Run `cargo test -p autheo-privacynet`
-  to exercise the policy math before feeding DW3B meshes.
+  for the fast sweep, then export `RUN_HEAVY_PRIVACYNET=1` or add
+  `--features real_zk` when you need the Halo2/TFHE integration test.
 - `autheo-privacynet-network-overlay/` – overlay facade that translates Zer0veil or
   Grapplang commands into PrivacyNet requests and persists the policy hashes that
   later show up in DW3B telemetry.
 - `autheo-dw3b-mesh/` – Dark Web Privacy Network engine that orchestrates routing,
   Bloom filters, noise, chaos, and 5D-EZPH hooks around `autheo-privacynet`
-  responses. See its README for the new code-flow diagram and run
-  `cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough`.
+  responses. See its README for the new code-flow diagram, run
+  `cargo run -p autheo-dw3b-mesh --example dw3b_walkthrough`, and export
+  `RUN_HEAVY_DW3B=1` (or use `--features real_zk`) when you want the full mesh
+  integration tests instead of the default fast sweep.
 - `autheo-dw3b-overlay/` – JSON-RPC/QSTP wrapper around the DW3B mesh. The new
   `examples/loopback_overlay.rs` demo plus the expanded tests show how Grapplang
   parsing, anonymize, QTAID, and entropy requests travel over loopback QSTP links.
