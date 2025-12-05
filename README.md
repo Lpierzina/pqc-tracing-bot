@@ -386,7 +386,9 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
   (or `RUN_HEAVY_ZK=1`) or compiling with `--features real_zk`; the default test
   sweep now skips those paths to keep `cargo test` responsive.
 - `autheo-pqcnet-5dezph/` – 5D-EZPH entanglement orchestrator that binds DW3B proofs
-  to Chronosync/5D-QEH vertices before QS-DAG anchoring.
+  to Chronosync/5D-QEH vertices before QS-DAG anchoring. Export `RUN_HEAVY_EZPH=1`
+  (or `RUN_HEAVY_ZK=1`, or build with `--features real_zk`) to run the Halo2/TFHE
+  pipeline integration test; the default sweep now skips it to keep `cargo test` fast.
 
 ### Core enclave & ABI
 

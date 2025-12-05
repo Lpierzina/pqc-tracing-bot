@@ -72,10 +72,16 @@ cargo test -p autheo-pqcnet-5dezph
 cargo test -p autheo-pqcnet-5dezph pipeline
 ```
 
-The `tests/pipeline.rs` suite stands up a `HypergraphModule`, runs `DefaultEzphPipeline::entangle_and_anchor`
-with `EzphRequest::demo`, and asserts that a vertex is anchored only when `EzphOutcome::privacy.satisfied`
-remains true. The walkthrough example doubles as a manual test by printing the privacy metrics and
-icosuple payloads that Chronosync would ingest.
+The `tests/pipeline.rs` suite now treats the Halo2/TFHE path as a **heavy** test so that
+`cargo test` stays responsive in CI: export `RUN_HEAVY_EZPH=1` (or the broader
+`RUN_HEAVY_ZK=1`) or build with `--features real_zk` when you want the full pipeline run.
+Without one of those switches the test prints a skip message instead of hanging on the prover.
+
+When enabled, the suite stands up a `HypergraphModule`, runs
+`DefaultEzphPipeline::entangle_and_anchor` with `EzphRequest::demo`, and asserts that a
+vertex is anchored only when `EzphOutcome::privacy.satisfied` remains true. The walkthrough
+example doubles as a manual test by printing the privacy metrics and icosuple payloads
+that Chronosync would ingest.
 
 ## Integration points
 
