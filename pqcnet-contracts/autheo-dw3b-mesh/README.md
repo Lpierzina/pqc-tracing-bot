@@ -131,3 +131,16 @@ filter math, entropy beacons, QTAID proofs, and the obfuscation helpers (payload
 reversal + fingerprint binding). Flip `Dw3bMeshConfig::zk_prover` /
 `privacy.ezph.fhe_evaluator` if you need the deterministic mock backends for
 regression tests.
+
+The first heavy run will emit `config/crypto/halo2.{params,pk,vk}` files (relative to the workspace
+root) so subsequent runs simply load the pinned metadata instead of regenerating the Powers-of-Tau.
+Match Ken’s guidance when wiring Halo2 + Rayon by capping both the test harness and Rayon’s pool:
+
+```
+RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_DW3B=1 \
+  cargo test -p autheo-dw3b-mesh --features real_zk
+```
+
+You can also override the automatic single-threaded Rayon pool that the Halo2 prover now installs by
+setting `AUTHEO_RAYON_THREADS` (or the upstream `RAYON_NUM_THREADS`) before spinning up the heavy
+suite.

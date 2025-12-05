@@ -1,8 +1,9 @@
 use std::{
+    env,
     fs::{self, create_dir_all, File},
-    io::{BufReader, BufWriter},
+    io::{BufReader, BufWriter, Read},
     path::Path,
-    sync::Arc,
+    sync::{Arc, Once},
 };
 
 use blake3::Hasher;
@@ -17,6 +18,7 @@ use halo2_proofs::{
 };
 use halo2curves::bn256::{Fr, G1Affine};
 use rand_core::OsRng;
+use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -75,6 +77,18 @@ pub trait ZkProver: Send + Sync {
     }
 }
 
+/// Generates the Halo2 parameter/proving artifacts on disk without booting the
+/// entire EZPH pipeline. Call this during deployment so subsequent runs can skip
+/// the expensive keygen path.
+pub fn warm_halo2_key_cache(config: &ZkConfig) -> Result<(), ZkError> {
+    Halo2ZkProver::limit_rayon_threads();
+    let k = Halo2ZkProver::derive_k(config);
+    let params = Halo2ZkProver::load_or_create_params(config, k)?;
+    let pk = Halo2ZkProver::build_pk(config, &params)?;
+    Halo2ZkProver::persist_key_material(config, k, &params, &pk)?;
+    Ok(())
+}
+
 pub struct MockCircomProver {
     config: ZkConfig,
 }
@@ -123,6 +137,7 @@ pub struct Halo2ZkProver {
 
 impl Halo2ZkProver {
     pub fn new(config: ZkConfig) -> Result<Self, ZkError> {
+        Self::limit_rayon_threads();
         let k = Self::derive_k(&config);
         let params = Arc::new(Self::load_or_create_params(&config, k)?);
         let pk = Arc::new(Self::build_pk(&config, params.as_ref())?);
@@ -143,6 +158,26 @@ impl Halo2ZkProver {
 }
 
 impl Halo2ZkProver {
+    fn limit_rayon_threads() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            if env::var_os("RAYON_NUM_THREADS").is_some() {
+                return;
+            }
+            let threads = env::var("AUTHEO_RAYON_THREADS")
+                .ok()
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(1);
+            if let Err(err) = ThreadPoolBuilder::new().num_threads(threads).build_global() {
+                eprintln!(
+                    "halo2 prover: failed to configure Rayon thread pool \
+                     (requested {threads} threads): {err}"
+                );
+            }
+        });
+    }
+
     fn ensure_parent(path: &Path) -> Result<(), ZkError> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -160,6 +195,30 @@ impl Halo2ZkProver {
     fn load_or_create_params(config: &ZkConfig, k: u32) -> Result<Params<G1Affine>, ZkError> {
         let path = config.params_path.as_path();
         if path.exists() {
+            let mut encoded_k = [0u8; 4];
+            {
+                let mut header = BufReader::new(File::open(path).map_err(|err| {
+                    ZkError::new(format!(
+                        "failed to open Halo2 params {}: {err}",
+                        path.display()
+                    ))
+                })?);
+                header.read_exact(&mut encoded_k).map_err(|err| {
+                    ZkError::new(format!(
+                        "failed to read Halo2 params header {}: {err}",
+                        path.display()
+                    ))
+                })?;
+            }
+            let existing_k = u32::from_le_bytes(encoded_k);
+            if existing_k != k {
+                return Err(ZkError::new(format!(
+                    "Halo2 params {} were generated with k={} but config requires k={}",
+                    path.display(),
+                    existing_k,
+                    k
+                )));
+            }
             let mut reader = BufReader::new(File::open(path).map_err(|err| {
                 ZkError::new(format!(
                     "failed to open Halo2 params {}: {err}",

@@ -21,6 +21,7 @@ serde_json = "1.0"
 tfhe = { version = "0.7", features = ["shortint"] }
 thiserror = "1.0"
 statrs = "0.16"
+rayon = "1.11"
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -73,6 +73,17 @@ cargo test -p autheo-privacynet --features real_zk
 
 `tests/privacynet.rs` now detects `RUN_HEAVY_PRIVACYNET` / `RUN_HEAVY_ZK` (or the `real_zk` feature) before spinning up the Halo2 prover. That keeps `cargo test` snappy while still making the full proof/FHE walk available on demand. The walkthrough prints the chaos sample, DP sample, privacy budget claim, and the resulting EZPH receipt so you can verify every stage with the Halo2 + TFHE backends (or override them via config when you need deterministic mocks). The example now walks up to the workspace root when resolving `config/privacynet.{toml,yaml}`, so it works whether you invoke it from `pqcnet-contracts/` or the workspace root; set `PRIVACYNET_CONFIG` to point elsewhere.
 
+Just like the DW3B mesh, the first heavy run emits `config/crypto/halo2.{params,pk,vk}` and later runs reuse those artifacts after verifying the on-disk `k` matches the configured soundness. Follow Ken’s “Rayon cap” guidance when you opt into `real_zk`:
+
+```
+RUST_TEST_THREADS=1 RAYON_NUM_THREADS=1 RUN_HEAVY_PRIVACYNET=1 \
+  cargo test -p autheo-privacynet --features real_zk
+```
+
+`autheo-pqcnet-5dezph` automatically installs a single-threaded Rayon pool (unless you override
+`RAYON_NUM_THREADS` or `AUTHEO_RAYON_THREADS`), so the Halo2 prover won’t stall heavy tests on
+resource-constrained runners.
+
 ## Extending / integrating
 
 - **Bring your own ZK or FHE** by implementing the traits exported from `autheo-pqcnet-5dezph` and wiring them into `PrivacyNetConfig::ezph` (via `zk_prover` / `fhe_evaluator`) and `FheLayerConfig`.
