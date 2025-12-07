@@ -349,6 +349,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "autheo-pqcnet-sphincs"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "digest",
+ "oqs",
+ "spin",
+]
+
+[[package]]
 name = "autheo-pqcnet-tuplechain"
 version = "0.1.0"
 dependencies = [

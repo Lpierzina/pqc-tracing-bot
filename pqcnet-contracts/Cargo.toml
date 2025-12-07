@@ -3,6 +3,7 @@ members = [
     "autheo-mlkem-kyber",
     "autheo-mldsa-dilithium",
     "autheo-mldsa-falcon",
+    "autheo-pqcnet-sphincs",
     "autheo-pqc-core",
     "autheo-pqc-wasm",
     "autheo-pqcnet-tuplechain",

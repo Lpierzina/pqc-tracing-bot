@@ -1,11 +1,12 @@
 # PQCNet Suite
 
-**PQCNet Suite** is Autheo’s full production PQCNet enclave: Kyber/Dilithium/Falcon engines, WASM ABI, TupleChain → Icosuple → Chronosync → 5D-QEH data layers, and runtime services such as QSTP, QACE, QFKH, QRNG, telemetry, and relayers.
+**PQCNet Suite** is Autheo’s full production PQCNet enclave: Kyber/Dilithium/Falcon/SPHINCS+ engines, WASM ABI, TupleChain → Icosuple → Chronosync → 5D-QEH data layers, and runtime services such as QSTP, QACE, QFKH, QRNG, telemetry, and relayers.
 
 It provides:
 
 - **ML-KEM (Kyber)** for key encapsulation and session key establishment  
 - **ML-DSA (Dilithium)** for digital signatures and batch verification  
+- **SLH-DSA (SPHINCS+)** via `autheo-pqcnet-sphincs` for hash-based redundancy and chaos co-signatures  
 - **Rotating, threshold-protected KEM key management** (e.g. *t* = 3, *n* = 5)  
 - **Atomic sign-and-exchange flows** for securing key exchanges  
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
@@ -112,6 +113,7 @@ subgraph Engines["PQC Engines & Entropy"]
   Kyber["autheo-mlkem-kyber"]
   Dilithium["autheo-mldsa-dilithium"]
   Falcon["autheo-mldsa-falcon"]
+        Sphincs["autheo-pqcnet-sphincs"]
   EntropyWasm["autheo-entropy-wasm"]
   EntropyCore["autheo-entropy-core"]
   QRNG["autheo-pqcnet-qrng"]
@@ -146,7 +148,7 @@ subgraph Shared["Shared Assets"]
 end
 subgraph Flow["Cross-Layer Flow Steps"]
   Flow1["(1) DID Auth Request\n(AIPP profiles + proofs)"]
-  Flow2["(2) PQC Handshake Envelope\n(QFKH-ready Kyber/Dilithium)"]
+  Flow2["(2) PQC Handshake Envelope\n(QFKH-ready Kyber/Dilithium + SPHINCS+)"]
   Flow3["(3) QSTP Tunnel & Route Plan\n(QACE-mutable mesh)"]
   Flow4["(4) Tuple Receipt & Hypergraph Anchor\n(TupleChain → Chronosync → 5D-QEH)"]
   Flow5["(5) Evidence & Recovery Hooks\n(QS-DAG + WAVEN attestations)"]
@@ -172,6 +174,7 @@ Dw3bMesh --> Ezph
 Kyber --> PqcCore
 Dilithium --> PqcCore
 Falcon --> PqcCore
+    Sphincs --> PqcCore
 EntropyCore --> EntropyWasm
 EntropyCore --> PqcEntropy
 EntropyWasm --> PqcEntropy
@@ -245,7 +248,7 @@ Flow5 --> AIPRec
 classDef completed fill:#bbf7d0,stroke:#15803d,stroke-width:1px;
 classDef external fill:#e5e7eb,stroke:#94a3b8,stroke-dasharray:4 3;
 classDef flowStep fill:#dbeafe,stroke:#1d4ed8,stroke-dasharray:4 3;
-class Kyber,Dilithium,Falcon,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence,PrivacyNet,PrivacyOverlay,Dw3bMesh,Dw3bOverlay,Ezph completed;
+class Kyber,Dilithium,Falcon,Sphincs,EntropyWasm,EntropyCore,QRNG,PqcEntropy,PqcCore,PqcWasm,QFkh,Crypto,Qstp,QsDag,Sentry,Net,Relayer,Telemetry,QACE,Tuplechain,Icosuple,Chrono,FiveDqeh,Docs,Protos,Configs,WavenEvidence,PrivacyNet,PrivacyOverlay,Dw3bMesh,Dw3bOverlay,Ezph completed;
 class Wallet,DIDCore,AIPId,AIPKeys,AIPAuth,AIPRec,AIPOverlays,AIPComms external;
 class Flow1,Flow2,Flow3,Flow4,Flow5 flowStep;
 ```
@@ -253,18 +256,25 @@ class Flow1,Flow2,Flow3,Flow4,Flow5 flowStep;
 **Flow guide**
 
 - `(1) DID auth request` – wallets package DID profiles, recovery data, and channel metadata before handing them to the AIPP overlays, which now explicitly flow into `autheo-privacynet-network-overlay`.
-- `(2) PQC handshake envelope` – AIPP identity/auth modules trigger the Kyber/Dilithium + QFKH ceremony inside `autheo-pqc-core`/`autheo-pqc-wasm` and feed the resulting budget + policy hints into `autheo-privacynet`.
+- `(2) PQC handshake envelope` – AIPP identity/auth modules trigger the Kyber/Dilithium + QFKH ceremony (with optional SPHINCS+ co-signatures) inside `autheo-pqc-core`/`autheo-pqc-wasm` and feed the resulting budget + policy hints into `autheo-privacynet`.
 - `(3) QSTP tunnel & route plan` – the handshake output hydrates QSTP tunnels, networking overlays, QACE, and the DW3B facade (`autheo-dw3b-overlay` + `autheo-dw3b-mesh`) so meshes get a mutable but encrypted transport plan.
 - `(4) Tuple receipt & hypergraph anchor` – QSTP payloads, relayers, and DW3B proofs commit tuple receipts that Chronosync inflates into 5D-QEH anchors, with `autheo-pqcnet-5dezph` (5D-EZPH) binding the privacy evidence to each vertex.
 - `(5) Evidence & recovery hooks` – QS-DAG, telemetry, and WAVEN evidence feed recovery/social-recovery policies so DID controllers can prove every hop and cite both the privacy and hypergraph overlays.
 ## Production Enclave Snapshot
 
 - **Entropy + QRNG** – `autheo-entropy-core` budgets hardware feeds into `autheo-entropy-wasm`, while `pqcnet-entropy` and `autheo-pqcnet-qrng` mix host entropy, photon/vacuum sources, and PQC envelopes for the rest of the stack.
-- **PQC engines** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` provide deterministic ML-KEM/ML-DSA adapters that can be swapped for audited engines.
+- **PQC engines** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, and `autheo-pqcnet-sphincs` provide deterministic ML-KEM/ML-DSA/SLH-DSA adapters that can be swapped for audited engines.
 - **Core enclave + ABI** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the PQC contract logic, WASM surface, and Quantum-Forward Key Hopping controller that feed every tunnel.
 - **Tuple → Hypergraph pipeline** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` form the production data plane before anchoring in `pqcnet-qs-dag`.
 - **Runtime services** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` operationalize tunnels, routing, relays, and observability.
 - **Reference assets** – `configs/`, `docs/`, `protos/`, and `wazero-harness/` round out deployments with reproducible config, diagrams, schemas, and the wazero-based integration harness.
+
+### Hash-Based Redundancy & Chaos Signatures
+
+- `autheo-pqcnet-sphincs` is wired like the other PQC engines: deterministic by default for `autheo-pqc-wasm`, liboqs-backed when `--features liboqs` is enabled so validators get the authoritative SLH-DSA SPHINCS+ SHAKE parameter sets (128s/f, 192s/f, 256s/f).
+- `autheo-pqc-core::signatures::SignatureManager` can now dual-register signers (Dilithium + SPHINCS+) so every `pqc_handshake` response emits both lattice and hash-based transcripts. Hosts simply instantiate two `MlDsaEngine`s and persist both signatures inside the QSTP metadata.
+- `pqcnet-qace` and `pqcnet-qs-dag` accept the additional signature blob and expose policy hooks so Ken’s chaos routes or sentries can enforce “require both” or “fallback to SPHINCS+ only” per tunnel while Dilithium/Falcon engines are upgraded.
+- `pqcnet-telemetry` and `pqcnet-relayer` propagate the dual-signature status bits so downstream PrivacyNet / DW3B overlays (plus regulators) can prove that every chaos combination kept a hash-based guarantee even if a lattice exploit is being mitigated.
 
 ## CHSH Sandbox & 5D-QEH Validation
 
@@ -359,10 +369,11 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 - `autheo-mlkem-kyber/` – deterministic Kyber (ML-KEM-768) adapter + browser WASM demo artifacts.
 - `autheo-mldsa-dilithium/` – deterministic Dilithium3 (ML-DSA-65) adapter + demo artifacts.
 - `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
+- `autheo-pqcnet-sphincs/` – FIPS 205 SLH-DSA SPHINCS+ adapter with liboqs-backed SHAKE parameter sets for native nodes plus deterministic WASM fallbacks.
 - `autheo-entropy-wasm/` – standalone WASM module that responds to `autheo_host_entropy` imports for validators, relayers, or RPi entropy nodes.
 - `autheo-entropy-core/` – validator/relayer entropy control plane that budgets HSM/RNG feeds and backs the `autheo-entropy-wasm` + `pqcnet-entropy` pipeline with real hardware data.
 - `pqcnet-entropy/` – no_std entropy trait + host import bridge used by every PQC module, with deterministic dev-only sources for tests.
-- `autheo-pqcnet-qrng/` – quantum RNG harness that mixes photon/vacuum telemetry, Shake256 whitening, and Kyber/Dilithium envelopes (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
+- `autheo-pqcnet-qrng/` – quantum RNG harness that mixes photon/vacuum telemetry, Shake256 whitening, and Kyber/Dilithium/SPHINCS+ envelopes (`cargo run -p autheo-pqcnet-qrng --example qrng_demo`).
 
 ### Privacy meshes & overlays
 
@@ -1018,6 +1029,7 @@ flowchart LR
         Kyber["autheo-mlkem-kyber"]
         Dilithium["autheo-mldsa-dilithium"]
         Falcon["autheo-mldsa-falcon"]
+        Sphincs2["autheo-pqcnet-sphincs"]
         EntropyCore["autheo-entropy-core"]
         EntropyWasm["autheo-entropy-wasm"]
         Qrng["autheo-pqcnet-qrng"]
@@ -1058,6 +1070,7 @@ flowchart LR
     Kyber --> CoreCrate
     Dilithium --> CoreCrate
     Falcon --> CoreCrate
+    Sphincs2 --> CoreCrate
     Qrng --> EntropyCore
     EntropyCore --> EntropyWasm
     EntropyCore --> EntropyTrait
@@ -1099,7 +1112,7 @@ flowchart LR
 
 #### Component roles
 
-- **PQC engines & entropy** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, `autheo-entropy-core`, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` deliver Kyber/Dilithium/Falcon fixtures plus hardware/QRNG entropy to every module that needs randomness.
+- **PQC engines & entropy** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, `autheo-pqcnet-sphincs`, `autheo-entropy-core`, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` deliver Kyber/Dilithium/Falcon/SPHINCS+ fixtures plus hardware/QRNG entropy to every module that needs randomness.
 - **Autheo PQC enclave** – `autheo-pqc-core`, `autheo-pqc-wasm`, and `pqcnet-qfkh` expose the WASM ABI, contract glue, and Quantum-Forward Key Hopping controller that feed QSTP tunnels and TupleChain receipts.
 - **Tuple → Hypergraph data plane** – `autheo-pqcnet-tuplechain`, `autheo-pqcnet-icosuple`, `autheo-pqcnet-chronosync`, and `autheo-pqcnet-5dqeh` inflate tuples into hyper-tuples, run Chronosync elections, and anchor the resulting vertices inside `pqcnet-qs-dag`.
 - **Runtime & ops** – `pqcnet-qstp`, `pqcnet-qace`, `pqcnet-crypto`, `pqcnet-networking`, `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` keep tunnels, routing guards, relayers, telemetry feeds, and watcher quorums aligned with the PQC anchors.
@@ -1107,8 +1120,8 @@ flowchart LR
 
 #### Flow walkthrough
 
-1. **Entropy & QRNG intake** – `autheo-entropy-core` budgets validator HSM, `/dev/hwrng`, and QRNG feeds, `autheo-entropy-wasm` serves the WASM ABI, and `pqcnet-entropy` presents the `HostEntropySource` used by every crate, so Kyber/Dilithium keys, TupleChain pruning, and Chronosync elections all share the same randomness budget exposed by `autheo-pqcnet-qrng`.
-2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, and `autheo-mldsa-falcon` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule while `autheo-privacynet-network-overlay` captures the DID/AIPP context for the downstream privacy pipelines.
+1. **Entropy & QRNG intake** – `autheo-entropy-core` budgets validator HSM, `/dev/hwrng`, and QRNG feeds, `autheo-entropy-wasm` serves the WASM ABI, and `pqcnet-entropy` presents the `HostEntropySource` used by every crate, so Kyber/Dilithium/SPHINCS+ keys, TupleChain pruning, and Chronosync elections all share the same randomness budget exposed by `autheo-pqcnet-qrng`.
+2. **PQC handshake** – `autheo-mlkem-kyber`, `autheo-mldsa-dilithium`, `autheo-mldsa-falcon`, and `autheo-pqcnet-sphincs` feed `autheo-pqc-core`, which surfaces `pqc_handshake` via `autheo-pqc-wasm`; `pqcnet-qfkh` keeps epoch-based KEM material ahead of schedule while `autheo-privacynet-network-overlay` captures the DID/AIPP context for the downstream privacy pipelines.
 3. **Privacy overlays + tunnels** – `autheo-privacynet` hydrates DP/FHE jobs, `autheo-dw3b-mesh` + `autheo-dw3b-overlay` turn them into DW3B proofs, `autheo-pqcnet-5dezph` binds the entangled metadata, and `pqcnet-crypto` feeds the whole envelope into `pqcnet-qstp` so the resulting tunnels inherit QFKH hops and TupleChain pointers for downstream auditors.
 4. **Tuple receipts** – `autheo-pqcnet-tuplechain` writes canonical receipts that `autheo-pqcnet-icosuple` inflates into hyper-tuples before Chronosync consumes them.
 5. **Chronosync + 5D-QEH** – `autheo-pqcnet-chronosync` applies Temporal Weight math, pumps QRNG entropy into `autheo-pqcnet-5dqeh`, lets `autheo-pqcnet-5dezph` attach the DW3B entanglement evidence, and anchors each vertex through `pqcnet-qs-dag`.
@@ -1118,7 +1131,7 @@ flowchart LR
 
 Key takeaways:
 
-1. **Engines + entropy drive the enclave** – Kyber/Dilithium/Falcon adapters, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` keep `autheo-pqc-core`/`autheo-pqc-wasm` deterministic until you swap in audited liboqs engines.
+1. **Engines + entropy drive the enclave** – Kyber/Dilithium/Falcon/SPHINCS+ adapters, `autheo-entropy-wasm`, `autheo-pqcnet-qrng`, and `pqcnet-entropy` keep `autheo-pqc-core`/`autheo-pqc-wasm` deterministic until you swap in audited liboqs engines.
 2. **TupleChain → Icosuple → Chronosync → 5D-QEH → `pqcnet-qs-dag`** – the production data path anchors every PQC envelope before it leaves the enclave, reusing the same receipts that validators run today.
 3. **Runtime controllers stay coordinated** – `pqcnet-qstp`, `pqcnet-qfkh`, `pqcnet-qace`, `pqcnet-crypto`, and `pqcnet-networking` keep tunnels live while `pqcnet-relayer`, `pqcnet-telemetry`, and `pqcnet-sentry` expose ops signals.
 4. **Configs, docs, and protos lock in reproducibility** – the artifacts under `configs/`, `docs/`, and `protos/` (plus the wazero harness) make the full PQCNet suite deployable as an enclave on validators, relayers, and lab clusters.
