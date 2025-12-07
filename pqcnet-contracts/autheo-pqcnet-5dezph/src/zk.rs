@@ -463,7 +463,6 @@ impl Circuit<Fr> for StatementEqualityCircuit {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Halo2Error> {
-        let value = self.statement_hash.ok_or(Halo2Error::Synthesis)?;
         let assigned = layouter.assign_region(
             || "load statement hash",
             |mut region| {
@@ -471,7 +470,11 @@ impl Circuit<Fr> for StatementEqualityCircuit {
                     || "statement hash",
                     config.advice,
                     0,
-                    || Value::known(value),
+                    || {
+                        self.statement_hash
+                            .map(Value::known)
+                            .unwrap_or_else(Value::unknown)
+                    },
                 )
             },
         )?;
