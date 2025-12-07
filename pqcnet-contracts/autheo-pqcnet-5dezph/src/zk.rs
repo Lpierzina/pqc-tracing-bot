@@ -4,6 +4,7 @@ use std::{
     io::{BufReader, BufWriter, Read},
     path::Path,
     sync::{Arc, Once},
+    time::Instant,
 };
 
 use blake3::Hasher;
@@ -81,12 +82,60 @@ pub trait ZkProver: Send + Sync {
 /// entire EZPH pipeline. Call this during deployment so subsequent runs can skip
 /// the expensive keygen path.
 pub fn warm_halo2_key_cache(config: &ZkConfig) -> Result<(), ZkError> {
+    println!(
+        "[halo2-cache] priming circuit '{}' (curve={}, soundness={:.2e})",
+        config.circuit_id, config.curve, config.soundness
+    );
+    println!(
+        "[halo2-cache] params={}, pk={}, vk={}",
+        config.params_path.display(),
+        config.proving_key_path.display(),
+        config.verifying_key_path.display()
+    );
+    if let Ok(raw) = env::var("AUTHEO_RAYON_THREADS") {
+        println!("[halo2-cache] AUTHEO_RAYON_THREADS={raw}");
+    }
+    if let Ok(raw) = env::var("RAYON_NUM_THREADS") {
+        println!("[halo2-cache] RAYON_NUM_THREADS={raw}");
+    }
     Halo2ZkProver::limit_rayon_threads();
     let k = Halo2ZkProver::derive_k(config);
-    let params = Halo2ZkProver::load_or_create_params(config, k)?;
-    let pk = Halo2ZkProver::build_pk(config, &params)?;
-    Halo2ZkProver::persist_key_material(config, k, &params, &pk)?;
+    println!("[halo2-cache] derived k={k} from target soundness.");
+    let params = log_phase("load/create Halo2 params", || {
+        Halo2ZkProver::load_or_create_params(config, k)
+    })?;
+    let pk = log_phase("build Halo2 proving key", || {
+        Halo2ZkProver::build_pk(config, &params)
+    })?;
+    log_phase("persist Halo2 key metadata", || {
+        Halo2ZkProver::persist_key_material(config, k, &params, &pk)
+    })?;
+    println!("[halo2-cache] warmup complete (params_bits=k={k}); artifacts persisted.");
     Ok(())
+}
+
+fn log_phase<T, F>(label: &str, action: F) -> Result<T, ZkError>
+where
+    F: FnOnce() -> Result<T, ZkError>,
+{
+    println!("[halo2-cache] >> {label}");
+    let start = Instant::now();
+    match action() {
+        Ok(value) => {
+            println!(
+                "[halo2-cache] << {label} complete in {:.2?}",
+                start.elapsed()
+            );
+            Ok(value)
+        }
+        Err(err) => {
+            eprintln!(
+                "[halo2-cache] !! {label} failed after {:.2?}: {err}",
+                start.elapsed()
+            );
+            Err(err)
+        }
+    }
 }
 
 pub struct MockCircomProver {
