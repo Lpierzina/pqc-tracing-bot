@@ -1,5 +1,6 @@
 use crate::dsa::{MlDsa, MlDsaEngine, MlDsaKeyPair};
 use crate::error::{PqcError, PqcResult};
+use crate::fallback::{FallbackDsa, FallbackKem, FallbackSwitch};
 use crate::kem::{MlKem, MlKemEncapsulation, MlKemEngine, MlKemKeyPair};
 use crate::key_manager::{KemKeyState, KemRotation, KeyManager, ThresholdPolicy};
 use crate::secret_sharing::{
@@ -8,6 +9,8 @@ use crate::secret_sharing::{
 use crate::signatures::{DsaKeyState, SignatureManager};
 use crate::types::{Bytes, SecurityLevel, TimestampMs};
 use alloc::boxed::Box;
+use autheo_pqcnet_hqc::{HqcAlgorithm, HqcError, HqcLevel, HqcLibOqs};
+use autheo_pqcnet_sphincs::{SphincsPlusError, SphincsPlusLibOqs, SphincsPlusSecurityLevel};
 use oqs::{kem, sig};
 use std::sync::Once;
 
@@ -70,6 +73,8 @@ pub struct LibOqsConfig {
     pub dsa_algorithm: LibOqsDsaAlgorithm,
     pub threshold: ThresholdPolicy,
     pub rotation_interval_ms: u64,
+    pub hqc_backup: Option<HqcFallbackConfig>,
+    pub sphincs_backup: Option<SphincsFallbackConfig>,
 }
 
 impl Default for LibOqsConfig {
@@ -79,6 +84,38 @@ impl Default for LibOqsConfig {
             dsa_algorithm: LibOqsDsaAlgorithm::MlDsa65,
             threshold: ThresholdPolicy { t: 3, n: 5 },
             rotation_interval_ms: 300_000,
+            hqc_backup: Some(HqcFallbackConfig::default()),
+            sphincs_backup: Some(SphincsFallbackConfig::default()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HqcFallbackConfig {
+    pub level: HqcLevel,
+    pub auto_failover: bool,
+}
+
+impl Default for HqcFallbackConfig {
+    fn default() -> Self {
+        Self {
+            level: HqcLevel::Hqc256,
+            auto_failover: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SphincsFallbackConfig {
+    pub level: SphincsPlusSecurityLevel,
+    pub auto_failover: bool,
+}
+
+impl Default for SphincsFallbackConfig {
+    fn default() -> Self {
+        Self {
+            level: SphincsPlusSecurityLevel::Shake256s,
+            auto_failover: true,
         }
     }
 }
@@ -89,6 +126,8 @@ pub struct LibOqsProvider {
     signature_manager: SignatureManager,
     signing_key: Option<ActiveSigningKey>,
     config: LibOqsConfig,
+    kem_switch: Option<FallbackSwitch>,
+    dsa_switch: Option<FallbackSwitch>,
 }
 
 struct ActiveSigningKey {
@@ -126,21 +165,48 @@ impl LibOqsProvider {
     pub fn new(config: LibOqsConfig) -> PqcResult<Self> {
         ensure_liboqs_init();
 
-        let kem = Box::new(LibOqsKemImpl::new(config.kem_algorithm));
-        let dsa = Box::new(LibOqsDsaImpl::new(config.dsa_algorithm));
+        let (kem_box, kem_switch) = match &config.hqc_backup {
+            Some(backup) => {
+                let primary: Box<dyn MlKem> = Box::new(LibOqsKemImpl::new(config.kem_algorithm));
+                let backup_engine: Box<dyn MlKem> = Box::new(HqcKemAdapter::new(backup.level));
+                let (fallback, switch) =
+                    FallbackKem::new(primary, backup_engine, backup.auto_failover);
+                (Box::new(fallback) as Box<dyn MlKem>, Some(switch))
+            }
+            None => (
+                Box::new(LibOqsKemImpl::new(config.kem_algorithm)) as Box<dyn MlKem>,
+                None,
+            ),
+        };
+
+        let (dsa_box, dsa_switch) = match &config.sphincs_backup {
+            Some(backup) => {
+                let primary: Box<dyn MlDsa> = Box::new(LibOqsDsaImpl::new(config.dsa_algorithm));
+                let backup_engine: Box<dyn MlDsa> = Box::new(SphincsDsaAdapter::new(backup.level));
+                let (fallback, switch) =
+                    FallbackDsa::new(primary, backup_engine, backup.auto_failover);
+                (Box::new(fallback) as Box<dyn MlDsa>, Some(switch))
+            }
+            None => (
+                Box::new(LibOqsDsaImpl::new(config.dsa_algorithm)) as Box<dyn MlDsa>,
+                None,
+            ),
+        };
 
         let key_manager = KeyManager::new(
-            MlKemEngine::new(kem),
+            MlKemEngine::new(kem_box),
             config.threshold,
             config.rotation_interval_ms,
         );
-        let signature_manager = SignatureManager::new(MlDsaEngine::new(dsa));
+        let signature_manager = SignatureManager::new(MlDsaEngine::new(dsa_box));
 
         Ok(Self {
             key_manager,
             signature_manager,
             signing_key: None,
             config,
+            kem_switch,
+            dsa_switch,
         })
     }
 
@@ -230,6 +296,50 @@ impl LibOqsProvider {
     pub fn combine_kem_secret(&self, shares: &[SecretShare]) -> PqcResult<RecoveredSecret> {
         combine_secret(shares)
     }
+
+    /// Force HQC backup usage for all future ML-KEM operations.
+    pub fn force_hqc_backup(&self) {
+        if let Some(switch) = &self.kem_switch {
+            switch.force_backup();
+        }
+    }
+
+    /// Return to the Kyber primary ML-KEM engine.
+    pub fn use_kyber_primary(&self) {
+        if let Some(switch) = &self.kem_switch {
+            switch.use_primary();
+        }
+    }
+
+    /// Report whether HQC backup mode is active.
+    pub fn is_using_hqc_backup(&self) -> bool {
+        self.kem_switch
+            .as_ref()
+            .map(|s| s.is_forcing_backup())
+            .unwrap_or(false)
+    }
+
+    /// Force SPHINCS+ backup usage for ML-DSA operations.
+    pub fn force_sphincs_backup(&self) {
+        if let Some(switch) = &self.dsa_switch {
+            switch.force_backup();
+        }
+    }
+
+    /// Return to the Dilithium primary ML-DSA engine.
+    pub fn use_dilithium_primary(&self) {
+        if let Some(switch) = &self.dsa_switch {
+            switch.use_primary();
+        }
+    }
+
+    /// Report whether SPHINCS+ backup mode is active.
+    pub fn is_using_sphincs_backup(&self) -> bool {
+        self.dsa_switch
+            .as_ref()
+            .map(|s| s.is_forcing_backup())
+            .unwrap_or(false)
+    }
 }
 
 struct LibOqsKemImpl {
@@ -292,6 +402,56 @@ impl MlKem for LibOqsKemImpl {
     }
 }
 
+struct HqcKemAdapter {
+    engine: HqcLibOqs,
+    level: HqcLevel,
+}
+
+impl HqcKemAdapter {
+    fn new(level: HqcLevel) -> Self {
+        let algorithm = hqc_algorithm(level);
+        Self {
+            engine: HqcLibOqs::new(algorithm),
+            level,
+        }
+    }
+}
+
+impl MlKem for HqcKemAdapter {
+    fn level(&self) -> SecurityLevel {
+        map_hqc_level(self.level)
+    }
+
+    fn keygen(&self) -> PqcResult<MlKemKeyPair> {
+        let pair = self
+            .engine
+            .keypair()
+            .map_err(|err| map_hqc_error("hqc::keypair", err))?;
+        Ok(MlKemKeyPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+            level: map_hqc_level(pair.level),
+        })
+    }
+
+    fn encapsulate(&self, public_key: &[u8]) -> PqcResult<MlKemEncapsulation> {
+        let encapsulation = self
+            .engine
+            .encapsulate(public_key)
+            .map_err(|err| map_hqc_error("hqc::encapsulate", err))?;
+        Ok(MlKemEncapsulation {
+            ciphertext: encapsulation.ciphertext,
+            shared_secret: encapsulation.shared_secret,
+        })
+    }
+
+    fn decapsulate(&self, secret_key: &[u8], ciphertext: &[u8]) -> PqcResult<Bytes> {
+        self.engine
+            .decapsulate(secret_key, ciphertext)
+            .map_err(|err| map_hqc_error("hqc::decapsulate", err))
+    }
+}
+
 struct LibOqsDsaImpl {
     algorithm: LibOqsDsaAlgorithm,
 }
@@ -347,6 +507,50 @@ impl MlDsa for LibOqsDsaImpl {
     }
 }
 
+struct SphincsDsaAdapter {
+    engine: SphincsPlusLibOqs,
+    level: SphincsPlusSecurityLevel,
+}
+
+impl SphincsDsaAdapter {
+    fn new(level: SphincsPlusSecurityLevel) -> Self {
+        Self {
+            engine: SphincsPlusLibOqs::new(level),
+            level,
+        }
+    }
+}
+
+impl MlDsa for SphincsDsaAdapter {
+    fn level(&self) -> SecurityLevel {
+        map_sphincs_level(self.level)
+    }
+
+    fn keygen(&self) -> PqcResult<MlDsaKeyPair> {
+        let pair = self
+            .engine
+            .keypair()
+            .map_err(|err| map_sphincs_error("sphincs::keypair", err))?;
+        Ok(MlDsaKeyPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+            level: map_sphincs_level(pair.level),
+        })
+    }
+
+    fn sign(&self, sk: &[u8], message: &[u8]) -> PqcResult<Bytes> {
+        self.engine
+            .sign(sk, message)
+            .map_err(|err| map_sphincs_error("sphincs::sign", err))
+    }
+
+    fn verify(&self, pk: &[u8], message: &[u8], signature: &[u8]) -> PqcResult<()> {
+        self.engine
+            .verify(pk, message, signature)
+            .map_err(|err| map_sphincs_error("sphincs::verify", err))
+    }
+}
+
 fn ensure_liboqs_init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
@@ -356,4 +560,107 @@ fn ensure_liboqs_init() {
 
 fn map_oqs_error(context: &'static str, err: oqs::Error) -> PqcError {
     PqcError::IntegrationError(format!("{context}: {err}"))
+}
+
+fn hqc_algorithm(level: HqcLevel) -> HqcAlgorithm {
+    match level {
+        HqcLevel::Hqc128 => HqcAlgorithm::Hqc128,
+        HqcLevel::Hqc192 => HqcAlgorithm::Hqc192,
+        HqcLevel::Hqc256 => HqcAlgorithm::Hqc256,
+    }
+}
+
+fn map_hqc_level(level: HqcLevel) -> SecurityLevel {
+    match level {
+        HqcLevel::Hqc128 => SecurityLevel::MlKem128,
+        HqcLevel::Hqc192 => SecurityLevel::MlKem192,
+        HqcLevel::Hqc256 => SecurityLevel::MlKem256,
+    }
+}
+
+fn map_hqc_error(context: &'static str, err: HqcError) -> PqcError {
+    match err {
+        HqcError::InvalidInput(msg) => PqcError::InvalidInput(msg),
+        HqcError::IntegrationError(ctx, detail) => {
+            PqcError::IntegrationError(format!("{context}:{ctx}: {detail}"))
+        }
+    }
+}
+
+fn map_sphincs_level(level: SphincsPlusSecurityLevel) -> SecurityLevel {
+    match level {
+        SphincsPlusSecurityLevel::Shake128s | SphincsPlusSecurityLevel::Shake128f => {
+            SecurityLevel::MlDsa128
+        }
+        SphincsPlusSecurityLevel::Shake192s | SphincsPlusSecurityLevel::Shake192f => {
+            SecurityLevel::MlDsa192
+        }
+        SphincsPlusSecurityLevel::Shake256s | SphincsPlusSecurityLevel::Shake256f => {
+            SecurityLevel::MlDsa256
+        }
+    }
+}
+
+fn map_sphincs_error(context: &'static str, err: SphincsPlusError) -> PqcError {
+    match err {
+        SphincsPlusError::InvalidInput(msg) => PqcError::InvalidInput(msg),
+        SphincsPlusError::VerifyFailed => PqcError::VerifyFailed,
+        SphincsPlusError::IntegrationError(ctx, detail) => {
+            PqcError::IntegrationError(format!("{context}:{ctx}: {detail}"))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::SecurityLevel;
+
+    #[test]
+    fn kyber_failover_switches_to_hqc_backup() {
+        let mut config = LibOqsConfig::default();
+        config.sphincs_backup = None;
+        config.hqc_backup = Some(HqcFallbackConfig {
+            level: HqcLevel::Hqc256,
+            auto_failover: false,
+        });
+        let mut provider = LibOqsProvider::new(config).expect("provider");
+
+        let primary = provider.keygen(1_700_000_000_000).expect("keygen");
+        assert_eq!(primary.kem_keypair.level, SecurityLevel::MlKem192);
+        assert!(!provider.is_using_hqc_backup());
+
+        provider.force_hqc_backup();
+        assert!(provider.is_using_hqc_backup());
+
+        let backup = provider.keygen(1_700_000_050_000).expect("backup keygen");
+        assert_eq!(backup.kem_keypair.level, SecurityLevel::MlKem256);
+
+        provider.use_kyber_primary();
+        assert!(!provider.is_using_hqc_backup());
+    }
+
+    #[test]
+    fn dilithium_failover_switches_to_sphincs_backup() {
+        let mut config = LibOqsConfig::default();
+        config.hqc_backup = None;
+        config.sphincs_backup = Some(SphincsFallbackConfig {
+            level: SphincsPlusSecurityLevel::Shake256s,
+            auto_failover: false,
+        });
+        let mut provider = LibOqsProvider::new(config).expect("provider");
+
+        provider.force_sphincs_backup();
+        assert!(provider.is_using_sphincs_backup());
+
+        let artifacts = provider.keygen(1_700_000_100_000).expect("keygen");
+        assert_eq!(artifacts.signing_keypair.level, SecurityLevel::MlDsa256);
+
+        let message = b"fallback signature";
+        let signature = provider.sign(message).expect("sign");
+        provider.verify(message, &signature).expect("verify");
+
+        provider.use_dilithium_primary();
+        assert!(!provider.is_using_sphincs_backup());
+    }
 }

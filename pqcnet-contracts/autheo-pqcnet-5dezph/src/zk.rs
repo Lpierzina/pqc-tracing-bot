@@ -238,9 +238,7 @@ impl Halo2ZkProver {
         match env::var(HALO2_PARAMS_BITS_ENV) {
             Ok(raw) => match raw.parse::<u32>() {
                 Ok(value) if (HALO2_MIN_K..=HALO2_MAX_K).contains(&value) => {
-                    println!(
-                        "[halo2-cache] using k override {value} from {HALO2_PARAMS_BITS_ENV}"
-                    );
+                    println!("[halo2-cache] using k override {value} from {HALO2_PARAMS_BITS_ENV}");
                     Some(value)
                 }
                 Ok(value) => {
@@ -251,9 +249,7 @@ impl Halo2ZkProver {
                     None
                 }
                 Err(err) => {
-                    eprintln!(
-                        "[halo2-cache] ignoring {HALO2_PARAMS_BITS_ENV}={raw}: {err}"
-                    );
+                    eprintln!("[halo2-cache] ignoring {HALO2_PARAMS_BITS_ENV}={raw}: {err}");
                     None
                 }
             },

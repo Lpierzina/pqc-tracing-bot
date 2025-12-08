@@ -7,6 +7,8 @@ It provides:
 - **ML-KEM (Kyber)** for key encapsulation and session key establishment  
 - **ML-DSA (Dilithium)** for digital signatures and batch verification  
 - **SLH-DSA (SPHINCS+)** via `autheo-pqcnet-sphincs` for hash-based redundancy and chaos co-signatures  
+- **HQC failover (`autheo-pqcnet-hqc`)** providing a production-only backup KEM path (liboqs HQC-128/192/256) whenever Kyber/ML-KEM needs to be paused or audited  
+- **SPHINCS+ backup for Dilithium** – `autheo-pqc-core::liboqs::LibOqsProvider` can force SPHINCS+ (Shake-based) signatures whenever ML-DSA engines are in maintenance, keeping transcript signing live without rewriting the handshake logic  
 - **Rotating, threshold-protected KEM key management** (e.g. *t* = 3, *n* = 5)  
 - **Atomic sign-and-exchange flows** for securing key exchanges  
 - **QS-DAG integration hooks** for anchoring PQC signatures in the DAG  
@@ -276,6 +278,12 @@ class Flow1,Flow2,Flow3,Flow4,Flow5 flowStep;
 - `pqcnet-qace` and `pqcnet-qs-dag` accept the additional signature blob and expose policy hooks so Ken’s chaos routes or sentries can enforce “require both” or “fallback to SPHINCS+ only” per tunnel while Dilithium/Falcon engines are upgraded.
 - `pqcnet-telemetry` and `pqcnet-relayer` propagate the dual-signature status bits so downstream PrivacyNet / DW3B overlays (plus regulators) can prove that every chaos combination kept a hash-based guarantee even if a lattice exploit is being mitigated.
 
+### PQC Engine Fallback Controls
+
+- `autheo-pqc-core::liboqs::LibOqsProvider` now wraps Kyber with an HQC backup (`autheo-pqcnet-hqc`). Call `force_hqc_backup()` whenever ops needs to pause ML-KEM; `keygen()` immediately emits HQC-256 material and the new tests (`cargo test -p autheo-pqc-core --features liboqs liboqs::tests::kyber_failover_switches_to_hqc_backup`) prove the failover path.
+- Dilithium can equally fall back to SPHINCS+ via `force_sphincs_backup()`. The provider exposes `is_using_sphincs_backup()` so relayers, sentries, and auditors can attest when SPHINCS+ took over, and `liboqs::tests::dilithium_failover_switches_to_sphincs_backup` runs the full sign/verify loop on the backup path.
+- Both fallback controls default to enabled (auto-failover on integration errors) but can be disabled by clearing `LibOqsConfig::{hqc_backup,sphincs_backup}` for deployments that prefer manual cutovers.
+
 ## CHSH Sandbox & 5D-QEH Validation
 
 The QRNG → TupleChain → Chronosync → 5D-QEH → QS-DAG path now ships a reproducible CHSH harness so you can present both the classic two-qubit violation and the 5D hypergraph adaptation that feeds Chronosync’s Temporal Weight (TW) scoring. The flow intentionally mirrors the production pipeline:
@@ -370,6 +378,7 @@ Use this workflow to demo the entire QRNG-seeded validation story: start with pr
 - `autheo-mldsa-dilithium/` – deterministic Dilithium3 (ML-DSA-65) adapter + demo artifacts.
 - `autheo-mldsa-falcon/` – deterministic Falcon placeholder for future ML-DSA integrations.
 - `autheo-pqcnet-sphincs/` – FIPS 205 SLH-DSA SPHINCS+ adapter with liboqs-backed SHAKE parameter sets for native nodes plus deterministic WASM fallbacks.
+- `autheo-pqcnet-hqc/` – production-only HQC (Hamming Quasi-Cyclic) KEM bindings, built exclusively on liboqs so PQCNet can fail over from Kyber/ML-KEM without touching the handshake code.
 - `autheo-entropy-wasm/` – standalone WASM module that responds to `autheo_host_entropy` imports for validators, relayers, or RPi entropy nodes.
 - `autheo-entropy-core/` – validator/relayer entropy control plane that budgets HSM/RNG feeds and backs the `autheo-entropy-wasm` + `pqcnet-entropy` pipeline with real hardware data.
 - `pqcnet-entropy/` – no_std entropy trait + host import bridge used by every PQC module, with deterministic dev-only sources for tests.

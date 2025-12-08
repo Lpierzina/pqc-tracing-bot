@@ -22,6 +22,9 @@ pub mod signatures;
 pub mod types;
 
 #[cfg(all(feature = "liboqs", not(target_arch = "wasm32")))]
+pub mod fallback;
+
+#[cfg(all(feature = "liboqs", not(target_arch = "wasm32")))]
 pub mod liboqs;
 
 #[cfg(all(feature = "liboqs", target_arch = "wasm32"))]

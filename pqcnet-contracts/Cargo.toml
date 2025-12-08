@@ -4,6 +4,7 @@ members = [
     "autheo-mldsa-dilithium",
     "autheo-mldsa-falcon",
     "autheo-pqcnet-sphincs",
+    "autheo-pqcnet-hqc",
     "autheo-pqc-core",
     "autheo-pqc-wasm",
     "autheo-pqcnet-tuplechain",

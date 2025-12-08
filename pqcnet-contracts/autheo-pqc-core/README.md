@@ -77,6 +77,14 @@ cargo run -p autheo-pqc-core --bin liboqs_cli --features liboqs -- --message "ve
 4. **QS-DAG** – `pqcnet-qs-dag::QsDagPqc::verify_and_anchor` uses `SignatureManager::verify` callbacks from this crate to attach ML-DSA proofs onto Chronosync/5D-QEH edges.
 5. **Relayers & telemetry** – The outputs feed `pqcnet-relayer` and `pqcnet-telemetry`, ensuring off-box analytics see the same KeyIds, epochs, and rotation timestamps that the enclave emitted.
 
+## HQC & SPHINCS+ Fallback Controls (`liboqs` feature)
+
+`autheo-pqc-core::liboqs::LibOqsProvider` now accepts `HqcFallbackConfig` and `SphincsFallbackConfig` so Kyber/Dilithium can fail over to HQC/SPHINCS+ without changing the handshake code:
+
+- **Manual override** – Call `force_hqc_backup()` / `force_sphincs_backup()` to pin the backup engines, or `use_kyber_primary()` / `use_dilithium_primary()` to revert. `is_using_hqc_backup()` and `is_using_sphincs_backup()` expose the current mode for relayers and telemetry exporters.
+- **Auto failover** – Leave `auto_failover = true` (default) to switch to the backup engine automatically whenever the Kyber/Dilithium adapters return `IntegrationError`/`PrimitiveFailure`. Clear the config fields to disable a given fallback path entirely.
+- **Testing** – `cargo test -p autheo-pqc-core --features liboqs liboqs::tests::kyber_failover_switches_to_hqc_backup liboqs::tests::dilithium_failover_switches_to_sphincs_backup` runs the end-to-end failover suite using the real HQC/SPHINCS+ liboqs engines.
+
 ## Build, Test, and Diagnose
 
 ```bash
@@ -88,6 +96,11 @@ cargo test -p autheo-pqc-core --no-default-features
 
 # Run the handshake + QSTP demo end-to-end
 cargo run -p autheo-pqc-core --example handshake_demo
+
+# Exercise the HQC/Sphincs+ fallback tests (requires liboqs + host toolchain)
+cargo test -p autheo-pqc-core --features liboqs \
+  liboqs::tests::kyber_failover_switches_to_hqc_backup \
+  liboqs::tests::dilithium_failover_switches_to_sphincs_backup
 
 # Exercise Shamir helpers (native targets only)
 cargo test -p autheo-pqc-core secret_sharing

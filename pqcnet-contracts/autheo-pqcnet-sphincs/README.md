@@ -74,8 +74,9 @@ engine.verify(&pair.public_key, b"tuple receipt", &sig).expect("verify");
    )));
    ```
    Register it alongside the existing Dilithium/Falcon engine to force SPHINCS+ co-signatures for every QSTP tunnel and TupleChain receipt.
-2. **Nested signatures** – Chronicle nodes can call `SignatureManager::sign_kem_transcript` twice (Dilithium + SPHINCS+) and persist both signatures inside `pqcnet-qs-dag::AnchorEvidence`. The merkleized chaos routes (`pqcnet-qace`) can then require both signatures before mutating a route.
-3. **DW3B / PrivacyNet hooks** – `autheo-dw3b-overlay` and `autheo-privacynet` can treat SPHINCS+ as the “chaos proof” layer: include the SPHINCS+ signature inside every EZPH receipt so privacy regulators can audit a hash-based trail if ML-DSA is paused.
+2. **Dilithium fallback** – When `autheo-pqc-core::liboqs::LibOqsProvider` is built with `SphincsFallbackConfig`, calling `force_sphincs_backup()` immediately swaps ML-DSA signing over to this crate’s liboqs engine, while `use_dilithium_primary()` returns to Dilithium as soon as ops clears the incident.
+3. **Nested signatures** – Chronicle nodes can call `SignatureManager::sign_kem_transcript` twice (Dilithium + SPHINCS+) and persist both signatures inside `pqcnet-qs-dag::AnchorEvidence`. The merkleized chaos routes (`pqcnet-qace`) can then require both signatures before mutating a route.
+4. **DW3B / PrivacyNet hooks** – `autheo-dw3b-overlay` and `autheo-privacynet` can treat SPHINCS+ as the “chaos proof” layer: include the SPHINCS+ signature inside every EZPH receipt so privacy regulators can audit a hash-based trail if ML-DSA is paused.
 
 ## PQCNet + PQC Core flow
 
@@ -102,6 +103,10 @@ cargo test -p autheo-pqcnet-sphincs
 
 # Production liboqs wiring (native only)
 cargo test -p autheo-pqcnet-sphincs --features liboqs -- --ignored
+
+# Dilithium→SPHINCS+ failover (runs inside autheo-pqc-core)
+cargo test -p autheo-pqc-core --features liboqs \
+  liboqs::tests::dilithium_failover_switches_to_sphincs_backup
 ```
 
 Both suites cover keygen, sign/verify, tamper detection, and the `SignatureManager` integration snippet above. No simulators or mock KATs are needed—the liboqs tests call the exact SPHINCS+ reference that Autheo deploys on validators.*** End Patch

@@ -11,6 +11,8 @@ liboqs = [
     "autheo-mlkem-kyber/liboqs",
     "autheo-mldsa-dilithium/liboqs",
     "autheo-mldsa-falcon/liboqs",
+    "autheo-pqcnet-hqc",
+    "autheo-pqcnet-sphincs/liboqs",
 ]
 real_data = []
 
@@ -18,6 +20,8 @@ real_data = []
 autheo-mlkem-kyber = { path = "../autheo-mlkem-kyber", default-features = false, features = ["deterministic"] }
 autheo-mldsa-dilithium = { path = "../autheo-mldsa-dilithium", default-features = false, features = ["deterministic"] }
 autheo-mldsa-falcon = { path = "../autheo-mldsa-falcon", default-features = false, features = ["deterministic"] }
+autheo-pqcnet-hqc = { path = "../autheo-pqcnet-hqc", optional = true, default-features = false, features = ["liboqs"] }
+autheo-pqcnet-sphincs = { path = "../autheo-pqcnet-sphincs", optional = true, default-features = false, features = ["liboqs"] }
 pqcnet-qace = { path = "../pqcnet-qace" }
 pqcnet-qs-dag = { path = "../pqcnet-qs-dag" }
 blake2 = { version = "0.10", default-features = false }

@@ -245,6 +245,8 @@ dependencies = [
  "autheo-mldsa-dilithium",
  "autheo-mldsa-falcon",
  "autheo-mlkem-kyber",
+ "autheo-pqcnet-hqc",
+ "autheo-pqcnet-sphincs",
  "blake2",
  "digest",
  "hex",
@@ -320,6 +322,13 @@ dependencies = [
  "sha3",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "autheo-pqcnet-hqc"
+version = "0.1.0"
+dependencies = [
+ "oqs",
 ]
 
 [[package]]

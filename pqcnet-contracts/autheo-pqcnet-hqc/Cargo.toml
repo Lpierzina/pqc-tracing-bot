@@ -1,0 +1,12 @@
+[package]
+name = "autheo-pqcnet-hqc"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["liboqs"]
+std = []
+liboqs = ["dep:oqs", "std"]
+
+[dependencies]
+oqs = { version = "0.8", default-features = false, features = ["hqc", "std"], optional = true }

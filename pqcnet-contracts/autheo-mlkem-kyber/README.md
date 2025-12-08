@@ -65,11 +65,13 @@ let keypair = engine.keypair()?;
 - `autheo-pqc-core` depends on this crate with `default-features = false, features = ["deterministic"]` so the WASM surface stays `no_std`.
 - The core crate’s `liboqs` feature cascades into `autheo-mlkem-kyber/liboqs`, allowing hosts to compile both the shared PQC provider (`autheo-pqc-core::liboqs`) and this standalone crate with the exact same algorithm selection.
 - `autheo-mldsa-dilithium` and `autheo-mldsa-falcon` now share the same structure (types module + `liboqs` + deterministic fallback), so Kyber/Dilithium/Falcon packaging is symmetrical when the repos are split out.
+- **Fallback to HQC** – When `autheo-pqc-core::liboqs::LibOqsProvider` is configured with `HqcFallbackConfig`, Kyber (this crate) remains the primary engine while `autheo-pqcnet-hqc` is ready as the backup. Call `force_hqc_backup()` whenever ops needs to pause ML-KEM; the provider will still use the Kyber code from this crate as soon as `use_kyber_primary()` is invoked again.
 
 ## Testing
 
 - `cargo test -p autheo-mlkem-kyber` runs deterministic unit tests.
 - `cargo test -p autheo-mlkem-kyber --features liboqs -- --ignored` exercises the liboqs-backed round trip (only available on native targets with `liboqs` installed).
+- To validate Kyber↔HQC failover, run the core suite: `cargo test -p autheo-pqc-core --features liboqs liboqs::tests::kyber_failover_switches_to_hqc_backup`. This routes through the same `LibOqsKemImpl` defined in this crate before falling back to HQC.
 
 ### Windows toolchains (MSVC)
 
