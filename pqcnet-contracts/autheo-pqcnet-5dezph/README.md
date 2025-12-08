@@ -110,6 +110,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 This writes `config/crypto/halo2.{params,pk,vk}` ahead of time so later runs of `Halo2ZkProver::new`
 can skip key generation entirely (and simply verify the cached `k` value).
 
+When iterating on a laptop, set `AUTHEO_HALO2_PARAMS_BITS` to a smaller `k` (between 8 and 28) before
+calling the warmup example or the full pipeline. For example:
+
+```
+AUTHEO_HALO2_PARAMS_BITS=18 cargo run --example warm_halo2
+```
+
+Unset the variable (or pick the production `k`) once you are ready to regenerate the full-size keys.
+Halo2’s parameter size is `2^k`, so every +1 bit doubles the number of rows in the
+Powers-of-Tau and roughly doubles both keygen and proving time. We bound the override to `8 ≤ k ≤ 28`
+because BN256 circuits rarely benefit from values outside that envelope. The default configuration
+derives `k = 22` from the requested soundness (`2^-256`), so using `k = 18` is considered a
+“small/simulation” setting: it cuts the memory footprint to `2^18` rows (~262k) and speeds up warmups,
+but you should switch back to the full value before shipping proofs.
+
 When enabled, the suite stands up a `HypergraphModule`, runs
 `DefaultEzphPipeline::entangle_and_anchor` with `EzphRequest::demo`, and asserts that a
 vertex is anchored only when `EzphOutcome::privacy.satisfied` remains true. The walkthrough

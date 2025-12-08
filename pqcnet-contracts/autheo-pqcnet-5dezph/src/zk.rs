@@ -26,6 +26,10 @@ use thiserror::Error;
 use crate::config::ZkConfig;
 use serde_json::json;
 
+const HALO2_PARAMS_BITS_ENV: &str = "AUTHEO_HALO2_PARAMS_BITS";
+const HALO2_MIN_K: u32 = 8;
+const HALO2_MAX_K: u32 = 28;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkStatement {
     pub circuit_id: String,
@@ -195,6 +199,9 @@ impl Halo2ZkProver {
     }
 
     fn derive_k(config: &ZkConfig) -> u32 {
+        if let Some(k) = Self::env_forced_params_bits() {
+            return k;
+        }
         let security_bits = (-config.soundness.log2()).ceil().max(1.0) as u32;
         let extra = (security_bits / 64).min(6);
         18 + extra
@@ -225,6 +232,33 @@ impl Halo2ZkProver {
                 );
             }
         });
+    }
+
+    fn env_forced_params_bits() -> Option<u32> {
+        match env::var(HALO2_PARAMS_BITS_ENV) {
+            Ok(raw) => match raw.parse::<u32>() {
+                Ok(value) if (HALO2_MIN_K..=HALO2_MAX_K).contains(&value) => {
+                    println!(
+                        "[halo2-cache] using k override {value} from {HALO2_PARAMS_BITS_ENV}"
+                    );
+                    Some(value)
+                }
+                Ok(value) => {
+                    eprintln!(
+                        "[halo2-cache] ignoring {HALO2_PARAMS_BITS_ENV}={value}: expected {}..={}",
+                        HALO2_MIN_K, HALO2_MAX_K
+                    );
+                    None
+                }
+                Err(err) => {
+                    eprintln!(
+                        "[halo2-cache] ignoring {HALO2_PARAMS_BITS_ENV}={raw}: {err}"
+                    );
+                    None
+                }
+            },
+            Err(_) => None,
+        }
     }
 
     fn ensure_parent(path: &Path) -> Result<(), ZkError> {
