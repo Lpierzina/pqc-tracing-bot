@@ -17,9 +17,9 @@
 //! assert_eq!(report.processed_watchers, cfg.sentry.watchers.len());
 //! ```
 
-use pqcnet_crypto::{CryptoError, CryptoProvider};
+use pqcnet_crypto::{CryptoError, CryptoProvider, KemRationale};
 use pqcnet_networking::{NetworkClient, NetworkingError};
-use pqcnet_telemetry::{TelemetryError, TelemetryHandle};
+use pqcnet_telemetry::{KemUsageReason, KemUsageRecord, TelemetryError, TelemetryHandle};
 use thiserror::Error;
 
 use crate::config::{Config, SentrySection};
@@ -69,6 +69,13 @@ impl SentryService {
     pub fn run_iteration(&mut self, dry_run: bool) -> Result<SentryReport, ServiceError> {
         for watcher in &self.config.watchers {
             let derived = self.crypto.derive_shared_key(watcher)?;
+            let kem_status = self.crypto.kem_status();
+            self.telemetry.record_kem_event(KemUsageRecord {
+                label: format!("sentry::{}", hex::encode(derived.key_id.0)),
+                scheme: kem_status.scheme.as_str().into(),
+                reason: map_kem_reason(kem_status.rationale),
+                backup_only: kem_status.backup_only,
+            });
             let payload = format!(
                 "watcher-handshake:{}:{}:{}",
                 watcher,
@@ -95,6 +102,14 @@ impl SentryService {
             processed_watchers: self.config.watchers.len(),
             quorum_threshold: self.config.quorum_threshold,
         })
+    }
+}
+
+fn map_kem_reason(rationale: KemRationale) -> KemUsageReason {
+    match rationale {
+        KemRationale::Normal => KemUsageReason::Normal,
+        KemRationale::Drill => KemUsageReason::Drill,
+        KemRationale::Fallback => KemUsageReason::Fallback,
     }
 }
 
@@ -143,6 +158,10 @@ mod tests {
         drop(network_listener);
         let snapshot = telemetry.flush().unwrap();
         assert_eq!(snapshot.counters["sentry.success"], 1);
+        assert!(
+            snapshot.kem_events.iter().any(|event| event.scheme == "kyber"),
+            "expected kyber kem event"
+        );
     }
 
     struct HttpCollector {

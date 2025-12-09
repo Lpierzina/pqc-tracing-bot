@@ -5,12 +5,12 @@ use autheo_dw3b_mesh::Dw3bMeshEngine;
 use blake3::{hash, Hasher};
 use pqcnet_networking::NetworkClient;
 use pqcnet_qstp::MeshTransport;
-use pqcnet_telemetry::TelemetryHandle;
+use pqcnet_telemetry::{KemUsageReason, KemUsageRecord, TelemetryHandle};
 use serde_json::Value;
 use tracing::{info, warn};
 
 use crate::{
-    config::Dw3bOverlayConfig,
+    config::{Dw3bOverlayConfig, PqcOverlayConfig},
     error::OverlayResult,
     rpc::{
         decode_request, encode_error, encode_success, qtaid_result, to_qtaid_request,
@@ -35,6 +35,7 @@ impl<T: MeshTransport> Dw3bOverlayNode<T> {
         let network = NetworkClient::from_config(&config.node_id, config.networking.clone());
         let telemetry = TelemetryHandle::from_config(config.telemetry.clone());
         let engine = Dw3bMeshEngine::new(config.mesh.clone());
+        record_pqc_inventory(&telemetry, &config.pqc);
         Self {
             config,
             engine,
@@ -184,6 +185,35 @@ impl<T: MeshTransport> Dw3bOverlayNode<T> {
             .telemetry
             .record_counter("dw3b.overlay.broadcast_peers", receipts.len() as u64);
         Ok(())
+    }
+}
+
+fn record_pqc_inventory(handle: &TelemetryHandle, pqc: &PqcOverlayConfig) {
+    for kem in &pqc.advertised_kems {
+        let reason = if kem.backup_only {
+            KemUsageReason::Drill
+        } else {
+            KemUsageReason::Normal
+        };
+        handle.record_kem_event(KemUsageRecord {
+            label: format!("dw3b-overlay::{}", kem.scheme.as_str()),
+            scheme: kem.scheme.as_str().into(),
+            reason,
+            backup_only: kem.backup_only,
+        });
+    }
+    if let Some(plan) = &pqc.signature_redundancy {
+        let label = format!(
+            "dw3b-overlay::sig::{}-{}",
+            plan.primary.as_str(),
+            plan.backup.as_str()
+        );
+        handle.record_kem_event(KemUsageRecord {
+            label,
+            scheme: "signature-stack".into(),
+            reason: KemUsageReason::Normal,
+            backup_only: plan.require_dual,
+        });
     }
 }
 

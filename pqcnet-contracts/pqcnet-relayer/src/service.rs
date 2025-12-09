@@ -20,9 +20,9 @@
 
 use std::collections::VecDeque;
 
-use pqcnet_crypto::{CryptoError, CryptoProvider};
+use pqcnet_crypto::{CryptoError, CryptoProvider, KemRationale};
 use pqcnet_networking::{NetworkClient, NetworkingError};
-use pqcnet_telemetry::{TelemetryError, TelemetryHandle};
+use pqcnet_telemetry::{KemUsageReason, KemUsageRecord, TelemetryError, TelemetryHandle};
 use thiserror::Error;
 
 use crate::config::{Config, RelayerMode, RelayerSection};
@@ -73,6 +73,13 @@ impl RelayerService {
             let idx = self.queue.len();
             let derived = self.crypto.derive_shared_key(&format!("batch-{}", idx))?;
             let signature = self.crypto.sign(&derived.material)?;
+            let kem_status = self.crypto.kem_status();
+            self.telemetry.record_kem_event(KemUsageRecord {
+                label: format!("relayer::{}", hex::encode(derived.key_id.0)),
+                scheme: kem_status.scheme.as_str().into(),
+                reason: map_kem_reason(kem_status.rationale),
+                backup_only: kem_status.backup_only,
+            });
             let payload = format!(
                 "{}:{}:{}:{}",
                 self.config.mode.as_str(),
@@ -119,6 +126,14 @@ impl RelayerService {
             buffered: self.queue.len(),
             mode: self.config.mode,
         })
+    }
+}
+
+fn map_kem_reason(rationale: KemRationale) -> KemUsageReason {
+    match rationale {
+        KemRationale::Normal => KemUsageReason::Normal,
+        KemRationale::Drill => KemUsageReason::Drill,
+        KemRationale::Fallback => KemUsageReason::Fallback,
     }
 }
 
@@ -177,6 +192,10 @@ mod tests {
         drop(listeners);
         let snapshot = telemetry.flush().unwrap();
         assert_eq!(snapshot.counters["relayer.egress"], report.delivered as u64);
+        assert!(
+            snapshot.kem_events.iter().any(|event| event.scheme == "kyber"),
+            "expected kyber kem event"
+        );
     }
 
     struct HttpCollector {

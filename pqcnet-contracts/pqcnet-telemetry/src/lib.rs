@@ -86,12 +86,30 @@ pub struct TelemetrySnapshot {
     pub labels: BTreeMap<String, String>,
     pub counters: BTreeMap<String, u64>,
     pub latencies_ms: BTreeMap<String, Vec<u64>>,
+    pub kem_events: Vec<KemUsageRecord>,
 }
 
 #[derive(Default)]
 struct TelemetryState {
     counters: BTreeMap<String, u64>,
     latencies_ms: BTreeMap<String, Vec<u64>>,
+    kem_events: Vec<KemUsageRecord>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KemUsageReason {
+    Normal,
+    Drill,
+    Fallback,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KemUsageRecord {
+    pub label: String,
+    pub scheme: String,
+    pub reason: KemUsageReason,
+    pub backup_only: bool,
 }
 
 #[derive(Clone)]
@@ -126,6 +144,11 @@ impl TelemetryHandle {
             .push(value);
     }
 
+    pub fn record_kem_event(&self, record: KemUsageRecord) {
+        let mut guard = self.state.lock().unwrap();
+        guard.kem_events.push(record);
+    }
+
     pub fn flush(&self) -> Result<TelemetrySnapshot, TelemetryError> {
         let mut guard = self.state.lock().unwrap();
         let snapshot = TelemetrySnapshot {
@@ -133,6 +156,7 @@ impl TelemetryHandle {
             labels: self.config.labels.clone(),
             counters: guard.counters.clone(),
             latencies_ms: guard.latencies_ms.clone(),
+            kem_events: guard.kem_events.clone(),
         };
 
         #[cfg(feature = "prod")]
@@ -140,6 +164,7 @@ impl TelemetryHandle {
 
         guard.counters.clear();
         guard.latencies_ms.clear();
+        guard.kem_events.clear();
         Ok(snapshot)
     }
 
@@ -289,6 +314,25 @@ mod tests {
         let snapshot = handle.flush().unwrap();
         assert_eq!(snapshot.counters["ingest.success"], 3);
         assert_eq!(snapshot.latencies_ms["pipeline"], vec![42]);
+        assert!(snapshot.kem_events.is_empty());
+    }
+
+    #[test]
+    fn records_kem_usage_events() {
+        let collector = HttpCollector::start(1);
+        let handle = TelemetryHandle::from_config(collector.config());
+        handle.record_kem_event(KemUsageRecord {
+            label: "tunnel-1".into(),
+            scheme: "hqc".into(),
+            reason: KemUsageReason::Drill,
+            backup_only: true,
+        });
+        let snapshot = handle.flush().unwrap();
+        assert_eq!(snapshot.kem_events.len(), 1);
+        let record = &snapshot.kem_events[0];
+        assert_eq!(record.scheme, "hqc");
+        assert!(record.backup_only);
+        assert_eq!(record.reason, KemUsageReason::Drill);
     }
 
     #[test]
@@ -304,8 +348,15 @@ mod tests {
         let collector = HttpCollector::start(2);
         let handle = TelemetryHandle::from_config(collector.config());
         handle.record_counter("ingest.success", 1).unwrap();
+        handle.record_kem_event(KemUsageRecord {
+            label: "alpha".into(),
+            scheme: "kyber".into(),
+            reason: KemUsageReason::Normal,
+            backup_only: false,
+        });
         handle.flush().unwrap();
         let second = handle.flush().unwrap();
         assert!(second.counters.is_empty());
+        assert!(second.kem_events.is_empty());
     }
 }

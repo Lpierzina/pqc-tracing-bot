@@ -185,6 +185,7 @@ dependencies = [
  "autheo-pqcnet-5dqeh",
  "blake3",
  "hex",
+ "pqcnet-crypto",
  "pqcnet-networking",
  "pqcnet-qstp",
  "pqcnet-telemetry",

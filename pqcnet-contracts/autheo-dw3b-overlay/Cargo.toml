@@ -12,6 +12,7 @@ autheo-pqc-core = { path = "../autheo-pqc-core" }
 pqcnet-networking = { path = "../pqcnet-networking" }
 pqcnet-qstp = { path = "../pqcnet-qstp" }
 pqcnet-telemetry = { path = "../pqcnet-telemetry" }
+pqcnet-crypto = { path = "../pqcnet-crypto" }
 rand = { version = "0.8", features = ["std"] }
 rand_chacha = "0.3"
 serde = { version = "1.0", features = ["derive"] }

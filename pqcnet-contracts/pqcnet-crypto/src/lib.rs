@@ -72,6 +72,11 @@ fn default_threshold_total_shares() -> u8 {
     5
 }
 
+const SAMPLE_KYBER_PK: &str =
+    "9fa0c3c7f19d4eb64a88d9dcf45b2e77e6f233d41f5f8d1ef4ef7a0b1f284b55";
+const SAMPLE_HQC_PK: &str =
+    "6cbf9cd9bf2d4de1a0aa9b6dd92d8f041b8478be45f4b3d18664a8b5d13e9088";
+
 /// Shared crypto configuration section.
 ///
 /// # TOML
@@ -93,6 +98,40 @@ fn default_threshold_total_shares() -> u8 {
 ///   threshold-min-shares: 3
 ///   threshold-total-shares: 5
 /// ```
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum KemScheme {
+    Kyber,
+    Hqc,
+}
+
+impl KemScheme {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            KemScheme::Kyber => "kyber",
+            KemScheme::Hqc => "hqc",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SignatureScheme {
+    Dilithium,
+    Falcon,
+    Sphincs,
+}
+
+impl SignatureScheme {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SignatureScheme::Dilithium => "dilithium",
+            SignatureScheme::Falcon => "falcon",
+            SignatureScheme::Sphincs => "sphincs",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct CryptoConfig {
@@ -110,6 +149,76 @@ pub struct CryptoConfig {
     /// Total number of shares provisioned for the node.
     #[serde(default = "default_threshold_total_shares")]
     pub threshold_total_shares: u8,
+    /// PQC public keys exposed to peers/regulators.
+    #[serde(default)]
+    pub advertised_kems: Vec<KemAdvertisement>,
+    /// Signature redundancy policy (e.g., Dilithium + SPHINCS).
+    #[serde(default)]
+    pub signature_redundancy: Option<SignatureRedundancy>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub struct KemAdvertisement {
+    pub scheme: KemScheme,
+    pub public_key_hex: String,
+    #[serde(default)]
+    pub backup_only: bool,
+    #[serde(default)]
+    pub key_id: Option<String>,
+}
+
+impl KemAdvertisement {
+    pub fn sample_primary() -> Self {
+        Self {
+            scheme: KemScheme::Kyber,
+            public_key_hex: SAMPLE_KYBER_PK.into(),
+            backup_only: false,
+            key_id: Some("kyber-prod-0001".into()),
+        }
+    }
+
+    pub fn sample_backup() -> Self {
+        Self {
+            scheme: KemScheme::Hqc,
+            public_key_hex: SAMPLE_HQC_PK.into(),
+            backup_only: true,
+            key_id: Some("hqc-drill-0001".into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub struct SignatureRedundancy {
+    pub primary: SignatureScheme,
+    pub backup: SignatureScheme,
+    #[serde(default)]
+    pub require_dual: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KemRationale {
+    Normal,
+    Drill,
+    Fallback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KemStatus {
+    pub scheme: KemScheme,
+    pub backup_only: bool,
+    pub rationale: KemRationale,
+}
+
+impl KemStatus {
+    pub fn new(scheme: KemScheme, backup_only: bool, rationale: KemRationale) -> Self {
+        Self {
+            scheme,
+            backup_only,
+            rationale,
+        }
+    }
 }
 
 impl CryptoConfig {
@@ -121,6 +230,15 @@ impl CryptoConfig {
             key_ttl_secs: default_key_ttl_secs(),
             threshold_min_shares: default_threshold_min_shares(),
             threshold_total_shares: default_threshold_total_shares(),
+            advertised_kems: vec![
+                KemAdvertisement::sample_primary(),
+                KemAdvertisement::sample_backup(),
+            ],
+            signature_redundancy: Some(SignatureRedundancy {
+                primary: SignatureScheme::Dilithium,
+                backup: SignatureScheme::Sphincs,
+                require_dual: true,
+            }),
         }
     }
 
@@ -178,6 +296,9 @@ pub struct CryptoProvider {
     key_manager: KeyManager,
     signature_manager: SignatureManager,
     signing: SigningMaterial,
+    advertised_kems: Vec<KemAdvertisement>,
+    signature_redundancy: Option<SignatureRedundancy>,
+    kem_status: KemStatus,
 }
 
 struct SigningMaterial {
@@ -212,12 +333,26 @@ impl CryptoProvider {
             secret_key: sign_pair.secret_key,
         };
 
+        let advertised_kems = if config.advertised_kems.is_empty() {
+            vec![
+                KemAdvertisement::sample_primary(),
+                KemAdvertisement::sample_backup(),
+            ]
+        } else {
+            config.advertised_kems.clone()
+        };
+        let signature_redundancy = config.signature_redundancy.clone();
+        let kem_status = initial_kem_status(&advertised_kems);
+
         Ok(Self {
             node_id: config.node_id.clone(),
             secret_seed: seed,
             key_manager,
             signature_manager,
             signing,
+            advertised_kems,
+            signature_redundancy,
+            kem_status,
         })
     }
 
@@ -262,6 +397,27 @@ impl CryptoProvider {
         }
     }
 
+    pub fn advertised_kems(&self) -> &[KemAdvertisement] {
+        &self.advertised_kems
+    }
+
+    pub fn signature_redundancy(&self) -> Option<&SignatureRedundancy> {
+        self.signature_redundancy.as_ref()
+    }
+
+    pub fn kem_status(&self) -> KemStatus {
+        self.kem_status
+    }
+
+    pub fn set_kem_rationale(&mut self, rationale: KemRationale) {
+        self.kem_status.rationale = rationale;
+    }
+
+    pub fn set_kem_scheme(&mut self, scheme: KemScheme, rationale: KemRationale) {
+        let backup_only = advertised_as_backup(&self.advertised_kems, scheme);
+        self.kem_status = KemStatus::new(scheme, backup_only, rationale);
+    }
+
     fn ensure_active_kem(&mut self, now_ms: TimestampMs) -> Result<()> {
         self.key_manager.rotate_with_material(now_ms)?;
         Ok(())
@@ -287,6 +443,15 @@ mod tests {
             key_ttl_secs: 1,
             threshold_min_shares: 2,
             threshold_total_shares: 3,
+            advertised_kems: vec![
+                KemAdvertisement::sample_primary(),
+                KemAdvertisement::sample_backup(),
+            ],
+            signature_redundancy: Some(SignatureRedundancy {
+                primary: SignatureScheme::Dilithium,
+                backup: SignatureScheme::Sphincs,
+                require_dual: true,
+            }),
         }
     }
 
@@ -331,6 +496,27 @@ mod tests {
         assert_eq!(sample.secret_seed.len(), 64);
         assert_eq!(sample.threshold_min_shares, 3);
         assert_eq!(sample.threshold_total_shares, 5);
+        assert_eq!(sample.advertised_kems.len(), 2);
+        assert!(sample.signature_redundancy.is_some());
+    }
+
+    #[test]
+    fn advertised_kems_default_to_sample_entries() {
+        let provider = CryptoProvider::from_config(&config()).unwrap();
+        assert_eq!(provider.advertised_kems().len(), 2);
+        let status = provider.kem_status();
+        assert_eq!(status.scheme, KemScheme::Kyber);
+        assert!(!status.backup_only);
+    }
+
+    #[test]
+    fn kem_status_updates_when_switching_schemes() {
+        let mut provider = CryptoProvider::from_config(&config()).unwrap();
+        provider.set_kem_scheme(KemScheme::Hqc, KemRationale::Drill);
+        let status = provider.kem_status();
+        assert_eq!(status.scheme, KemScheme::Hqc);
+        assert!(status.backup_only);
+        assert_eq!(status.rationale, KemRationale::Drill);
     }
 }
 
@@ -355,4 +541,20 @@ fn now_ms() -> Result<TimestampMs> {
 
 fn system_time_from_ms(ts: TimestampMs) -> SystemTime {
     UNIX_EPOCH + Duration::from_millis(ts)
+}
+
+fn initial_kem_status(kems: &[KemAdvertisement]) -> KemStatus {
+    if let Some(primary) = kems.iter().find(|kem| !kem.backup_only) {
+        return KemStatus::new(primary.scheme, false, KemRationale::Normal);
+    }
+    kems.first()
+        .map(|kem| KemStatus::new(kem.scheme, kem.backup_only, KemRationale::Normal))
+        .unwrap_or_else(|| KemStatus::new(KemScheme::Kyber, false, KemRationale::Normal))
+}
+
+fn advertised_as_backup(kems: &[KemAdvertisement], scheme: KemScheme) -> bool {
+    kems.iter()
+        .find(|kem| kem.scheme == scheme)
+        .map(|kem| kem.backup_only)
+        .unwrap_or(false)
 }

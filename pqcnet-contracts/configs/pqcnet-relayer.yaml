@@ -12,6 +12,19 @@ runtime:
 crypto:
   node-id: relayer-a
   secret-seed: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  advertised-kems:
+    - scheme: kyber
+      public-key-hex: 9fa0c3c7f19d4eb64a88d9dcf45b2e77e6f233d41f5f8d1ef4ef7a0b1f284b55
+      key-id: relayer-kyber-0001
+      backup-only: false
+    - scheme: hqc
+      public-key-hex: 6cbf9cd9bf2d4de1a0aa9b6dd92d8f041b8478be45f4b3d18664a8b5d13e9088
+      key-id: relayer-hqc-0001
+      backup-only: true
+  signature-redundancy:
+    primary: dilithium
+    backup: sphincs
+    require-dual: true
 
 networking:
   listen: 0.0.0.0:7200

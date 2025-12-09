@@ -1,4 +1,5 @@
 use autheo_dw3b_mesh::Dw3bMeshConfig;
+use pqcnet_crypto::{KemAdvertisement, SignatureRedundancy, SignatureScheme};
 use pqcnet_networking::NetworkingConfig;
 use pqcnet_qstp::{MeshPeerId, MeshQosClass, MeshRoutePlan};
 use pqcnet_telemetry::TelemetryConfig;
@@ -12,6 +13,8 @@ pub struct Dw3bOverlayConfig {
     pub rpc: RpcSurfaceConfig,
     pub qstp: QstpConfig,
     pub telemetry: TelemetryConfig,
+    #[serde(default)]
+    pub pqc: PqcOverlayConfig,
 }
 
 impl Dw3bOverlayConfig {
@@ -25,6 +28,7 @@ impl Dw3bOverlayConfig {
             rpc: RpcSurfaceConfig::default(),
             qstp: QstpConfig::default(),
             telemetry: TelemetryConfig::sample("http://127.0.0.1:4318"),
+            pqc: PqcOverlayConfig::default(),
         }
     }
 }
@@ -43,6 +47,34 @@ pub struct RpcSurfaceConfig {
     pub stake_threshold: u64,
     pub chsh_target: f32,
     pub qtaid_bits_per_snp: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PqcOverlayConfig {
+    #[serde(default = "default_advertised_kems")]
+    pub advertised_kems: Vec<KemAdvertisement>,
+    #[serde(default)]
+    pub signature_redundancy: Option<SignatureRedundancy>,
+}
+
+impl Default for PqcOverlayConfig {
+    fn default() -> Self {
+        Self {
+            advertised_kems: default_advertised_kems(),
+            signature_redundancy: Some(SignatureRedundancy {
+                primary: SignatureScheme::Dilithium,
+                backup: SignatureScheme::Sphincs,
+                require_dual: true,
+            }),
+        }
+    }
+}
+
+fn default_advertised_kems() -> Vec<KemAdvertisement> {
+    vec![
+        KemAdvertisement::sample_primary(),
+        KemAdvertisement::sample_backup(),
+    ]
 }
 
 impl Default for RpcSurfaceConfig {

@@ -12,6 +12,23 @@ abw34-export = "/var/pqcnet/abw34"
 node-id = "sentry-a"
 secret-seed = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+[[crypto.advertised-kems]]
+scheme = "kyber"
+public-key-hex = "7ab063d7f7804e66c8a37c9eff44b1aa48efcbb310e3f1d40f74c923aef14412"
+key-id = "sentry-kyber-0001"
+backup-only = false
+
+[[crypto.advertised-kems]]
+scheme = "hqc"
+public-key-hex = "827b966b5dde4d64890a6711c9a5d114b1cf6fe0cd0a4f2e8a0a4db96b82c5ec"
+key-id = "sentry-hqc-0001"
+backup-only = true
+
+[crypto.signature-redundancy]
+primary = "dilithium"
+backup = "sphincs"
+require-dual = true
+
 [networking]
 listen = "0.0.0.0:7100"
 max-inflight = 64
