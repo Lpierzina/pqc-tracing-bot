@@ -24,6 +24,11 @@ crate publishes a standalone binary backed by real ciphertexts and signatures.
 - **Standalone crate boundary** – the module lives in its own package so it can
   be published independently or vendored into other repos without dragging the
   rest of the workspace.
+- **PQC advertisement + redundancy ledger** – `CryptoConfig` now includes explicit
+  `advertised_kems` entries and a `signature_redundancy` policy (Dilithium +
+  SPHINCS by default). `CryptoProvider` exposes and records those disclosures so
+  relayers, sentries, overlays, and dashboards can prove which Kyber/HQC pair and
+  dual-signature stack were active for each ciphertext.
 
 ## Example / demo
 
@@ -42,14 +47,45 @@ The crypto section used by relayers and sentries accepts the following keys:
 ```toml
 [crypto]
 node-id = "sentry-a"                    # node label used in signatures / derivations
-secret-seed = "1111..."                 # 32-byte hex seed that domain-separates HKDF output
-key-ttl-secs = 3600                      # rotation interval (mirrors KeyManager)
-threshold-min-shares = 3                 # Shamir t parameter (enforced off-chain)
-threshold-total-shares = 5               # Shamir n parameter
+secret-seed = "1111..."                 # 32-byte hex seed for HKDF domains
+key-ttl-secs = 3600                     # rotation interval (mirrors KeyManager)
+threshold-min-shares = 3                # Shamir t parameter (enforced off-chain)
+threshold-total-shares = 5              # Shamir n parameter
+
+[[crypto.advertised-kems]]
+scheme = "kyber"
+public-key-hex = "9fa0...b55"
+key-id = "sentry-kyber-0001"
+backup-only = false
+
+[[crypto.advertised-kems]]
+scheme = "hqc"
+public-key-hex = "6cbf...088"
+key-id = "sentry-hqc-0001"
+backup-only = true
+
+[crypto.signature-redundancy]
+primary = "dilithium"
+backup = "sphincs"
+require-dual = true
 ```
 
 All fields default to production-safe values so existing configs keep working;
 only set them when overriding rotation cadence or share counts for tests.
+
+## PQC redundancy configuration
+
+`CryptoConfig` keeps the advertised ML-KEM keys and signature redundancy policy
+alongside the rotation knobs. Nodes read the same section regardless of whether
+they run as relayers, sentries, or DW3B overlays, which means:
+
+- Kyber keys are always marked as primary while HQC entries flip `backup-only`.
+- The signature block guarantees Dilithium is paired with a SPHINCS backup, and
+  `require-dual = true` forces callers to verify both signatures before
+  accepting a proof.
+- `CryptoProvider::advertised_kems()` and `CryptoProvider::signature_redundancy()`
+  expose the configuration to downstream services, and telemetry handles record
+  a `KemUsageRecord` whenever the provider rotates schemes or reports inventory.
 
 ## Runtime alignment
 
@@ -63,23 +99,30 @@ flowchart LR
     subgraph Provider["CryptoProvider (pqcnet-crypto)"]
         cfg["CryptoConfig"]
         seed["Node Secret Seed"]
+        inv["Advertised KEMs"]
+        sigplan["Signature redundancy\n(Dilithium + SPHINCS)"]
         kem["KeyManager (Kyber)"]
         sig["SignatureManager (Dilithium)"]
         cfg --> kem
         cfg --> sig
+        cfg --> inv
+        cfg --> sigplan
         seed --> kem
         seed --> sig
     end
 
+    telemetry["pqcnet-telemetry\nKemUsageRecord"]
     relayer["pqcnet-relayer"]
     sentry["pqcnet-sentry"]
 
     relayer -->|derive_shared_key| Provider
     Provider -->|ciphertext + shared secret| relayer
     relayer <--> |sign / verify| Provider
+    Provider -->|inventory + redundancy| telemetry
 
     sentry -->|derive_shared_key| Provider
     Provider -->|ciphertext + shared secret| sentry
+    sentry -->|watcher attestations| telemetry
 ```
 
 Relayers and sentries call the exact same APIs that production nodes exercise:
@@ -102,6 +145,9 @@ Relayers and sentries call the exact same APIs that production nodes exercise:
   panicking.
 - `CryptoConfig::sample(node_id)` still powers doctests/examples, but now also
   seeds the threshold policy so integration tests match production defaults.
+- `CryptoProvider::advertised_kems()` / `signature_redundancy()` mirror the `[crypto]`
+  configuration so telemetry, relayers, overlays, and auditors can assert which
+  Kyber/HQC pair and Dilithium/SPHINCS policy were active.
 
 ## Tests
 

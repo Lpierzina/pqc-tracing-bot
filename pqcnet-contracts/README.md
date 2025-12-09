@@ -8,19 +8,23 @@ This repository gathers the Autheo PQCNet, PrivacyNet, and DW3B Mesh crates that
 - **Autheo PQCNet core** crates (`autheo-pqc-core`, `pqcnet-qstp`, `pqcnet-qs-dag`) provide post-quantum transport, session key negotiation, and anchoring into Chronosync.
 - **PrivacyNet** enforces DP/FHE guardrails while emitting EZPH receipts that downstream auditors and IBM Quantum pipeline operators can verify.
 - **DW3B Mesh + Overlay** add deterministic anonymization and QTAID trait proofs before any payload reaches IBM Quantum circuits or partner analytics enclaves.
-- **Regulators / auditors** consume the same proofs (DP budget ledger, EZPH receipts, DW3B anonymity reports) that the code emits so business and compliance stakeholders see a single source of truth.
+- **PQC instrumentation** – every service now reads a `[crypto.advertised-kems]` list plus a `[crypto.signature-redundancy]` block (Dilithium + SPHINCS) and records those disclosures via `pqcnet-telemetry`, so regulators see which Kyber/HQC pairs and dual-signature policies were active for each run.
+- **Regulators / auditors** consume the same proofs (DP budget ledger, EZPH receipts, DW3B anonymity reports, PQC telemetry) that the code emits so business and compliance stakeholders see a single source of truth.
 
 ```mermaid
+%%{init: { "theme": "neutral" }}%%
 flowchart LR
     Tenants --> OverlayRPC[autheo-privacynet-network-overlay]
     OverlayRPC --> PQCNet[autheo-pqc-core + pqcnet-qstp]
     PQCNet --> Chronosync[pqcnet-qs-dag / Chronosync]
     PQCNet --> PrivacyNet
+    PQCNet --> PQCInventory["PQC telemetry\n(advertised KEMs + signatures)"]
     PrivacyNet --> DW3BMesh[autheo-dw3b-mesh]
     PrivacyNet --> IBMQuantum[IBM Quantum / partner FHE nodes]
     DW3BMesh --> HealthPartners[Health partners / regulators]
     Chronosync --> Auditors
     DW3BMesh --> Auditors
+    PQCInventory --> Auditors
 ```
 
 ## C2. Containers at a glance

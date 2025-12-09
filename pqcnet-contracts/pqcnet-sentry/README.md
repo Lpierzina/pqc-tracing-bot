@@ -19,6 +19,10 @@ instead of a mock simulator.
 - **Telemetry parity** – Successful watcher responses increment the exact
   `sentry.success` counter that zer0veil dashboards scrape, and dry-run flagging
   toggles OTLP output without touching the service loop.
+- **PQC attestation events** – Every watcher challenge records a
+  `KemUsageRecord`, proving which Kyber/HQC advertised key and Dilithium+SPHINCS
+  redundancy setting were active, so auditors can correlate PQC posture with
+  watcher availability.
 
 ## Flow
 
@@ -34,10 +38,14 @@ flowchart LR
     subgraph Crypto["pqcnet-crypto::CryptoProvider"]
         cfg["CryptoConfig"]
         seed["Node Secret Seed"]
-        kem["KeyManager (Kyber)"]
+        inv["Advertised KEMs\n(Kyber primary / HQC drill)"]
+        sigplan["Signature redundancy\n(Dilithium + SPHINCS)"]
+        kem["KeyManager (Kyber/HQC)"]
         sig["SignatureManager (Dilithium)"]
         cfg --> kem
         cfg --> sig
+        cfg --> inv
+        cfg --> sigplan
         seed --> kem
         seed --> sig
     end
@@ -48,11 +56,15 @@ flowchart LR
         tel["TelemetryHandle"]
     end
 
+    telemetry["pqcnet-telemetry\nKemUsageRecord"]
+
     watchers --> net
     watchers --> tel
     net -->|receipt latency| tel
+    tel --> telemetry
     Sentry -->|derive_shared_key| Crypto
     Crypto -->|ciphertext + shared secret| Sentry
+    Sentry -->|record_kem_event| telemetry
     net --> Relayers["pqcnet-relayer peers"]
 ```
 
@@ -91,6 +103,23 @@ key-ttl-secs = 3600
 threshold-min-shares = 3
 threshold-total-shares = 5
 
+[[crypto.advertised-kems]]
+scheme = "kyber"
+public-key-hex = "7ab063d7f7804e66c8a37c9eff44b1aa48efcbb310e3f1d40f74c923aef14412"
+key-id = "sentry-kyber-0001"
+backup-only = false
+
+[[crypto.advertised-kems]]
+scheme = "hqc"
+public-key-hex = "827b966b5dde4d64890a6711c9a5d114b1cf6fe0cd0a4f2e8a0a4db96b82c5ec"
+key-id = "sentry-hqc-0001"
+backup-only = true
+
+[crypto.signature-redundancy]
+primary = "dilithium"
+backup = "sphincs"
+require-dual = true
+
 [networking]
 listen = "0.0.0.0:7100"
 max-inflight = 64
@@ -111,7 +140,8 @@ flush-interval-ms = 1000
 - `quorum-threshold` determines how many successful watcher responses are
   required before the sentry reports success.
 - `[crypto]` feeds directly into `pqcnet-crypto`, so sentries share the same key
-  rotation cadence and threshold policy as relayers.
+  rotation cadence, advertised KEM inventory, and dual-signature policy as
+  relayers.
 - `[networking]` / `[telemetry]` settings match the other crates to keep
   multi-process demos reproducible.
 

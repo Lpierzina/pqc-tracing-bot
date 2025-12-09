@@ -26,6 +26,42 @@ surface documented in the spec.
 - **Telemetry + networking** – integrates with `pqcnet-telemetry` for latency/
   counter recording and `pqcnet-networking` for gossiping overlay frames across
   DW3B observers.
+- **PQC advertisement telemetry** – the new `pqc` config section lists the ML-KEM
+  public keys and signature redundancy policy that the overlay advertises, and the
+  node records those disclosures via `pqcnet-telemetry` so operators can prove
+  kyber/hqc fallbacks are armed.
+
+## PQC configuration
+
+`Dw3bOverlayConfig` now exposes a `pqc` section so overlays can declare the
+KEMs and signature redundancy stack they publish to relayers, regulators, and
+dashboards. The block mirrors the layout used across the PQCNet services:
+
+```toml
+[pqc]
+[[pqc.advertised-kems]]
+scheme = "kyber"
+public-key-hex = "9fa0c3c7f19d4eb64a88d9dcf45b2e77e6f233..."
+key-id = "dw3b-kyber-0001"
+backup-only = false
+
+[[pqc.advertised-kems]]
+scheme = "hqc"
+public-key-hex = "6cbf9cd9bf2d4de1a0aa9b6dd92d8f041b847..."
+key-id = "dw3b-hqc-0001"
+backup-only = true
+
+[pqc.signature-redundancy]
+primary = "dilithium"
+backup = "sphincs"
+require-dual = true
+```
+
+On startup the overlay records every advertised KEM as a telemetry event (marking
+backup-only entries as drills) and exposes the signature stack as a synthetic
+`signature-stack` record. Dashboards therefore show, in real time, whether Kyber,
+HQC, and the Dilithium+SPHINCS tandem are armed before traffic flows through the
+overlay.
 
 ## Code flow
 
@@ -37,6 +73,7 @@ config:
 flowchart LR
     Grapplang["Grapplang CLI / Zer0veil shell"]
     JsonRpc["JSON-RPC 2.0 request"]
+    PqcConfig["PQC inventory\n(advertised KEMs + signatures)"]
     Gateway["Dw3bGateway\n(QSTP tunnel)"]
     Overlay["Dw3bOverlayNode"]
     Mesh["Dw3bMeshEngine"]
@@ -47,19 +84,23 @@ flowchart LR
 
     Grapplang -->|parse_statement| JsonRpc
     JsonRpc -->|dw3b_* methods| Overlay
+    PqcConfig -->|record_pqc_inventory| Telemetry
+    PqcConfig -->|clamp pqc policy| Overlay
     Gateway -->|sealed frame| Overlay
     Overlay -->|MeshAnonymizeRequest| Mesh
     Mesh -->|DW3B proof + entropy| Overlay
     Mesh --> PrivacyNet
     Overlay -->|OverlayFrame events| Networking --> Frames
-    Overlay -->|metrics| Telemetry
+    Overlay -->|metrics + pqc events| Telemetry
     Overlay -->|JSON responses| Gateway
 ```
 
 The overlay accepts either Grapplang statements or JSON-RPC envelopes, clamps
 privacy budgets, runs the DW3B mesh engine, and then uses QSTP sealed frames to
-return proofs plus telemetry-backed overlay events. Everything is deterministic
-under `Dw3bOverlayConfig::demo()`, which keeps docs, examples, and tests aligned.
+return proofs plus telemetry-backed overlay events. The PQC inventory is fed into
+telemetry the moment the node boots so observers can see exactly which KEM and
+signature stacks are active. Everything is deterministic under
+`Dw3bOverlayConfig::demo()`, which keeps docs, examples, and tests aligned.
 
 ## Quick start
 

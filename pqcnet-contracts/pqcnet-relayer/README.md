@@ -19,6 +19,10 @@ to production nodes—no mock ciphertexts or simulated signatures.
 - **Telemetry hooks** – Counters and histograms are emitted through
   `pqcnet-telemetry`, letting zer0veil or any OTLP collector visualize backlog,
   retries, and latency in real time.
+- **PQC inventory reporting** – Each queue fill records the active KEM scheme and
+  Dilithium+SPHINCS redundancy plan via `TelemetryHandle::record_kem_event`, so
+  observers can prove whether Kyber/HQC fallbacks or dual signatures were in play
+  for every relayed batch.
 
 ## Flow
 
@@ -36,10 +40,14 @@ flowchart LR
     subgraph Crypto["pqcnet-crypto::CryptoProvider"]
         cfg["CryptoConfig"]
         seed["Node Secret Seed"]
-        kem["KeyManager (Kyber)"]
+        inv["Advertised KEMs\n(Kyber + HQC backup)"]
+        sigplan["Signature redundancy\n(Dilithium + SPHINCS)"]
+        kem["KeyManager (Kyber/HQC)"]
         sig["SignatureManager (Dilithium)"]
         cfg --> kem
         cfg --> sig
+        cfg --> inv
+        cfg --> sigplan
         seed --> kem
         seed --> sig
     end
@@ -50,13 +58,17 @@ flowchart LR
         tel["TelemetryHandle"]
     end
 
+    telemetry["pqcnet-telemetry\nKemUsageRecord stream"]
+
     queue --> net
     queue --> tel
     net -->|receipts| tel
+    tel --> telemetry
 
     Relayer -->|derive_shared_key| Crypto
     Crypto -->|ciphertext + shared secret| Relayer
     Relayer <--> |sign / verify| Crypto
+    Relayer -->|record_kem_event| telemetry
     net --> Sentries["pqcnet-sentry + peers"]
 ```
 
@@ -98,6 +110,23 @@ key-ttl-secs = 3600
 threshold-min-shares = 3
 threshold-total-shares = 5
 
+[[crypto.advertised-kems]]
+scheme = "kyber"
+public-key-hex = "9fa0c3c7f19d4eb64a88d9dcf45b2e77e6f233d41f5f8d1ef4ef7a0b1f284b55"
+key-id = "relayer-kyber-0001"
+backup-only = false
+
+[[crypto.advertised-kems]]
+scheme = "hqc"
+public-key-hex = "6cbf9cd9bf2d4de1a0aa9b6dd92d8f041b8478be45f4b3d18664a8b5d13e9088"
+key-id = "relayer-hqc-0001"
+backup-only = true
+
+[crypto.signature-redundancy]
+primary = "dilithium"
+backup = "sphincs"
+require-dual = true
+
 [networking]
 listen = "0.0.0.0:7200"
 max-inflight = 128
@@ -114,7 +143,8 @@ endpoint = "http://localhost:4318"
 - `max-queue-depth` caps memory usage and safeguards backpressure.
 - `mode` toggles ingest-only, egress-only, or bidirectional loops.
 - `[crypto]` is parsed directly by `pqcnet-crypto`, so relayers and sentries can
-  share the same rotation window and threshold policy without diverging.
+  share the same rotation window, threshold policy, advertised KEMs, and dual
+  signature requirements without diverging.
 - `[networking]` and `[telemetry]` sections are identical to the configs in the
   sibling crates, which keeps multi-node demos reproducible.
 
