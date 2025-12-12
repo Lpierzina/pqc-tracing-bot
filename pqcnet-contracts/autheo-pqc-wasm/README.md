@@ -15,6 +15,25 @@ cargo build --release -p autheo-pqc-wasm --target wasm32-unknown-unknown
 # optional: feed the wasm into wazero-harness for a WAKU-style handshake
 ```
 
+### Auto-generated JavaScript loader
+
+Building the crate for `wasm32-unknown-unknown` now drops a matching loader next to the compiled module:
+
+- `target/wasm32-unknown-unknown/<profile>/autheo_pqc_wasm.wasm`
+- `target/wasm32-unknown-unknown/<profile>/pqcnet.js`
+
+The generated `pqcnet.js` exports a single helper, `initPqcNet`, that instantiates the WASM (via `fetch`, a `Response`, or raw bytes) and exposes a `handshake(payload)` function that wraps `pqc_alloc`, `pqc_free`, and `pqc_handshake`.
+
+```javascript
+import { initPqcNet } from './pqcnet.js';
+
+const pqc = await initPqcNet('./autheo_pqc_wasm.wasm', { responseCapacity: 8192 });
+const request = 'client=autheo-demo&ts=1733966400000';
+const envelope = pqc.handshake(request); // Uint8Array with the PQC1 record
+```
+
+Pass a `Uint8Array`, `ArrayBuffer`, or string payload to `handshake`. The helper throws if the WASM exports are missing or the ABI returns a negative status code, so host runtimes can surface errors without touching Rust.
+
 ## Flow diagram
 ```
                        Host runtime (WASI / wazero)
