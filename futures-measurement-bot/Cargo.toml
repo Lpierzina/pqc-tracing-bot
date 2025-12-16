@@ -22,6 +22,14 @@ hdrhistogram = "7"
 async-trait = "0.1"
 blake3 = "1.5"
 
+# Demo web UI (static HTML + WS relay)
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+url = "2"
+
 # PQCNet / Autheo
 pqcnet-telemetry = { path = "../pqcnet-contracts/pqcnet-telemetry", default-features = false, features = ["dev"] }
 pqcnet-qs-dag = { path = "../pqcnet-contracts/pqcnet-qs-dag" }
