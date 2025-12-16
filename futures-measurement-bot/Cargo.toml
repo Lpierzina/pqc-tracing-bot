@@ -27,8 +27,8 @@ axum = { version = "0.7", features = ["ws", "macros"] }
 tower-http = { version = "0.6", features = ["fs", "trace", "set-header"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-url = "2"
+# Pin url below 2.5 to keep MSRV compatible with rustc 1.82.
+url = "=2.4.1"
 
 # PQCNet / Autheo
 pqcnet-telemetry = { path = "../pqcnet-contracts/pqcnet-telemetry", default-features = false, features = ["dev"] }

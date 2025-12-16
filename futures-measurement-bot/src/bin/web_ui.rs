@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use axum::{
     extract::{ws::Message, ws::WebSocket, ws::WebSocketUpgrade, State},
     http::{HeaderValue, StatusCode, Uri},
@@ -11,14 +11,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     net::SocketAddr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
 use tokio::sync::broadcast;
 use tower_http::{
     services::ServeDir,
-    set_header::SetResponseHeaderLayer,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
 
@@ -51,6 +50,7 @@ enum StreamMode {
 }
 
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 struct TastytradeConfig {
     api_base: String,
     username: Option<String>,
@@ -122,19 +122,11 @@ async fn main() -> anyhow::Result<()> {
         sim_tx,
     };
 
-    let static_svc = ServeDir::new(web_root.clone());
-
     let app = Router::new()
         .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/wasm/autheo_pqc_wasm.wasm", get(serve_autheo_pqc_wasm))
-        .nest_service(
-            "/",
-            static_svc.layer(SetResponseHeaderLayer::overriding(
-                axum::http::header::CACHE_CONTROL,
-                HeaderValue::from_static("no-store"),
-            )),
-        )
+        .nest_service("/", ServeDir::new(web_root.clone()))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().include_headers(false))
@@ -214,29 +206,26 @@ async fn handle_sim_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Resul
     // Fanout from sim loop.
     let mut sim_rx = state.sim_tx.subscribe();
 
-    // Reader: accept commands but no-op (we still log them back).
-    let reader = tokio::spawn(async move {
-        while let Some(Ok(msg)) = ws_rx.next().await {
-            if let Message::Text(t) = msg {
-                let _ = serde_json::from_str::<ClientCmd>(&t);
-            }
+    // Writer task: push sim messages until the socket closes.
+    let writer = tokio::spawn(async move {
+        loop {
+            let v = sim_rx.recv().await?;
+            let out = ServerMsg { ty: "stream", payload: v };
+            let txt = serde_json::to_string(&out)?;
+            ws_tx.send(Message::Text(txt)).await?;
         }
+        #[allow(unreachable_code)]
+        Ok::<(), anyhow::Error>(())
     });
 
-    // Writer: push sim messages.
-    loop {
-        tokio::select! {
-            _ = &mut {reader} => {
-                break;
-            }
-            v = sim_rx.recv() => {
-                let v = v?;
-                let out = ServerMsg{ ty: "stream", payload: v };
-                let txt = serde_json::to_string(&out)?;
-                ws_tx.send(Message::Text(txt)).await?;
-            }
+    // Reader: accept commands but no-op.
+    while let Some(Ok(msg)) = ws_rx.next().await {
+        if let Message::Text(t) = msg {
+            let _ = serde_json::from_str::<ClientCmd>(&t);
         }
     }
+
+    writer.abort();
 
     Ok(())
 }
@@ -244,7 +233,7 @@ async fn handle_sim_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Resul
 async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Result<()> {
     let (mut client_tx, mut client_rx) = socket.split();
 
-    let (streamer_url, streamer_token) = resolve_streamer_token(&state.streamer.tasty).await?;
+    let (streamer_url, streamer_token) = resolve_streamer_env(&state.streamer.tasty)?;
 
     let (mut upstream_ws, _resp) = tokio_tungstenite::connect_async(&streamer_url)
         .await
@@ -268,55 +257,37 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     // Split upstream so we can forward concurrently.
     let (mut up_tx, mut up_rx) = upstream_ws.split();
 
-    // Forward client -> upstream.
-    let mut up_tx2 = up_tx.clone();
-    let client_to_up = tokio::spawn(async move {
-        while let Some(Ok(msg)) = client_rx.next().await {
-            if let Message::Text(t) = msg {
-                let cmd = match serde_json::from_str::<ClientCmd>(&t) {
-                    Ok(c) => c,
-                    Err(_) => {
-                        // ignore
-                        continue;
-                    }
-                };
-
-                match cmd {
-                    ClientCmd::Subscribe { symbols, feed } => {
-                        let add: Vec<serde_json::Value> = symbols
-                            .into_iter()
-                            .map(|s| json!({"symbol": s, "type": feed}))
-                            .collect();
-                        let msg = json!({"type":"FEED_SUBSCRIPTION","channel":1,"add": add});
-                        let _ = up_tx2
-                            .send(tokio_tungstenite::tungstenite::Message::Text(msg.to_string()))
-                            .await;
-                    }
-                    ClientCmd::Unsubscribe { symbols, feed } => {
-                        let rem: Vec<serde_json::Value> = symbols
-                            .into_iter()
-                            .map(|s| json!({"symbol": s, "type": feed}))
-                            .collect();
-                        let msg = json!({"type":"FEED_SUBSCRIPTION","channel":1,"remove": rem});
-                        let _ = up_tx2
-                            .send(tokio_tungstenite::tungstenite::Message::Text(msg.to_string()))
-                            .await;
-                    }
-                    ClientCmd::Raw { payload } => {
-                        let _ = up_tx2
-                            .send(tokio_tungstenite::tungstenite::Message::Text(payload.to_string()))
-                            .await;
-                    }
-                }
-            }
-        }
-    });
-
-    // Forward upstream -> client.
+    // Forward both directions on one select loop.
     loop {
         tokio::select! {
-            _ = client_to_up => {
-                break;
+            msg = client_rx.next() => {
+                let Some(Ok(msg)) = msg else { break; };
+                if let Message::Text(t) = msg {
+                    let cmd = match serde_json::from_str::<ClientCmd>(&t) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    let out_msg = match cmd {
+                        ClientCmd::Subscribe { symbols, feed } => {
+                            let add: Vec<serde_json::Value> = symbols
+                                .into_iter()
+                                .map(|s| json!({"symbol": s, "type": feed}))
+                                .collect();
+                            json!({"type":"FEED_SUBSCRIPTION","channel":1,"add": add})
+                        }
+                        ClientCmd::Unsubscribe { symbols, feed } => {
+                            let rem: Vec<serde_json::Value> = symbols
+                                .into_iter()
+                                .map(|s| json!({"symbol": s, "type": feed}))
+                                .collect();
+                            json!({"type":"FEED_SUBSCRIPTION","channel":1,"remove": rem})
+                        }
+                        ClientCmd::Raw { payload } => payload,
+                    };
+
+                    up_tx.send(tokio_tungstenite::tungstenite::Message::Text(out_msg.to_string())).await?;
+                }
             }
             msg = up_rx.next() => {
                 let Some(msg) = msg else { break; };
@@ -326,22 +297,14 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
                     tokio_tungstenite::tungstenite::Message::Text(t) => {
                         serde_json::from_str::<serde_json::Value>(&t).unwrap_or_else(|_| json!({"raw": t}))
                     }
-                    tokio_tungstenite::tungstenite::Message::Binary(b) => {
-                        json!({"binary_len": b.len()})
-                    }
-                    tokio_tungstenite::tungstenite::Message::Ping(_) => {
-                        continue;
-                    }
-                    tokio_tungstenite::tungstenite::Message::Pong(_) => {
-                        continue;
-                    }
-                    tokio_tungstenite::tungstenite::Message::Close(_) => {
-                        break;
-                    }
+                    tokio_tungstenite::tungstenite::Message::Binary(b) => json!({"binary_len": b.len()}),
+                    tokio_tungstenite::tungstenite::Message::Ping(_) => continue,
+                    tokio_tungstenite::tungstenite::Message::Pong(_) => continue,
+                    tokio_tungstenite::tungstenite::Message::Close(_) => break,
                     _ => continue,
                 };
 
-                let out = ServerMsg{ ty: "stream", payload };
+                let out = ServerMsg { ty: "stream", payload };
                 let txt = serde_json::to_string(&out)?;
                 client_tx.send(Message::Text(txt)).await?;
             }
@@ -349,92 +312,18 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     }
 
     // Try to close upstream cleanly.
-    let _ = up_tx
-        .send(tokio_tungstenite::tungstenite::Message::Close(None))
-        .await;
+    let _ = up_tx.send(tokio_tungstenite::tungstenite::Message::Close(None)).await;
 
     Ok(())
 }
 
-async fn resolve_streamer_token(cfg: &TastytradeConfig) -> anyhow::Result<(String, String)> {
+fn resolve_streamer_env(cfg: &TastytradeConfig) -> anyhow::Result<(String, String)> {
     if let (Some(url), Some(token)) = (&cfg.streamer_url, &cfg.streamer_token) {
         return Ok((url.clone(), token.clone()));
     }
-
-    let (Some(username), Some(password)) = (&cfg.username, &cfg.password) else {
-        return Err(anyhow(
-            "Missing Tastytrade credentials. Provide TASTYTRADE_STREAMER_URL + TASTYTRADE_STREAMER_TOKEN, or TASTYTRADE_USERNAME + TASTYTRADE_PASSWORD.",
-        ));
-    };
-
-    let client = reqwest::Client::new();
-
-    // 1) Create session.
-    let login_url = format!("{}/sessions", cfg.api_base.trim_end_matches('/'));
-    let resp = client
-        .post(login_url)
-        .json(&json!({"login": username, "password": password, "remember-me": true}))
-        .send()
-        .await
-        .context("POST /sessions")?;
-
-    let body: serde_json::Value = resp.json().await.context("parse /sessions json")?;
-    let token = body
-        .pointer("/data/session-token")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("/sessions response missing data.session-token"))?;
-
-    // 2) Try a couple known endpoints for quote-streamer tokens.
-    let endpoints = ["quote-streamer-tokens", "api-quote-tokens", "quote-streamer-tokens" აც];
-    let mut last_err: Option<anyhow::Error> = None;
-
-    for ep in endpoints {
-        let url = format!("{}/{}", cfg.api_base.trim_end_matches('/'), ep);
-        let resp = client
-            .get(url)
-            .header("Authorization", token)
-            .send()
-            .await;
-
-        let resp = match resp {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-
-        let v: serde_json::Value = match resp.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-
-        // Heuristic extraction.
-        let streamer_token = v
-            .pointer("/data/token")
-            .or_else(|| v.pointer("/data/dxlink-token"))
-            .or_else(|| v.pointer("/data/quote-streamer-token"))
-            .and_then(|x| x.as_str());
-
-        let streamer_url = v
-            .pointer("/data/dxlink-url")
-            .or_else(|| v.pointer("/data/websocket-url"))
-            .or_else(|| v.pointer("/data/url"))
-            .and_then(|x| x.as_str());
-
-        if let (Some(t), Some(u)) = (streamer_token, streamer_url) {
-            // Validate URL shape (helps catch accidental HTML errors).
-            let _ = url::Url::parse(u).context("invalid streamer URL")?;
-            return Ok((u.to_string(), t.to_string()));
-        }
-
-        last_err = Some(anyhow!("unexpected token response shape from {}", ep));
-    }
-
-    Err(last_err.unwrap_or_else(|| anyhow!("failed to resolve quote-streamer token")))
+    Err(anyhow::anyhow!(
+        "Missing streamer credentials. Set TASTYTRADE_STREAMER_URL and TASTYTRADE_STREAMER_TOKEN (preferred for demos)."
+    ))
 }
 
 fn spawn_sim(tx: broadcast::Sender<serde_json::Value>) {
