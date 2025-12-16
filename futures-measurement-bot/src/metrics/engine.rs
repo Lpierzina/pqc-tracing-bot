@@ -167,6 +167,7 @@ impl MetricsEngine {
 
         // Microstructure horizons: when now >= fill_ts + horizon, record drift using latest book.
         let mut done = Vec::new();
+        let mut updates: Vec<(OrderId, PendingMicro)> = Vec::new();
         for pending_ref in self.pending_micro.iter() {
             let order_id = pending_ref.key().clone();
             let pending = pending_ref.value().clone();
@@ -220,14 +221,18 @@ impl MetricsEngine {
             if remaining.is_empty() {
                 done.push(order_id);
             } else {
-                self.pending_micro.insert(
+                updates.push((
                     order_id,
                     PendingMicro {
                         remaining,
                         ..pending
                     },
-                );
+                ));
             }
+        }
+        // Important: don't mutate `pending_micro` while iterating it (DashMap can deadlock).
+        for (order_id, pending) in updates {
+            self.pending_micro.insert(order_id, pending);
         }
         for order_id in done {
             self.pending_micro.remove(&order_id);
