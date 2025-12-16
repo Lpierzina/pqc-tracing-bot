@@ -126,7 +126,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/wasm/autheo_pqc_wasm.wasm", get(serve_autheo_pqc_wasm))
-        .nest_service("/", ServeDir::new(web_root.clone()))
+        // NOTE: Don't `nest_service("/")` here: ServeDir registers a catch-all wildcard route
+        // under `/` which conflicts with more specific routes like `/ws` in axum/matchit.
+        // Using a fallback avoids route-pattern conflicts while still serving static assets.
+        .fallback_service(ServeDir::new(web_root.clone()))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().include_headers(false))
