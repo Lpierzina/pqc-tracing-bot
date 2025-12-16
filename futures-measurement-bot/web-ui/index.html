@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trading Bot Demo (Tastytrade Streamer + PQCNet WASM)</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div>
+        <div class="title">Trading Bot Demo UI</div>
+        <div class="subtitle">Tastytrade Streamer (proxied) + PQCNet WASM (browser)</div>
+      </div>
+      <div class="pill" id="connStatus">disconnected</div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2>Streamer</h2>
+        <div class="row">
+          <label class="label">Symbols (comma-separated)</label>
+          <input id="symbols" class="input" value="AAPL, SPY" />
+        </div>
+        <div class="row">
+          <label class="label">Feed</label>
+          <select id="feed" class="input">
+            <option value="Quote" selected>Quote</option>
+            <option value="Trade">Trade</option>
+          </select>
+        </div>
+
+        <div class="buttons">
+          <button id="connect" class="btn">Connect</button>
+          <button id="disconnect" class="btn btn-secondary" disabled>Disconnect</button>
+          <button id="subscribe" class="btn" disabled>Subscribe</button>
+          <button id="unsubscribe" class="btn btn-secondary" disabled>Unsubscribe</button>
+        </div>
+
+        <div class="row">
+          <label class="label">Raw send (JSON)</label>
+          <textarea id="raw" class="input mono" rows="4" placeholder='{"type":"PING"}'></textarea>
+        </div>
+        <div class="buttons">
+          <button id="sendRaw" class="btn btn-secondary" disabled>Send raw</button>
+          <button id="clearLog" class="btn btn-secondary">Clear log</button>
+        </div>
+
+        <div class="kvs" id="topOfBook">
+          <div class="kv"><span class="k">Bid</span><span class="v" id="bid">—</span></div>
+          <div class="kv"><span class="k">Ask</span><span class="v" id="ask">—</span></div>
+          <div class="kv"><span class="k">Last</span><span class="v" id="last">—</span></div>
+          <div class="kv"><span class="k">Symbol</span><span class="v" id="lastSym">—</span></div>
+        </div>
+
+        <div class="log" id="log"></div>
+      </section>
+
+      <section class="card">
+        <h2>PQCNet WASM</h2>
+        <p class="small">
+          This loads <code>/wasm/autheo_pqc_wasm.wasm</code> (built from <code>pqcnet-contracts/autheo-pqc-wasm</code>) and runs
+          a sample <code>pqc_handshake</code> inside the browser.
+        </p>
+
+        <div class="row">
+          <label class="label">Handshake request</label>
+          <input id="handshakeReq" class="input" value="client=web-demo&ts=0" />
+        </div>
+        <div class="buttons">
+          <button id="runHandshake" class="btn">Run handshake</button>
+        </div>
+
+        <div class="row">
+          <label class="label">Result</label>
+          <pre class="code" id="handshakeOut">(not run)</pre>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

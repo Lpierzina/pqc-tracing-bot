@@ -62,6 +62,66 @@ cargo run --bin bot -- --venue autheo --symbol ES --side buy --order-type limit 
 
 It prints a small KV snapshot (e.g., fill probability) at the end.
 
+### Run the browser demo UI (Streamer + PQCNet WASM)
+
+This repo also includes a **static HTML demo UI** plus a small Rust server that:
+
+- Serves `web-ui/` (HTML/JS/CSS)
+- Exposes a **local websocket** at `/ws` for the browser
+- Connects to the **Tastytrade Streamer websocket** (or a simulator) and relays messages to the browser
+- Serves `autheo_pqc_wasm.wasm` at `/wasm/autheo_pqc_wasm.wasm` so the browser can run a PQCNet handshake
+
+#### 1) Start the server (simulated stream)
+
+```bash
+STREAM_SIM=1 cargo run --bin web_ui
+```
+
+Open `http://localhost:8080/` and hit **Connect**. You should see a `SIM` stream updating ~4 times/second.
+
+#### 2) Start the server (real Tastytrade Streamer)
+
+For the demo server, **do not** put API tokens in browser JS. Instead, set them as server env vars:
+
+```bash
+export TASTYTRADE_STREAMER_URL="wss://<dxlink-streamer-host>/..."
+export TASTYTRADE_STREAMER_TOKEN="<streamer-token>"
+cargo run --bin web_ui
+```
+
+Then open `http://localhost:8080/`, click **Connect**, and use **Subscribe** to request symbols/feeds.
+
+Notes:
+
+- The dxLink protocol details can change; the UI includes a **Raw send** box so you can try exact JSON payloads without redeploying.
+- The server currently expects `TASTYTRADE_STREAMER_URL` + `TASTYTRADE_STREAMER_TOKEN` (recommended for demos). A login/token-fetch flow can be added later if needed.
+
+#### 3) Build / embed PQCNet WASM
+
+The UI tries to fetch `GET /wasm/autheo_pqc_wasm.wasm`.
+
+By default, the server looks for a built artifact at:
+
+- `../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm`
+
+Build it from the repo root:
+
+```bash
+cd ../pqcnet-contracts
+rustup target add wasm32-unknown-unknown
+cargo build --release -p autheo-pqc-wasm --target wasm32-unknown-unknown
+```
+
+If you want to override where the server loads the WASM from:
+
+```bash
+AUTHEO_PQC_WASM_PATH="/absolute/path/to/autheo_pqc_wasm.wasm" cargo run --bin web_ui
+```
+
+If you don’t want to build WASM, you can also copy a prebuilt `autheo_pqc_wasm.wasm` into:
+
+- `web-ui/wasm/autheo_pqc_wasm.wasm`
+
 ### Test
 
 ```bash
