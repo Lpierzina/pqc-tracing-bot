@@ -4,6 +4,9 @@ const $ = (id) => document.getElementById(id);
 const logEl = $("log");
 const statusEl = $("connStatus");
 
+const LS_STREAMER_URL = "tt_streamer_url";
+const LS_STREAMER_TOKEN = "tt_streamer_token";
+
 function setStatus(ok, text) {
   statusEl.textContent = text;
   statusEl.classList.toggle("ok", !!ok);
@@ -51,6 +54,32 @@ function updateTopOfBook(msg) {
   }
 }
 
+function loadStreamerSettings() {
+  const url = localStorage.getItem(LS_STREAMER_URL) || "";
+  const token = localStorage.getItem(LS_STREAMER_TOKEN) || "";
+  if ($("streamerUrl")) $("streamerUrl").value = url;
+  if ($("streamerToken")) $("streamerToken").value = token;
+}
+
+function persistStreamerSettings() {
+  const url = $("streamerUrl")?.value?.trim?.() ?? "";
+  const token = $("streamerToken")?.value?.trim?.() ?? "";
+  localStorage.setItem(LS_STREAMER_URL, url);
+  localStorage.setItem(LS_STREAMER_TOKEN, token);
+}
+
+function sendStreamerConfigIfPresent() {
+  const url = $("streamerUrl")?.value?.trim?.() ?? "";
+  const token = $("streamerToken")?.value?.trim?.() ?? "";
+
+  // Only send if both are present; otherwise the server will fall back to env vars.
+  if (url && token) {
+    send({ type: "configure_streamer", streamerUrl: url, streamerToken: token });
+  } else if (url || token) {
+    log("streamer config incomplete; provide both URL + Token or set server env vars");
+  }
+}
+
 function connect() {
   if (ws) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -60,6 +89,8 @@ function connect() {
     setStatus(true, "connected");
     setButtons(true);
     log("ws open");
+    persistStreamerSettings();
+    sendStreamerConfigIfPresent();
   };
 
   ws.onclose = (e) => {
@@ -125,6 +156,10 @@ $("clearLog").onclick = () => (logEl.innerHTML = "");
 
 setButtons(false);
 setStatus(false, "disconnected");
+
+loadStreamerSettings();
+$("streamerUrl")?.addEventListener("change", persistStreamerSettings);
+$("streamerToken")?.addEventListener("change", persistStreamerSettings);
 
 // -------- PQCNet WASM demo --------
 

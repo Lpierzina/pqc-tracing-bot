@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::broadcast;
+use tokio::time::timeout;
 use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
@@ -66,6 +67,17 @@ enum ClientCmd {
     Subscribe { symbols: Vec<String>, feed: String },
     #[serde(rename = "unsubscribe")]
     Unsubscribe { symbols: Vec<String>, feed: String },
+    /// Configure upstream dxLink streamer connection for this WS session.
+    ///
+    /// The demo UI sends this immediately after connecting so users can paste
+    /// `streamerUrl` + `streamerToken` without restarting the server.
+    #[serde(rename = "configure_streamer")]
+    ConfigureStreamer {
+        #[serde(rename = "streamerUrl")]
+        streamer_url: String,
+        #[serde(rename = "streamerToken")]
+        streamer_token: String,
+    },
     #[serde(rename = "raw")]
     Raw { payload: serde_json::Value },
 }
@@ -236,7 +248,38 @@ async fn handle_sim_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Resul
 async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Result<()> {
     let (mut client_tx, mut client_rx) = socket.split();
 
-    let (streamer_url, streamer_token) = resolve_streamer_env(&state.streamer.tasty)?;
+    // Allow the UI to configure the upstream connection per-session. If the user
+    // doesn't send config, we fall back to env vars.
+    let mut upstream_cfg = resolve_streamer_env(&state.streamer.tasty).ok();
+    let mut buffered_cmds: Vec<ClientCmd> = Vec::new();
+
+    // Try to read one early command to capture `configure_streamer` before we connect upstream.
+    // (The UI sends it immediately on open.)
+    if let Ok(Some(Ok(Message::Text(t)))) = timeout(Duration::from_millis(1500), client_rx.next()).await
+    {
+        if let Ok(cmd) = serde_json::from_str::<ClientCmd>(&t) {
+            match cmd {
+                ClientCmd::ConfigureStreamer {
+                    streamer_url,
+                    streamer_token,
+                } => upstream_cfg = Some((streamer_url, streamer_token)),
+                other => buffered_cmds.push(other),
+            }
+        }
+    }
+
+    let Some((streamer_url, streamer_token)) = upstream_cfg else {
+        let out = ServerMsg {
+            ty: "error",
+            payload: json!({
+                "message": "Missing streamer credentials. Provide them from the UI (Streamer URL + Token) or set TASTYTRADE_STREAMER_URL and TASTYTRADE_STREAMER_TOKEN."
+            }),
+        };
+        let _ = client_tx
+            .send(Message::Text(serde_json::to_string(&out)?))
+            .await;
+        return Err(anyhow::anyhow!("missing streamer credentials"));
+    };
 
     let (mut upstream_ws, _resp) = tokio_tungstenite::connect_async(&streamer_url)
         .await
@@ -260,6 +303,17 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     // Split upstream so we can forward concurrently.
     let (mut up_tx, mut up_rx) = upstream_ws.split();
 
+    // Flush any buffered commands collected before upstream was connected.
+    for cmd in buffered_cmds.drain(..) {
+        if let Some(out_msg) = client_cmd_to_upstream(cmd) {
+            up_tx
+                .send(tokio_tungstenite::tungstenite::Message::Text(
+                    out_msg.to_string(),
+                ))
+                .await?;
+        }
+    }
+
     // Forward both directions on one select loop.
     loop {
         tokio::select! {
@@ -271,25 +325,21 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
                         Err(_) => continue,
                     };
 
-                    let out_msg = match cmd {
-                        ClientCmd::Subscribe { symbols, feed } => {
-                            let add: Vec<serde_json::Value> = symbols
-                                .into_iter()
-                                .map(|s| json!({"symbol": s, "type": feed}))
-                                .collect();
-                            json!({"type":"FEED_SUBSCRIPTION","channel":1,"add": add})
+                    match cmd {
+                        ClientCmd::ConfigureStreamer { .. } => {
+                            // This connection is already established; updating requires reconnect.
+                            let out = ServerMsg {
+                                ty: "info",
+                                payload: json!({"message":"Streamer config received, but this session is already connected upstream. Disconnect + Connect to apply."}),
+                            };
+                            let _ = client_tx.send(Message::Text(serde_json::to_string(&out)?)).await;
                         }
-                        ClientCmd::Unsubscribe { symbols, feed } => {
-                            let rem: Vec<serde_json::Value> = symbols
-                                .into_iter()
-                                .map(|s| json!({"symbol": s, "type": feed}))
-                                .collect();
-                            json!({"type":"FEED_SUBSCRIPTION","channel":1,"remove": rem})
+                        other => {
+                            if let Some(out_msg) = client_cmd_to_upstream(other) {
+                                up_tx.send(tokio_tungstenite::tungstenite::Message::Text(out_msg.to_string())).await?;
+                            }
                         }
-                        ClientCmd::Raw { payload } => payload,
-                    };
-
-                    up_tx.send(tokio_tungstenite::tungstenite::Message::Text(out_msg.to_string())).await?;
+                    }
                 }
             }
             msg = up_rx.next() => {
@@ -318,6 +368,27 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     let _ = up_tx.send(tokio_tungstenite::tungstenite::Message::Close(None)).await;
 
     Ok(())
+}
+
+fn client_cmd_to_upstream(cmd: ClientCmd) -> Option<serde_json::Value> {
+    match cmd {
+        ClientCmd::Subscribe { symbols, feed } => {
+            let add: Vec<serde_json::Value> = symbols
+                .into_iter()
+                .map(|s| json!({"symbol": s, "type": feed}))
+                .collect();
+            Some(json!({"type":"FEED_SUBSCRIPTION","channel":1,"add": add}))
+        }
+        ClientCmd::Unsubscribe { symbols, feed } => {
+            let rem: Vec<serde_json::Value> = symbols
+                .into_iter()
+                .map(|s| json!({"symbol": s, "type": feed}))
+                .collect();
+            Some(json!({"type":"FEED_SUBSCRIPTION","channel":1,"remove": rem}))
+        }
+        ClientCmd::Raw { payload } => Some(payload),
+        ClientCmd::ConfigureStreamer { .. } => None,
+    }
 }
 
 fn resolve_streamer_env(cfg: &TastytradeConfig) -> anyhow::Result<(String, String)> {
