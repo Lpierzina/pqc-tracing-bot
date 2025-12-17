@@ -1,9 +1,9 @@
-use async_trait::async_trait;
 use crate::events::Event;
 use crate::types::{CancelReason, ClientIntentId, OrderId, OrderParams};
+use async_trait::async_trait;
 
-pub mod trading_station;
 pub mod autheo;
+pub mod trading_station;
 
 #[async_trait]
 pub trait ExecutionAdapter: Send + Sync {
@@ -13,5 +13,9 @@ pub trait ExecutionAdapter: Send + Sync {
         params: OrderParams,
     ) -> anyhow::Result<(OrderId, Vec<Event>)>;
 
-    async fn cancel_order(&self, order_id: OrderId, reason: CancelReason) -> anyhow::Result<Vec<Event>>;
+    async fn cancel_order(
+        &self,
+        order_id: OrderId,
+        reason: CancelReason,
+    ) -> anyhow::Result<Vec<Event>>;
 }

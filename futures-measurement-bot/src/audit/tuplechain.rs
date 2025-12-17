@@ -18,7 +18,8 @@ pub struct TupleChainAuditSink {
 impl TupleChainAuditSink {
     pub fn new(creator: impl Into<String>) -> Self {
         let creator = creator.into();
-        let keeper = TupleChainKeeper::new(TupleChainConfig::default()).allow_creator(creator.clone());
+        let keeper =
+            TupleChainKeeper::new(TupleChainConfig::default()).allow_creator(creator.clone());
         Self {
             creator,
             keeper: Mutex::new(keeper),

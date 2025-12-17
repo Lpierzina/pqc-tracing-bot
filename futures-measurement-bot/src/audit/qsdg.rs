@@ -1,7 +1,9 @@
 use crate::audit::{AuditEvent, AuditSink};
 use pqcnet_qs_dag::icosuple::IcosupleLayer;
 use pqcnet_qs_dag::state::{QsDag, StateDiff, StateOp};
-use pqcnet_qs_dag::tuple::{PayloadProfile, QIPTag, TupleDomain, TupleEnvelope, TupleProof, TupleProofKind, TupleValidation};
+use pqcnet_qs_dag::tuple::{
+    PayloadProfile, QIPTag, TupleDomain, TupleEnvelope, TupleProof, TupleProofKind, TupleValidation,
+};
 use std::sync::Mutex;
 
 /// Minimal QS-DAG anchoring sink.
@@ -17,8 +19,7 @@ impl QsDagAuditSink {
     pub fn new(author: impl Into<String>) -> anyhow::Result<Self> {
         let author = author.into();
         let genesis = StateDiff::genesis("genesis", &author);
-        let dag = QsDag::new(genesis)
-            .map_err(|e| anyhow::anyhow!("init QS-DAG failed: {e}"))?;
+        let dag = QsDag::new(genesis).map_err(|e| anyhow::anyhow!("init QS-DAG failed: {e}"))?;
         Ok(Self {
             author,
             dag: Mutex::new(dag),
@@ -55,7 +56,10 @@ impl AuditSink for QsDagAuditSink {
             digest.as_bytes().to_vec(),
             self.author.as_bytes().to_vec(),
         );
-        let proof = TupleProof::new(TupleProofKind::Custom("audit".into()), digest.as_bytes().to_vec());
+        let proof = TupleProof::new(
+            TupleProofKind::Custom("audit".into()),
+            digest.as_bytes().to_vec(),
+        );
 
         let tuple = TupleEnvelope::new(
             TupleDomain::Finance,

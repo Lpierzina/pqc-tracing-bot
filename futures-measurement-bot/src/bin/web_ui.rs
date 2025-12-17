@@ -4,18 +4,13 @@ use axum::{
     http::{HeaderValue, StatusCode, Uri},
     response::Json,
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 use tokio::time::timeout;
 use tower_http::{
@@ -25,6 +20,7 @@ use tower_http::{
 
 use futures_measurement_bot::audit::NoopAuditSink;
 use futures_measurement_bot::metrics::engine::MetricsEngine;
+use futures_measurement_bot::strategy::distressed_position_rescue as rescue;
 use futures_measurement_bot::MetricsConfig;
 
 #[derive(Clone)]
@@ -104,12 +100,10 @@ async fn main() -> anyhow::Result<()> {
     let web_root = PathBuf::from(env_or("WEB_UI_ROOT", "web-ui"));
 
     let wasm_paths = WasmPaths {
-        preferred_autheo_pqc_wasm: PathBuf::from(
-            env_or(
-                "AUTHEO_PQC_WASM_PATH",
-                "../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm",
-            ),
-        ),
+        preferred_autheo_pqc_wasm: PathBuf::from(env_or(
+            "AUTHEO_PQC_WASM_PATH",
+            "../pqcnet-contracts/target/wasm32-unknown-unknown/release/autheo_pqc_wasm.wasm",
+        )),
     };
 
     let (sim_tx, _sim_rx) = broadcast::channel(1024);
@@ -133,7 +127,8 @@ async fn main() -> anyhow::Result<()> {
         spawn_sim(sim_tx.clone());
     }
 
-    let audit: Arc<dyn futures_measurement_bot::audit::AuditSink> = Arc::new(NoopAuditSink::default());
+    let audit: Arc<dyn futures_measurement_bot::audit::AuditSink> =
+        Arc::new(NoopAuditSink::default());
     let metrics = MetricsEngine::new(MetricsConfig::default(), audit);
 
     let state = AppState {
@@ -151,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/metrics/kv", get(metrics_kv))
         .route("/api/metrics/buckets", get(metrics_buckets))
         .route("/api/metrics/config", get(metrics_config))
+        .route("/api/rescue_scan", post(rescue_scan))
         // NOTE: Don't `nest_service("/")` here: ServeDir registers a catch-all wildcard route
         // under `/` which conflicts with more specific routes like `/ws` in axum/matchit.
         // Using a fallback avoids route-pattern conflicts while still serving static assets.
@@ -225,6 +221,17 @@ async fn metrics_config(State(state): State<Arc<AppState>>) -> impl IntoResponse
     Json(state.metrics.config())
 }
 
+async fn rescue_scan(Json(req): Json<rescue::RescueScanRequest>) -> impl IntoResponse {
+    match rescue::scan(&req) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| async move {
         if let Err(e) = handle_client_ws(state, socket).await {
@@ -250,7 +257,10 @@ async fn handle_sim_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Resul
     let writer = tokio::spawn(async move {
         loop {
             let v = sim_rx.recv().await?;
-            let out = ServerMsg { ty: "stream", payload: v };
+            let out = ServerMsg {
+                ty: "stream",
+                payload: v,
+            };
             let txt = serde_json::to_string(&out)?;
             ws_tx.send(Message::Text(txt)).await?;
         }
@@ -280,7 +290,8 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
 
     // Try to read one early command to capture `configure_streamer` before we connect upstream.
     // (The UI sends it immediately on open.)
-    if let Ok(Some(Ok(Message::Text(t)))) = timeout(Duration::from_millis(1500), client_rx.next()).await
+    if let Ok(Some(Ok(Message::Text(t)))) =
+        timeout(Duration::from_millis(1500), client_rx.next()).await
     {
         if let Ok(cmd) = serde_json::from_str::<ClientCmd>(&t) {
             match cmd {
@@ -314,15 +325,21 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     // Channel numbers are conventional.
     let setup = json!({"type":"SETUP","channel":0,"keepaliveTimeout":60,"acceptKeepaliveTimeout":60,"version":"0.1"});
     upstream_ws
-        .send(tokio_tungstenite::tungstenite::Message::Text(setup.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            setup.to_string(),
+        ))
         .await?;
     let auth = json!({"type":"AUTH","channel":0,"token": streamer_token});
     upstream_ws
-        .send(tokio_tungstenite::tungstenite::Message::Text(auth.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            auth.to_string(),
+        ))
         .await?;
     let channel = json!({"type":"CHANNEL_REQUEST","channel":1,"service":"FEED","parameters":{"contract":"AUTO"}});
     upstream_ws
-        .send(tokio_tungstenite::tungstenite::Message::Text(channel.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            channel.to_string(),
+        ))
         .await?;
 
     // Split upstream so we can forward concurrently.
@@ -390,7 +407,9 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     }
 
     // Try to close upstream cleanly.
-    let _ = up_tx.send(tokio_tungstenite::tungstenite::Message::Close(None)).await;
+    let _ = up_tx
+        .send(tokio_tungstenite::tungstenite::Message::Close(None))
+        .await;
 
     Ok(())
 }
