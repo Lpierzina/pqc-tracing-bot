@@ -111,11 +111,26 @@ impl MetricsEngine {
         &self.telemetry
     }
 
+    pub fn config(&self) -> MetricsConfig {
+        self.cfg.clone()
+    }
+
     pub fn snapshot_kv(&self) -> BTreeMap<String, String> {
         self.latest_kv
             .iter()
             .map(|kv| (kv.key().clone(), kv.value().clone()))
             .collect()
+    }
+
+    pub fn snapshot_buckets(&self) -> Vec<BucketSnapshot> {
+        let mut out: Vec<BucketSnapshot> = Vec::new();
+        for entry in self.buckets.iter() {
+            let key = entry.key().clone();
+            let stats = entry.value().lock().clone();
+            out.push(BucketSnapshot::from_stats(key, stats));
+        }
+        out.sort_by(|a, b| a.bucket.cmp(&b.bucket));
+        out
     }
 
     pub fn observe(&self, event: &Event) -> anyhow::Result<()> {
@@ -530,5 +545,108 @@ fn bucket_for_params(params: &OrderParams) -> BucketKey {
         order_type: params.order_type,
         qty_bucket,
         tod,
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HistoSnapshot {
+    pub count: u64,
+    pub p50: u64,
+    pub p95: u64,
+    pub p99: u64,
+    pub max: u64,
+}
+
+fn snap_histo(h: &crate::metrics::stats::Histo) -> HistoSnapshot {
+    HistoSnapshot {
+        count: h.count(),
+        p50: h.p50(),
+        p95: h.p95(),
+        p99: h.p99(),
+        max: h.max(),
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FillSnapshot {
+    pub filled: u64,
+    pub cancelled: u64,
+    pub timed_out: u64,
+    pub total_terminal: u64,
+    pub fill_probability: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RejectSnapshot {
+    pub submitted: u64,
+    pub rejected: u64,
+    pub rejection_rate: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BucketStatsSnapshot {
+    pub fills: FillSnapshot,
+    pub rejects: RejectSnapshot,
+
+    pub adverse_slippage_bps: HistoSnapshot,
+    pub favorable_slippage_bps: HistoSnapshot,
+
+    pub latency_decision_to_send_ms: HistoSnapshot,
+    pub latency_send_to_ack_ms: HistoSnapshot,
+    pub latency_send_to_first_fill_ms: HistoSnapshot,
+    pub latency_send_to_last_fill_ms: HistoSnapshot,
+
+    pub mid_drift_100ms_bps: HistoSnapshot,
+    pub mid_drift_1s_bps: HistoSnapshot,
+    pub mid_drift_5s_bps: HistoSnapshot,
+
+    pub spread_bps_at_decision: HistoSnapshot,
+    pub depth_bid_topn_at_decision: HistoSnapshot,
+    pub depth_ask_topn_at_decision: HistoSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BucketSnapshot {
+    pub bucket: BucketKey,
+    pub stats: BucketStatsSnapshot,
+}
+
+impl BucketSnapshot {
+    fn from_stats(bucket: BucketKey, s: BucketStats) -> Self {
+        let fills = FillSnapshot {
+            filled: s.fills.filled,
+            cancelled: s.fills.cancelled,
+            timed_out: s.fills.timed_out,
+            total_terminal: s.fills.total_terminal(),
+            fill_probability: s.fills.fill_probability(),
+        };
+        let rejects = RejectSnapshot {
+            submitted: s.rejects.submitted,
+            rejected: s.rejects.rejected,
+            rejection_rate: s.rejects.rejection_rate(),
+        };
+        Self {
+            bucket,
+            stats: BucketStatsSnapshot {
+                fills,
+                rejects,
+
+                adverse_slippage_bps: snap_histo(&s.adverse_slippage_bps),
+                favorable_slippage_bps: snap_histo(&s.favorable_slippage_bps),
+
+                latency_decision_to_send_ms: snap_histo(&s.latency_decision_to_send_ms),
+                latency_send_to_ack_ms: snap_histo(&s.latency_send_to_ack_ms),
+                latency_send_to_first_fill_ms: snap_histo(&s.latency_send_to_first_fill_ms),
+                latency_send_to_last_fill_ms: snap_histo(&s.latency_send_to_last_fill_ms),
+
+                mid_drift_100ms_bps: snap_histo(&s.mid_drift_100ms_bps),
+                mid_drift_1s_bps: snap_histo(&s.mid_drift_1s_bps),
+                mid_drift_5s_bps: snap_histo(&s.mid_drift_5s_bps),
+
+                spread_bps_at_decision: snap_histo(&s.spread_bps_at_decision),
+                depth_bid_topn_at_decision: snap_histo(&s.depth_bid_topn_at_decision),
+                depth_ask_topn_at_decision: snap_histo(&s.depth_ask_topn_at_decision),
+            },
+        }
     }
 }

@@ -2,6 +2,7 @@ use anyhow::Context;
 use axum::{
     extract::{ws::Message, ws::WebSocket, ws::WebSocketUpgrade, State},
     http::{HeaderValue, StatusCode, Uri},
+    response::Json,
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
@@ -22,6 +23,10 @@ use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
 
+use futures_measurement_bot::audit::NoopAuditSink;
+use futures_measurement_bot::metrics::engine::MetricsEngine;
+use futures_measurement_bot::MetricsConfig;
+
 #[derive(Clone)]
 struct AppState {
     web_root: PathBuf,
@@ -29,6 +34,7 @@ struct AppState {
     streamer: StreamerConfig,
     // Fanout for sim-mode (and potentially cached latest state later).
     sim_tx: broadcast::Sender<serde_json::Value>,
+    metrics: MetricsEngine,
 }
 
 #[derive(Clone, Debug)]
@@ -127,17 +133,24 @@ async fn main() -> anyhow::Result<()> {
         spawn_sim(sim_tx.clone());
     }
 
+    let audit: Arc<dyn futures_measurement_bot::audit::AuditSink> = Arc::new(NoopAuditSink::default());
+    let metrics = MetricsEngine::new(MetricsConfig::default(), audit);
+
     let state = AppState {
         web_root: web_root.clone(),
         wasm_paths,
         streamer,
         sim_tx,
+        metrics,
     };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/ws", get(ws_handler))
         .route("/wasm/autheo_pqc_wasm.wasm", get(serve_autheo_pqc_wasm))
+        .route("/api/metrics/kv", get(metrics_kv))
+        .route("/api/metrics/buckets", get(metrics_buckets))
+        .route("/api/metrics/config", get(metrics_config))
         // NOTE: Don't `nest_service("/")` here: ServeDir registers a catch-all wildcard route
         // under `/` which conflicts with more specific routes like `/ws` in axum/matchit.
         // Using a fallback avoids route-pattern conflicts while still serving static assets.
@@ -198,6 +211,18 @@ async fn serve_autheo_pqc_wasm(State(state): State<Arc<AppState>>) -> Response {
         "autheo_pqc_wasm.wasm not found; build pqcnet-contracts/autheo-pqc-wasm for wasm32 and/or copy into futures-measurement-bot/web-ui/wasm/",
     )
         .into_response()
+}
+
+async fn metrics_kv(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.metrics.snapshot_kv())
+}
+
+async fn metrics_buckets(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.metrics.snapshot_buckets())
+}
+
+async fn metrics_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.metrics.config())
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {

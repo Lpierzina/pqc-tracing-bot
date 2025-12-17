@@ -92,6 +92,16 @@ pub trait AuditSink: Send + Sync {
 pub mod tuplechain;
 pub mod qsdg;
 
+/// No-op audit sink (useful for demos and web UI).
+#[derive(Clone, Debug, Default)]
+pub struct NoopAuditSink;
+
+impl AuditSink for NoopAuditSink {
+    fn emit(&self, _event: AuditEvent) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 /// Fan-out sink for emitting to multiple audit backends.
 pub struct CompositeAuditSink {
     sinks: Vec<std::sync::Arc<dyn AuditSink>>,
