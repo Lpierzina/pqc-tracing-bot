@@ -21,8 +21,14 @@ fn computes_fill_probability_and_slippage_buckets() {
     // Intent + sent + ack + fill
     let t0 = SystemTime::now();
     let book = OrderBookTopN {
-        bids: vec![BookLevel { price: 99.0, qty: 10.0 }],
-        asks: vec![BookLevel { price: 101.0, qty: 10.0 }],
+        bids: vec![BookLevel {
+            price: 99.0,
+            qty: 10.0,
+        }],
+        asks: vec![BookLevel {
+            price: 101.0,
+            qty: 10.0,
+        }],
     };
 
     engine

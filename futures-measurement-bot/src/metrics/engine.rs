@@ -94,7 +94,8 @@ struct PendingMicro {
 
 impl MetricsEngine {
     pub fn new(cfg: MetricsConfig, audit: Arc<dyn AuditSink>) -> Self {
-        let telemetry = TelemetryHandle::from_config(TelemetryConfig::sample(&cfg.telemetry_endpoint));
+        let telemetry =
+            TelemetryHandle::from_config(TelemetryConfig::sample(&cfg.telemetry_endpoint));
         Self {
             cfg,
             telemetry,
@@ -136,8 +137,10 @@ impl MetricsEngine {
     pub fn observe(&self, event: &Event) -> anyhow::Result<()> {
         match event {
             Event::MarketData(md) => {
-                self.books
-                    .insert((md.venue.clone(), md.symbol.clone()), (md.ts, md.book.clone()));
+                self.books.insert(
+                    (md.venue.clone(), md.symbol.clone()),
+                    (md.ts, md.book.clone()),
+                );
                 Ok(())
             }
             Event::StrategyIntent(intent) => self.on_intent(intent),
@@ -313,7 +316,8 @@ impl MetricsEngine {
         self.telemetry
             .record_counter("intents.total", 1)
             .context("telemetry")?;
-        self.audit.emit(AuditEvent::intent(intent.clone(), bucket))?;
+        self.audit
+            .emit(AuditEvent::intent(intent.clone(), bucket))?;
 
         Ok(())
     }
@@ -324,7 +328,12 @@ impl MetricsEngine {
             .by_order
             .remove(&placeholder)
             .map(|kv| kv.1)
-            .with_context(|| format!("missing intent for sent order (intent_id={})", sent.intent_id.0))?;
+            .with_context(|| {
+                format!(
+                    "missing intent for sent order (intent_id={})",
+                    sent.intent_id.0
+                )
+            })?;
 
         state.order_id = sent.order_id.clone();
         state.t_send = Some(sent.ts);
@@ -340,7 +349,8 @@ impl MetricsEngine {
             .lock()
             .latency_decision_to_send_ms
             .record(dt.max(1));
-        self.telemetry.record_latency_ms("latency.decision_to_send_ms", dt);
+        self.telemetry
+            .record_latency_ms("latency.decision_to_send_ms", dt);
         self.telemetry
             .record_counter("orders.submitted", 1)
             .context("telemetry")?;
@@ -360,18 +370,24 @@ impl MetricsEngine {
         entry.t_ack = Some(ack.ts);
 
         if let Some(t_send) = entry.t_send {
-            let dt = ack.ts.duration_since(t_send).unwrap_or_default().as_millis() as u64;
+            let dt = ack
+                .ts
+                .duration_since(t_send)
+                .unwrap_or_default()
+                .as_millis() as u64;
             self.bucket_stats(&entry.bucket)
                 .lock()
                 .latency_send_to_ack_ms
                 .record(dt.max(1));
-            self.telemetry.record_latency_ms("latency.send_to_ack_ms", dt);
+            self.telemetry
+                .record_latency_ms("latency.send_to_ack_ms", dt);
         }
 
         self.telemetry
             .record_counter("orders.acked", 1)
             .context("telemetry")?;
-        self.audit.emit(AuditEvent::ack(ack.clone(), entry.bucket.clone()))?;
+        self.audit
+            .emit(AuditEvent::ack(ack.clone(), entry.bucket.clone()))?;
         Ok(())
     }
 
@@ -384,7 +400,8 @@ impl MetricsEngine {
                 self.telemetry
                     .record_counter("orders.rejected", 1)
                     .context("telemetry")?;
-                self.audit.emit(AuditEvent::reject(rej.clone(), Some(entry.bucket.clone())))?;
+                self.audit
+                    .emit(AuditEvent::reject(rej.clone(), Some(entry.bucket.clone())))?;
                 return Ok(());
             }
         }
@@ -398,7 +415,8 @@ impl MetricsEngine {
                 self.telemetry
                     .record_counter("orders.rejected", 1)
                     .context("telemetry")?;
-                self.audit.emit(AuditEvent::reject(rej.clone(), Some(entry.bucket.clone())))?;
+                self.audit
+                    .emit(AuditEvent::reject(rej.clone(), Some(entry.bucket.clone())))?;
                 return Ok(());
             }
         }
@@ -425,7 +443,8 @@ impl MetricsEngine {
         self.telemetry
             .record_counter("orders.cancelled", 1)
             .context("telemetry")?;
-        self.audit.emit(AuditEvent::cancel(can.clone(), entry.bucket.clone()))?;
+        self.audit
+            .emit(AuditEvent::cancel(can.clone(), entry.bucket.clone()))?;
         Ok(())
     }
 
@@ -447,7 +466,8 @@ impl MetricsEngine {
                     .lock()
                     .latency_send_to_first_fill_ms
                     .record(dt.max(1));
-                self.telemetry.record_latency_ms("latency.send_to_first_fill_ms", dt);
+                self.telemetry
+                    .record_latency_ms("latency.send_to_first_fill_ms", dt);
             }
         }
 
@@ -465,7 +485,8 @@ impl MetricsEngine {
                     .lock()
                     .latency_send_to_last_fill_ms
                     .record(dt.max(1));
-                self.telemetry.record_latency_ms("latency.send_to_last_fill_ms", dt);
+                self.telemetry
+                    .record_latency_ms("latency.send_to_last_fill_ms", dt);
             }
 
             // Slippage: compare final VWAP to reference.
@@ -496,19 +517,31 @@ impl MetricsEngine {
             self.latest_kv.insert(
                 format!(
                     "fill_prob|{}|{}|{:?}|{:?}",
-                    entry.params.venue.0, entry.params.symbol.0, entry.params.side, entry.params.order_type
+                    entry.params.venue.0,
+                    entry.params.symbol.0,
+                    entry.params.side,
+                    entry.params.order_type
                 ),
                 format!("{:.4}", fills.fill_probability()),
             );
         }
 
-        self.audit.emit(AuditEvent::fill(f.clone(), entry.bucket.clone(), entry.vwap(), entry.reference_price))?;
+        self.audit.emit(AuditEvent::fill(
+            f.clone(),
+            entry.bucket.clone(),
+            entry.vwap(),
+            entry.reference_price,
+        ))?;
         Ok(())
     }
 
     fn schedule_microstructure(&self, entry: &OrderState, fill_ts: SystemTime) {
-        let Some(book_before) = &entry.decision_book else { return };
-        let Some(mid_before) = book_before.mid() else { return };
+        let Some(book_before) = &entry.decision_book else {
+            return;
+        };
+        let Some(mid_before) = book_before.mid() else {
+            return;
+        };
         if mid_before <= 0.0 {
             return;
         }

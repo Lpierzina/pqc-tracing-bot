@@ -217,3 +217,278 @@ async function runHandshake() {
 }
 
 $("runHandshake").onclick = runHandshake;
+
+// -------- Distressed Position Rescue Scanner --------
+
+function f2(x) {
+  return Number.isFinite(x) ? x.toFixed(2) : "—";
+}
+function f3(x) {
+  return Number.isFinite(x) ? x.toFixed(3) : "—";
+}
+function money(x) {
+  if (!Number.isFinite(x)) return "—";
+  const s = x < 0 ? "-" : "";
+  const v = Math.abs(x);
+  return `${s}$${v.toFixed(2)}`;
+}
+
+function parseNum(id) {
+  const t = $(id)?.value?.trim?.() ?? "";
+  if (!t) return null;
+  const v = Number(t);
+  return Number.isFinite(v) ? v : null;
+}
+
+function showRescueErr(msg) {
+  const el = $("rescueErr");
+  el.style.display = "block";
+  el.textContent = msg;
+}
+function clearRescueErr() {
+  const el = $("rescueErr");
+  el.style.display = "none";
+  el.textContent = "";
+}
+
+let rescueSort = { key: "score", dir: "desc" };
+let rescueRows = [];
+
+function sortRescueRows() {
+  const { key, dir } = rescueSort;
+  const m = dir === "asc" ? 1 : -1;
+  rescueRows.sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * m;
+    return String(av).localeCompare(String(bv)) * m;
+  });
+}
+
+function renderRescueTable() {
+  const tbody = $("rescueTable").querySelector("tbody");
+  tbody.innerHTML = "";
+  for (const r of rescueRows) {
+    const tr = document.createElement("tr");
+    const td = (txt, cls) => {
+      const x = document.createElement("td");
+      x.textContent = txt;
+      if (cls) x.className = cls;
+      return x;
+    };
+
+    tr.appendChild(td(f2(r.score), "num"));
+    tr.appendChild(td(r.route));
+    tr.appendChild(td(String(r.dte), "num"));
+    tr.appendChild(td(f2(r.short), "num"));
+    tr.appendChild(td(f2(r.long), "num"));
+    tr.appendChild(td(f3(r.credit), "num"));
+    tr.appendChild(td(f2(r.be), "num"));
+    tr.appendChild(td(money(r.theta), "num"));
+    tr.appendChild(td(money(r.risk), "num"));
+
+    const beCls = r.be_d < 0 ? "num pos" : r.be_d > 0 ? "num neg" : "num";
+    const thCls = r.theta_d > 0 ? "num pos" : r.theta_d < 0 ? "num neg" : "num";
+    const rkCls = r.risk_d > 0 ? "num neg" : r.risk_d < 0 ? "num pos" : "num";
+    tr.appendChild(td(f2(r.be_d), beCls));
+    tr.appendChild(td(money(r.theta_d), thCls));
+    tr.appendChild(td(money(r.risk_d), rkCls));
+
+    tbody.appendChild(tr);
+  }
+}
+
+function renderRescuePlot(current, candidates) {
+  const c = $("rescuePlot");
+  const ctx = c.getContext("2d");
+  const w = c.width;
+  const h = c.height;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#070a0f";
+  ctx.fillRect(0, 0, w, h);
+
+  const pts = [
+    { be: current.break_even, th: current.net_theta_per_day, kind: "cur" },
+    ...candidates.slice(0, 40).map((x) => ({
+      be: x.metrics.break_even,
+      th: x.metrics.net_theta_per_day,
+      kind: "cand",
+    })),
+  ].filter((p) => Number.isFinite(p.be) && Number.isFinite(p.th));
+
+  if (pts.length < 2) return;
+
+  const pad = 22;
+  const beMin = Math.min(...pts.map((p) => p.be));
+  const beMax = Math.max(...pts.map((p) => p.be));
+  const thMin = Math.min(...pts.map((p) => p.th));
+  const thMax = Math.max(...pts.map((p) => p.th));
+
+  const xOf = (be) => {
+    const t = beMax === beMin ? 0.5 : (be - beMin) / (beMax - beMin);
+    return pad + t * (w - pad * 2);
+  };
+  const yOf = (th) => {
+    const t = thMax === thMin ? 0.5 : (th - thMin) / (thMax - thMin);
+    return h - pad - t * (h - pad * 2);
+  };
+
+  // axes
+  ctx.strokeStyle = "#1f2a37";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad, h - pad);
+  ctx.stroke();
+
+  // zero theta line (if in range)
+  if (thMin < 0 && thMax > 0) {
+    const y0 = yOf(0);
+    ctx.strokeStyle = "#27415f";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad, y0);
+    ctx.lineTo(w - pad, y0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // points
+  for (const p of pts) {
+    const x = xOf(p.be);
+    const y = yOf(p.th);
+    ctx.beginPath();
+    ctx.arc(x, y, p.kind === "cur" ? 5 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = p.kind === "cur" ? "#2dd4bf" : "#4f8cff";
+    ctx.fill();
+  }
+
+  // labels
+  ctx.fillStyle = "#99a3b0";
+  ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  ctx.fillText(`BE ${f2(beMin)} → ${f2(beMax)}`, pad, 16);
+  ctx.fillText(`Theta/day ${money(thMin)} → ${money(thMax)}`, pad + 220, 16);
+}
+
+async function runRescueScan() {
+  clearRescueErr();
+
+  const symbol = $("rescueSymbol").value.trim() || null;
+  const underlying = parseNum("rescueUnderlying");
+  const ivPct = parseNum("rescueIv");
+  const dte = parseNum("rescueDte");
+  const contracts = parseNum("rescueContracts");
+  const shortK = parseNum("rescueShort");
+  const longK = parseNum("rescueLong");
+  const credit = parseNum("rescueCredit");
+  const limit = parseNum("rescueLimit");
+
+  if (
+    underlying === null ||
+    ivPct === null ||
+    dte === null ||
+    contracts === null ||
+    shortK === null ||
+    longK === null ||
+    limit === null
+  ) {
+    showRescueErr("Please fill all numeric fields (credit can be blank).");
+    return;
+  }
+
+  const body = {
+    symbol,
+    spread: {
+      kind: "Put",
+      short_strike: shortK,
+      long_strike: longK,
+      dte_days: Math.max(1, Math.floor(dte)),
+      contracts: Math.max(1, Math.floor(contracts)),
+    },
+    inputs: {
+      underlying,
+      iv: ivPct / 100.0,
+      r: 0.04,
+      q: 0.0,
+    },
+    current_credit: credit === null ? null : credit,
+    limit: Math.max(1, Math.floor(limit)),
+  };
+
+  $("rescueRun").disabled = true;
+  try {
+    const res = await fetch("/api/rescue_scan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showRescueErr(data?.error || `scan failed: ${res.status}`);
+      return;
+    }
+
+    const cur = data.current;
+    $("curCredit").textContent = f3(cur.theo_credit);
+    $("curBe").textContent = f2(cur.break_even);
+    $("curTheta").textContent = money(cur.net_theta_per_day);
+    $("curRisk").textContent = money(cur.capital_at_risk);
+
+    rescueRows = (data.candidates || []).map((c) => ({
+      score: c.score,
+      route: c.route,
+      dte: c.spread.dte_days,
+      short: c.spread.short_strike,
+      long: c.spread.long_strike,
+      credit: c.metrics.theo_credit,
+      be: c.metrics.break_even,
+      theta: c.metrics.net_theta_per_day,
+      risk: c.metrics.capital_at_risk,
+      be_d: c.deltas.break_even_change,
+      theta_d: c.deltas.theta_per_day_change,
+      risk_d: c.deltas.capital_at_risk_change,
+    }));
+
+    sortRescueRows();
+    renderRescueTable();
+    renderRescuePlot(cur, data.candidates || []);
+  } catch (e) {
+    showRescueErr(String(e));
+  } finally {
+    $("rescueRun").disabled = false;
+  }
+}
+
+function clearRescue() {
+  clearRescueErr();
+  rescueRows = [];
+  renderRescueTable();
+  $("curCredit").textContent = "—";
+  $("curBe").textContent = "—";
+  $("curTheta").textContent = "—";
+  $("curRisk").textContent = "—";
+  const c = $("rescuePlot");
+  c.getContext("2d").clearRect(0, 0, c.width, c.height);
+}
+
+$("rescueRun")?.addEventListener("click", runRescueScan);
+$("rescueClear")?.addEventListener("click", clearRescue);
+
+// sortable headers
+for (const th of $("rescueTable")?.querySelectorAll("th") || []) {
+  th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    if (!k) return;
+    if (rescueSort.key === k) {
+      rescueSort.dir = rescueSort.dir === "asc" ? "desc" : "asc";
+    } else {
+      rescueSort.key = k;
+      rescueSort.dir = "desc";
+    }
+    sortRescueRows();
+    renderRescueTable();
+  });
+}
+

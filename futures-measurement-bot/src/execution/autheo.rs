@@ -72,9 +72,7 @@ impl ExecutionAdapter for AutheoAdapter {
         };
         if rand::thread_rng().gen_bool(p_fill) {
             let fill_ts = ack_ts + Duration::from_millis(rand::thread_rng().gen_range(1..=180));
-            let price = params
-                .limit_price
-                .unwrap_or(100.0)
+            let price = params.limit_price.unwrap_or(100.0)
                 * (1.0 + rand::thread_rng().gen_range(-0.0003..=0.0003));
             out.push(Event::OrderFill(OrderFill {
                 ts: fill_ts,
@@ -98,7 +96,11 @@ impl ExecutionAdapter for AutheoAdapter {
         Ok((order_id, out))
     }
 
-    async fn cancel_order(&self, order_id: OrderId, reason: CancelReason) -> anyhow::Result<Vec<Event>> {
+    async fn cancel_order(
+        &self,
+        order_id: OrderId,
+        reason: CancelReason,
+    ) -> anyhow::Result<Vec<Event>> {
         Ok(vec![Event::OrderCancelled(OrderCancelled {
             ts: SystemTime::now(),
             order_id,

@@ -96,6 +96,106 @@
           <pre class="code" id="handshakeOut">(not run)</pre>
         </div>
       </section>
+
+      <section class="card" id="rescueCard">
+        <h2>Distressed Position Rescue Scanner</h2>
+        <p class="small">
+          Enumerates “escape routes” (roll out / roll down / widen) for a short premium vertical spread, aiming for
+          <b>positive Theta</b> and a <b>better break-even</b>, even if capital at risk increases.
+        </p>
+
+        <div class="row">
+          <label class="label">Symbol</label>
+          <input id="rescueSymbol" class="input" value="PLTR" />
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Underlying (S)</label>
+            <input id="rescueUnderlying" class="input mono" value="27.50" />
+          </div>
+          <div>
+            <label class="label">IV (%, e.g. 55)</label>
+            <input id="rescueIv" class="input mono" value="55" />
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">DTE</label>
+            <input id="rescueDte" class="input mono" value="14" />
+          </div>
+          <div>
+            <label class="label">Contracts</label>
+            <input id="rescueContracts" class="input mono" value="1" />
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Short strike</label>
+            <input id="rescueShort" class="input mono" value="30" />
+          </div>
+          <div>
+            <label class="label">Long strike</label>
+            <input id="rescueLong" class="input mono" value="27" />
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Current credit (optional, $/share)</label>
+            <input id="rescueCredit" class="input mono" placeholder="leave blank to use theoretical" />
+          </div>
+          <div>
+            <label class="label">Limit</label>
+            <input id="rescueLimit" class="input mono" value="50" />
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="rescueRun" class="btn">Scan rescue routes</button>
+          <button id="rescueClear" class="btn btn-secondary">Clear</button>
+        </div>
+
+        <div class="kvs" id="rescueCurrentKvs">
+          <div class="kv"><span class="k">Theo credit</span><span class="v" id="curCredit">—</span></div>
+          <div class="kv"><span class="k">Break-even</span><span class="v" id="curBe">—</span></div>
+          <div class="kv"><span class="k">Theta/day</span><span class="v" id="curTheta">—</span></div>
+          <div class="kv"><span class="k">Cap at risk</span><span class="v" id="curRisk">—</span></div>
+        </div>
+
+        <div class="row">
+          <label class="label">Theta vs Break-even (top candidates)</label>
+          <canvas id="rescuePlot" width="900" height="240" class="plot"></canvas>
+        </div>
+
+        <div class="row">
+          <label class="label">Candidates (click headers to sort)</label>
+          <div class="tableWrap">
+            <table class="tbl" id="rescueTable">
+              <thead>
+                <tr>
+                  <th data-k="score">Score</th>
+                  <th data-k="route">Route</th>
+                  <th data-k="dte">DTE</th>
+                  <th data-k="short">Short</th>
+                  <th data-k="long">Long</th>
+                  <th data-k="credit">Theo credit</th>
+                  <th data-k="be">Break-even</th>
+                  <th data-k="theta">Theta/day</th>
+                  <th data-k="risk">Cap at risk</th>
+                  <th data-k="be_d">Δ BE</th>
+                  <th data-k="theta_d">Δ Theta/day</th>
+                  <th data-k="risk_d">Δ Risk</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <pre class="code" id="rescueErr" style="display:none"></pre>
+        </div>
+      </section>
     </main>
 
     <script type="module" src="/app.js"></script>

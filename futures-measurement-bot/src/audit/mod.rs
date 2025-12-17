@@ -1,5 +1,7 @@
 use crate::buckets::BucketKey;
-use crate::events::{OrderAck, OrderCancelled, OrderFill, OrderRejected, OrderSent, StrategyIntent};
+use crate::events::{
+    OrderAck, OrderCancelled, OrderFill, OrderRejected, OrderSent, StrategyIntent,
+};
 use crate::types::{ClientIntentId, OrderId, StrategyId};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -62,8 +64,18 @@ impl AuditEvent {
         Self::Cancel { cancel, bucket }
     }
 
-    pub fn fill(fill: OrderFill, bucket: BucketKey, vwap: Option<f64>, reference_price: Option<f64>) -> Self {
-        Self::Fill { fill, bucket, vwap, reference_price }
+    pub fn fill(
+        fill: OrderFill,
+        bucket: BucketKey,
+        vwap: Option<f64>,
+        reference_price: Option<f64>,
+    ) -> Self {
+        Self::Fill {
+            fill,
+            bucket,
+            vwap,
+            reference_price,
+        }
     }
 
     pub fn timeout(
@@ -89,8 +101,8 @@ pub trait AuditSink: Send + Sync {
     fn emit(&self, event: AuditEvent) -> anyhow::Result<()>;
 }
 
-pub mod tuplechain;
 pub mod qsdg;
+pub mod tuplechain;
 
 /// No-op audit sink (useful for demos and web UI).
 #[derive(Clone, Debug, Default)]

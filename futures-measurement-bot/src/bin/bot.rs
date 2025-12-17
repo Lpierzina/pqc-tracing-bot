@@ -1,7 +1,7 @@
 use clap::Parser;
-use futures_measurement_bot::audit::{CompositeAuditSink, AuditSink};
 use futures_measurement_bot::audit::qsdg::QsDagAuditSink;
 use futures_measurement_bot::audit::tuplechain::TupleChainAuditSink;
+use futures_measurement_bot::audit::{AuditSink, CompositeAuditSink};
 use futures_measurement_bot::events::*;
 use futures_measurement_bot::execution::autheo::AutheoAdapter;
 use futures_measurement_bot::execution::trading_station::TradingStationAdapter;
@@ -53,8 +53,14 @@ fn synth_book(mid: f64) -> OrderBookTopN {
     let bid = mid - spread / 2.0;
     let ask = mid + spread / 2.0;
     OrderBookTopN {
-        bids: vec![BookLevel { price: bid, qty: 50.0 }],
-        asks: vec![BookLevel { price: ask, qty: 50.0 }],
+        bids: vec![BookLevel {
+            price: bid,
+            qty: 50.0,
+        }],
+        asks: vec![BookLevel {
+            price: ask,
+            qty: 50.0,
+        }],
     }
 }
 
@@ -85,7 +91,9 @@ async fn main() -> anyhow::Result<()> {
     let engine = MetricsEngine::new(cfg, audit);
 
     let adapter: Arc<dyn ExecutionAdapter> = match args.venue.to_ascii_lowercase().as_str() {
-        "trading-station" | "tradingstation" | "ts" => Arc::new(TradingStationAdapter { venue: venue.clone() }),
+        "trading-station" | "tradingstation" | "ts" => Arc::new(TradingStationAdapter {
+            venue: venue.clone(),
+        }),
         _ => Arc::new(AutheoAdapter::new(venue.clone())),
     };
 
@@ -119,7 +127,11 @@ async fn main() -> anyhow::Result<()> {
                 order_type,
                 tif: TimeInForce::Ioc,
                 qty_contracts: args.qty,
-                limit_price: if order_type == OrderType::Limit { Some(base_mid) } else { None },
+                limit_price: if order_type == OrderType::Limit {
+                    Some(base_mid)
+                } else {
+                    None
+                },
             },
             reference_price: book.mid(),
             book: Some(book),
@@ -129,15 +141,22 @@ async fn main() -> anyhow::Result<()> {
 
         p("place_order");
         let (_order_id, events) = adapter
-            .place_order(intent_id.clone(), OrderParams {
-                symbol: symbol.clone(),
-                venue: venue.clone(),
-                side,
-                order_type,
-                tif: TimeInForce::Ioc,
-                qty_contracts: args.qty,
-                limit_price: if order_type == OrderType::Limit { Some(base_mid) } else { None },
-            })
+            .place_order(
+                intent_id.clone(),
+                OrderParams {
+                    symbol: symbol.clone(),
+                    venue: venue.clone(),
+                    side,
+                    order_type,
+                    tif: TimeInForce::Ioc,
+                    qty_contracts: args.qty,
+                    limit_price: if order_type == OrderType::Limit {
+                        Some(base_mid)
+                    } else {
+                        None
+                    },
+                },
+            )
             .await?;
         p(&format!("place_order returned {} events", events.len()));
 
