@@ -301,6 +301,16 @@ function renderRescueTable() {
 function renderRescuePlot(current, candidates) {
   const c = $("rescuePlot");
   const ctx = c.getContext("2d");
+  // Keep the canvas crisp even when CSS scales it.
+  // (We set CSS width:100% / height:240px; here we match the backing store to the display size.)
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  const nextW = Math.max(1, Math.round(rect.width * dpr));
+  const nextH = Math.max(1, Math.round(rect.height * dpr));
+  if (c.width !== nextW || c.height !== nextH) {
+    c.width = nextW;
+    c.height = nextH;
+  }
   const w = c.width;
   const h = c.height;
 

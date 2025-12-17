@@ -104,96 +104,150 @@
           <b>positive Theta</b> and a <b>better break-even</b>, even if capital at risk increases.
         </p>
 
-        <div class="row">
-          <label class="label">Symbol</label>
-          <input id="rescueSymbol" class="input" value="PLTR" />
-        </div>
+        <div class="rescueLayout">
+          <div class="rescueMain">
+            <div class="row">
+              <label class="label">Symbol</label>
+              <input id="rescueSymbol" class="input" value="PLTR" />
+            </div>
 
-        <div class="row two">
-          <div>
-            <label class="label">Underlying (S)</label>
-            <input id="rescueUnderlying" class="input mono" value="27.50" />
-          </div>
-          <div>
-            <label class="label">IV (%, e.g. 55)</label>
-            <input id="rescueIv" class="input mono" value="55" />
-          </div>
-        </div>
+            <div class="row two">
+              <div>
+                <label class="label">Underlying (S)</label>
+                <input id="rescueUnderlying" class="input mono" value="27.50" />
+              </div>
+              <div>
+                <label class="label">IV (%, e.g. 55)</label>
+                <input id="rescueIv" class="input mono" value="55" />
+              </div>
+            </div>
 
-        <div class="row two">
-          <div>
-            <label class="label">DTE</label>
-            <input id="rescueDte" class="input mono" value="14" />
-          </div>
-          <div>
-            <label class="label">Contracts</label>
-            <input id="rescueContracts" class="input mono" value="1" />
-          </div>
-        </div>
+            <div class="row two">
+              <div>
+                <label class="label">DTE</label>
+                <input id="rescueDte" class="input mono" value="14" />
+              </div>
+              <div>
+                <label class="label">Contracts</label>
+                <input id="rescueContracts" class="input mono" value="1" />
+              </div>
+            </div>
 
-        <div class="row two">
-          <div>
-            <label class="label">Short strike</label>
-            <input id="rescueShort" class="input mono" value="30" />
-          </div>
-          <div>
-            <label class="label">Long strike</label>
-            <input id="rescueLong" class="input mono" value="27" />
-          </div>
-        </div>
+            <div class="row two">
+              <div>
+                <label class="label">Short strike</label>
+                <input id="rescueShort" class="input mono" value="30" />
+              </div>
+              <div>
+                <label class="label">Long strike</label>
+                <input id="rescueLong" class="input mono" value="27" />
+              </div>
+            </div>
 
-        <div class="row two">
-          <div>
-            <label class="label">Current credit (optional, $/share)</label>
-            <input id="rescueCredit" class="input mono" placeholder="leave blank to use theoretical" />
+            <div class="row two">
+              <div>
+                <label class="label">Current credit (optional, $/share)</label>
+                <input id="rescueCredit" class="input mono" placeholder="leave blank to use theoretical" />
+              </div>
+              <div>
+                <label class="label">Limit</label>
+                <input id="rescueLimit" class="input mono" value="50" />
+              </div>
+            </div>
+
+            <div class="buttons">
+              <button id="rescueRun" class="btn">Scan rescue routes</button>
+              <button id="rescueClear" class="btn btn-secondary">Clear</button>
+            </div>
+
+            <div class="kvs" id="rescueCurrentKvs">
+              <div class="kv"><span class="k">Theo credit</span><span class="v" id="curCredit">—</span></div>
+              <div class="kv"><span class="k">Break-even</span><span class="v" id="curBe">—</span></div>
+              <div class="kv"><span class="k">Theta/day</span><span class="v" id="curTheta">—</span></div>
+              <div class="kv"><span class="k">Cap at risk</span><span class="v" id="curRisk">—</span></div>
+            </div>
+
+            <div class="row">
+              <label class="label">Theta vs Break-even (top candidates)</label>
+              <canvas id="rescuePlot" width="900" height="240" class="plot"></canvas>
+            </div>
+
+            <div class="row">
+              <label class="label">Candidates (click headers to sort)</label>
+              <div class="tableWrap">
+                <table class="tbl" id="rescueTable">
+                  <thead>
+                    <tr>
+                      <th data-k="score">Score</th>
+                      <th data-k="route">Route</th>
+                      <th data-k="dte">DTE</th>
+                      <th data-k="short">Short</th>
+                      <th data-k="long">Long</th>
+                      <th data-k="credit">Theo credit</th>
+                      <th data-k="be">Break-even</th>
+                      <th data-k="theta">Theta/day</th>
+                      <th data-k="risk">Cap at risk</th>
+                      <th data-k="be_d">Δ BE</th>
+                      <th data-k="theta_d">Δ Theta/day</th>
+                      <th data-k="risk_d">Δ Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <pre class="code" id="rescueErr" style="display:none"></pre>
+            </div>
           </div>
-          <div>
-            <label class="label">Limit</label>
-            <input id="rescueLimit" class="input mono" value="50" />
-          </div>
-        </div>
 
-        <div class="buttons">
-          <button id="rescueRun" class="btn">Scan rescue routes</button>
-          <button id="rescueClear" class="btn btn-secondary">Clear</button>
-        </div>
+          <aside class="rescueAside">
+            <div class="rescueAsideInner">
+              <div class="rescueAsideTitle">How to read this</div>
 
-        <div class="kvs" id="rescueCurrentKvs">
-          <div class="kv"><span class="k">Theo credit</span><span class="v" id="curCredit">—</span></div>
-          <div class="kv"><span class="k">Break-even</span><span class="v" id="curBe">—</span></div>
-          <div class="kv"><span class="k">Theta/day</span><span class="v" id="curTheta">—</span></div>
-          <div class="kv"><span class="k">Cap at risk</span><span class="v" id="curRisk">—</span></div>
-        </div>
+              <details open class="rescueDetails">
+                <summary>What the scanner is doing</summary>
+                <div class="small">
+                  It generates alternative vertical spreads (“routes”) from your current short premium position and ranks them
+                  by whether they improve <b>Theta/day</b> and <b>break-even</b> (sometimes by taking on more defined risk).
+                </div>
+              </details>
 
-        <div class="row">
-          <label class="label">Theta vs Break-even (top candidates)</label>
-          <canvas id="rescuePlot" width="900" height="240" class="plot"></canvas>
-        </div>
+              <details open class="rescueDetails">
+                <summary>Quick workflow</summary>
+                <ul class="small rescueList">
+                  <li>Enter your current spread (short/long strikes) plus <b>S</b>, <b>IV</b>, and <b>DTE</b>.</li>
+                  <li>Leave “Current credit” blank to use theoretical pricing, or enter your actual fill (per share).</li>
+                  <li>Click <b>Scan rescue routes</b>, then sort the table by Score / Δ columns.</li>
+                </ul>
+              </details>
 
-        <div class="row">
-          <label class="label">Candidates (click headers to sort)</label>
-          <div class="tableWrap">
-            <table class="tbl" id="rescueTable">
-              <thead>
-                <tr>
-                  <th data-k="score">Score</th>
-                  <th data-k="route">Route</th>
-                  <th data-k="dte">DTE</th>
-                  <th data-k="short">Short</th>
-                  <th data-k="long">Long</th>
-                  <th data-k="credit">Theo credit</th>
-                  <th data-k="be">Break-even</th>
-                  <th data-k="theta">Theta/day</th>
-                  <th data-k="risk">Cap at risk</th>
-                  <th data-k="be_d">Δ BE</th>
-                  <th data-k="theta_d">Δ Theta/day</th>
-                  <th data-k="risk_d">Δ Risk</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <pre class="code" id="rescueErr" style="display:none"></pre>
+              <details open class="rescueDetails">
+                <summary>Plot legend</summary>
+                <ul class="small rescueList">
+                  <li><b>Teal dot</b>: your current spread.</li>
+                  <li><b>Blue dots</b>: candidate rescue routes (top ~40).</li>
+                  <li><b>X axis</b>: break-even (further left is “better” for downside puts).</li>
+                  <li><b>Y axis</b>: net theta per day (higher is better). Dashed line marks \( \Theta = 0 \) when in range.</li>
+                </ul>
+              </details>
+
+              <details open class="rescueDetails">
+                <summary>Table &amp; deltas</summary>
+                <ul class="small rescueList">
+                  <li><b>Δ BE</b> = candidate BE − current BE (negative is improvement).</li>
+                  <li><b>Δ Theta/day</b> = candidate − current (positive is improvement).</li>
+                  <li><b>Δ Risk</b> = candidate risk − current risk (negative is improvement).</li>
+                </ul>
+              </details>
+
+              <details class="rescueDetails">
+                <summary>Notes / caveats</summary>
+                <ul class="small rescueList">
+                  <li>This is a <b>screening tool</b> (greeks/BE are model-based) — verify with live chain + margin.</li>
+                  <li>Routes may increase buying power; use “Cap at risk” and your broker’s BPR to sanity-check.</li>
+                </ul>
+              </details>
+            </div>
+          </aside>
         </div>
       </section>
     </main>
