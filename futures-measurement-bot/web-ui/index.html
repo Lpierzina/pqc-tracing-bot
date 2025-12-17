@@ -79,15 +79,36 @@
       <section class="card">
         <h2>PQCNet WASM</h2>
         <p class="small">
-          This loads <code>/wasm/autheo_pqc_wasm.wasm</code> (built from <code>pqcnet-contracts/autheo-pqc-wasm</code>) and runs
-          a sample <code>pqc_handshake</code> inside the browser.
+          PQCNet hardens the bot’s control-plane with a <b>post-quantum handshake</b> that can be used to derive session keys and
+          produce a lightweight <b>attestation envelope</b>. In this demo, the browser loads
+          <code>/wasm/autheo_pqc_wasm.wasm</code> (built from <code>pqcnet-contracts/autheo-pqc-wasm</code>) and can send an
+          “attested session fingerprint” to the bot over <code>/ws</code>.
         </p>
+
+        <div class="kvs">
+          <div class="kv"><span class="k">WASM module</span><span class="v" id="pqcWasmStatus">not loaded</span></div>
+          <div class="kv"><span class="k">Session attestation</span><span class="v" id="pqcAttestStatus">inactive</span></div>
+          <div class="kv"><span class="k">Fingerprint (server)</span><span class="v mono" id="pqcFpServer">—</span></div>
+          <div class="kv"><span class="k">Fingerprint (browser)</span><span class="v mono" id="pqcFpBrowser">—</span></div>
+        </div>
+
+        <div class="row">
+          <label class="label">PQC mode</label>
+          <div class="small">
+            <label class="mono" style="display:flex;gap:10px;align-items:center">
+              <input type="checkbox" id="pqcAutoAttest" checked />
+              Auto-attest this UI session on connect (recommended)
+            </label>
+          </div>
+        </div>
 
         <div class="row">
           <label class="label">Handshake request</label>
           <input id="handshakeReq" class="input" value="client=web-demo&ts=0" />
         </div>
         <div class="buttons">
+          <button id="loadWasm" class="btn btn-secondary">Load WASM</button>
+          <button id="sendAttest" class="btn btn-secondary">Send attestation</button>
           <button id="runHandshake" class="btn">Run handshake</button>
         </div>
 
