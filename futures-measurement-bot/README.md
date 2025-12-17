@@ -71,6 +71,32 @@ This repo also includes a **static HTML demo UI** plus a small Rust server that:
 - Connects to the **Tastytrade Streamer websocket** (or a simulator) and relays messages to the browser
 - Serves `autheo_pqc_wasm.wasm` at `/wasm/autheo_pqc_wasm.wasm` so the browser can run a PQCNet handshake
 
+#### Distressed Position Rescue Scanner (feature)
+
+The web UI includes a **Distressed Position Rescue Scanner** that helps you explore “escape routes” for a short-premium vertical spread by comparing:
+
+- **Break-even** (better for put spreads = lower; better for call spreads = higher)
+- **Theta/day** (prefers positive time decay)
+- **Capital at risk** (allowed to increase, but penalized)
+
+**Why it’s here**
+
+- It’s a concrete, interactive example of “strategy-shaped” analytics living next to the bot + audit/metrics plumbing.
+- It’s **self-contained** (no external quant dependencies): a simple Black–Scholes implementation + a deterministic candidate grid so demos are reproducible.
+- It gives a fast way to sanity-check “roll out / roll down / widen” adjustments in a consistent scoring framework (not a recommendation engine).
+
+**How it works (high level)**
+
+- You provide a vertical (short strike / long strike / DTE / IV / underlying).
+- The engine computes theoretical leg prices + Greeks (delta/theta/vega) and derives spread metrics (credit, break-even, theta/day, capital at risk).
+- It enumerates candidate routes across three axes:
+  - **Roll out**: increases DTE across a fixed grid
+  - **Roll down**: shifts strikes (down for puts, up for calls)
+  - **Widen**: moves the long leg further OTM to increase width
+- Candidates are filtered/ranked to prefer **positive theta** and/or an **improved break-even**, with a small penalty for extra risk.
+
+> Note: this is a simplified model intended for exploration and UI demos, not trading advice.
+
 #### 1) Start the server (simulated stream)
 
 ```bash
@@ -78,6 +104,19 @@ STREAM_SIM=1 cargo run --bin web_ui
 ```
 
 Open `http://localhost:8080/` and hit **Connect**. You should see a `SIM` stream updating ~4 times/second.
+
+If you’re running from the repo root (no `cd`), use:
+
+```bash
+cargo run --manifest-path futures-measurement-bot/Cargo.toml --bin web_ui
+```
+
+Then:
+
+- Open `http://localhost:8080/`
+- Scroll to **Distressed Position Rescue Scanner**
+- Enter your spread inputs (e.g. PLTR: **short strike / long strike / DTE / IV / underlying**)
+- Click **Scan rescue routes**
 
 #### 2) Start the server (real Tastytrade Streamer)
 
