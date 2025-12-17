@@ -35,4 +35,22 @@ h2{margin:0 0 10px 0;font-size:16px}
 .tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 .pos{color:#b7f7d3}
 .neg{color:#ffd0d8}
+
+/* Distressed Position Rescue Scanner sidebar */
+.rescueLayout{display:grid;grid-template-columns:minmax(520px,1fr) 340px;gap:14px;align-items:start;margin-top:8px}
+.rescueMain{min-width:0}
+.rescueAside{min-width:0}
+.rescueAsideInner{border:1px solid var(--border);border-radius:14px;background:#0b0f14;padding:12px;position:sticky;top:12px}
+.rescueAsideTitle{font-weight:800;font-size:13px;letter-spacing:.2px;margin:2px 0 10px 0;color:var(--fg)}
+.rescueDetails{border:1px solid #0f1620;border-radius:12px;background:#070a0f;padding:8px 10px;margin:10px 0}
+.rescueDetails > summary{cursor:pointer;color:var(--muted);font-weight:800;font-size:12px;list-style:none}
+.rescueDetails > summary::-webkit-details-marker{display:none}
+.rescueList{margin:8px 0 0 18px;padding:0}
+.rescueList li{margin:6px 0}
+.plot{width:100%;height:240px}
+
 @media (max-width: 980px){.grid{grid-template-columns:1fr}}
+@media (max-width: 980px){
+  .rescueLayout{grid-template-columns:1fr}
+  .rescueAsideInner{position:static}
+}
