@@ -3,6 +3,10 @@ let ws = null;
 const $ = (id) => document.getElementById(id);
 const logEl = $("log");
 const statusEl = $("connStatus");
+const pqcWasmStatusEl = $("pqcWasmStatus");
+const pqcAttestStatusEl = $("pqcAttestStatus");
+const pqcFpServerEl = $("pqcFpServer");
+const pqcFpBrowserEl = $("pqcFpBrowser");
 
 const LS_STREAMER_URL = "tt_streamer_url";
 const LS_STREAMER_TOKEN = "tt_streamer_token";
@@ -11,6 +15,23 @@ function setStatus(ok, text) {
   statusEl.textContent = text;
   statusEl.classList.toggle("ok", !!ok);
   statusEl.classList.toggle("bad", ok === false);
+}
+
+function setText(el, text) {
+  if (!el) return;
+  el.textContent = text;
+}
+
+function setPqcWasmStatus(ok, text) {
+  setText(pqcWasmStatusEl, text);
+  pqcWasmStatusEl?.classList?.toggle?.("ok", !!ok);
+  pqcWasmStatusEl?.classList?.toggle?.("bad", ok === false);
+}
+
+function setPqcAttestStatus(ok, text) {
+  setText(pqcAttestStatusEl, text);
+  pqcAttestStatusEl?.classList?.toggle?.("ok", !!ok);
+  pqcAttestStatusEl?.classList?.toggle?.("bad", ok === false);
 }
 
 function log(line, obj) {
@@ -91,6 +112,11 @@ function connect() {
     log("ws open");
     persistStreamerSettings();
     sendStreamerConfigIfPresent();
+    // Optional: PQC-attest this browser session to the bot.
+    if ($("pqcAutoAttest")?.checked) {
+      // Fire-and-forget; doesn't block UI.
+      attestSession().catch(() => {});
+    }
   };
 
   ws.onclose = (e) => {
@@ -111,6 +137,15 @@ function connect() {
       msg = JSON.parse(raw);
     } catch {
       log("<-", raw);
+      return;
+    }
+
+    // PQC status / acknowledgements.
+    if (msg?.type === "pqc_status") {
+      const fp = msg?.payload?.fingerprint || msg?.payload?.fp;
+      if (fp) setText(pqcFpServerEl, String(fp));
+      setPqcAttestStatus(true, "active");
+      log("<- pqc_status", msg.payload);
       return;
     }
 
@@ -169,9 +204,23 @@ function hex(u8) {
     .join("");
 }
 
+async function sha256Hex(u8) {
+  const digest = await crypto.subtle.digest("SHA-256", u8);
+  return hex(new Uint8Array(digest));
+}
+
+let pqcExportsPromise = null;
+
 async function loadPqcWasm() {
   const res = await fetch("/wasm/autheo_pqc_wasm.wasm", { cache: "no-store" });
-  if (!res.ok) throw new Error(`WASM fetch failed: ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(
+        "WASM missing (404). Build pqcnet-contracts/autheo-pqc-wasm for wasm32-unknown-unknown or copy into web-ui/wasm/."
+      );
+    }
+    throw new Error(`WASM fetch failed: ${res.status}`);
+  }
 
   const bytes = await res.arrayBuffer();
   const { instance } = await WebAssembly.instantiate(bytes, {});
@@ -184,39 +233,91 @@ async function loadPqcWasm() {
   return exp;
 }
 
+async function ensurePqcWasmLoaded() {
+  if (!pqcExportsPromise) {
+    setPqcWasmStatus(null, "loading…");
+    pqcExportsPromise = loadPqcWasm();
+  }
+  try {
+    const exp = await pqcExportsPromise;
+    setPqcWasmStatus(true, "loaded");
+    return exp;
+  } catch (e) {
+    pqcExportsPromise = null;
+    setPqcWasmStatus(false, "missing");
+    throw e;
+  }
+}
+
+async function pqcHandshakeBytes(requestText) {
+  const exp = await ensurePqcWasmLoaded();
+  const enc = new TextEncoder();
+  const reqBytes = enc.encode(requestText);
+
+  const reqPtr = exp.pqc_alloc(reqBytes.length) >>> 0;
+  const respLen = 8192;
+  const respPtr = exp.pqc_alloc(respLen) >>> 0;
+
+  const mem = new Uint8Array(exp.memory.buffer);
+  mem.set(reqBytes, reqPtr);
+
+  const rc = exp.pqc_handshake(reqPtr, reqBytes.length, respPtr, respLen);
+
+  let resp = null;
+  if (rc >= 0) resp = mem.slice(respPtr, respPtr + rc);
+
+  exp.pqc_free(reqPtr, reqBytes.length);
+  exp.pqc_free(respPtr, respLen);
+
+  if (rc < 0) throw new Error(`pqc_handshake error: ${rc}`);
+  return resp;
+}
+
 async function runHandshake() {
   const out = $("handshakeOut");
   out.textContent = "loading wasm...";
 
   try {
-    const exp = await loadPqcWasm();
-    const enc = new TextEncoder();
-    const reqBytes = enc.encode($("handshakeReq").value);
-
-    const reqPtr = exp.pqc_alloc(reqBytes.length) >>> 0;
-    const respLen = 4096;
-    const respPtr = exp.pqc_alloc(respLen) >>> 0;
-
-    const mem = new Uint8Array(exp.memory.buffer);
-    mem.set(reqBytes, reqPtr);
-
-    const rc = exp.pqc_handshake(reqPtr, reqBytes.length, respPtr, respLen);
-
-    if (rc < 0) {
-      out.textContent = `pqc_handshake error: ${rc}`;
-    } else {
-      const resp = mem.slice(respPtr, respPtr + rc);
-      out.textContent = `bytes=${rc}\nhex=${hex(resp).slice(0, 800)}${rc > 400 ? "…" : ""}`;
-    }
-
-    exp.pqc_free(reqPtr, reqBytes.length);
-    exp.pqc_free(respPtr, respLen);
+    const resp = await pqcHandshakeBytes($("handshakeReq").value);
+    const fp = await sha256Hex(resp);
+    setText(pqcFpBrowserEl, fp);
+    out.textContent = `bytes=${resp.length}\nsha256=${fp}\nhex=${hex(resp).slice(0, 800)}${
+      resp.length > 400 ? "…" : ""
+    }`;
   } catch (e) {
     out.textContent = `handshake failed: ${String(e)}`;
   }
 }
 
 $("runHandshake").onclick = runHandshake;
+
+async function attestSession() {
+  setPqcAttestStatus(null, "attesting…");
+  try {
+    const req = $("handshakeReq")?.value ?? "client=web-demo&ts=0";
+    const resp = await pqcHandshakeBytes(req);
+    const fp = await sha256Hex(resp);
+    setText(pqcFpBrowserEl, fp);
+
+    if (!ws) {
+      setPqcAttestStatus(false, "inactive (not connected)");
+      log("pqc attestation ready (connect to send)", { sha256: fp, bytes: resp.length });
+      return;
+    }
+
+    // Send full envelope as hex so the server can fingerprint it too.
+    send({ type: "pqc_attest", envelopeHex: hex(resp), sha256: fp });
+    // The server will ACK with a pqc_status message.
+  } catch (e) {
+    setPqcAttestStatus(false, "failed");
+    log("pqc attestation failed", { error: String(e) });
+  }
+}
+
+$("loadWasm")?.addEventListener("click", () => {
+  ensurePqcWasmLoaded().catch((e) => log("wasm load failed", { error: String(e) }));
+});
+$("sendAttest")?.addEventListener("click", () => attestSession());
 
 // -------- Distressed Position Rescue Scanner --------
 
@@ -501,4 +602,10 @@ for (const th of $("rescueTable")?.querySelectorAll("th") || []) {
     renderRescueTable();
   });
 }
+
+// Init PQC UI state (best-effort; no network calls).
+setPqcWasmStatus(null, "not loaded");
+setPqcAttestStatus(null, "inactive");
+setText(pqcFpServerEl, "—");
+setText(pqcFpBrowserEl, "—");
 

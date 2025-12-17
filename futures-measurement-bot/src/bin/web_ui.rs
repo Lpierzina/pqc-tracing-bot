@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tower_http::{
     services::ServeDir,
@@ -82,6 +83,16 @@ enum ClientCmd {
     },
     #[serde(rename = "raw")]
     Raw { payload: serde_json::Value },
+    /// Browser -> server: send the PQC handshake envelope so the server can
+    /// compute a stable fingerprint and mark this WS session as "PQC-attested".
+    #[serde(rename = "pqc_attest")]
+    PqcAttest {
+        #[serde(rename = "envelopeHex")]
+        envelope_hex: String,
+        /// Optional browser-side fingerprint (informational only).
+        #[serde(default)]
+        sha256: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -89,6 +100,8 @@ struct ServerMsg {
     #[serde(rename = "type")]
     ty: &'static str,
     payload: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meta: Option<serde_json::Value>,
 }
 
 #[tokio::main]
@@ -252,26 +265,71 @@ async fn handle_sim_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow::Resul
 
     // Fanout from sim loop.
     let mut sim_rx = state.sim_tx.subscribe();
+    let pqc_fp: Arc<parking_lot::RwLock<Option<String>>> = Arc::new(parking_lot::RwLock::new(None));
+    let (out_tx, mut out_rx) = mpsc::channel::<Message>(64);
 
-    // Writer task: push sim messages until the socket closes.
+    // Writer task: single owner of ws_tx.
+    let writer_pqc_fp = pqc_fp.clone();
     let writer = tokio::spawn(async move {
         loop {
-            let v = sim_rx.recv().await?;
-            let out = ServerMsg {
-                ty: "stream",
-                payload: v,
-            };
-            let txt = serde_json::to_string(&out)?;
-            ws_tx.send(Message::Text(txt)).await?;
+            tokio::select! {
+                v = sim_rx.recv() => {
+                    let v = v?;
+                    let meta = writer_pqc_fp.read().as_ref().map(|fp| {
+                        json!({ "pqc_attested": true, "pqc_fingerprint": fp })
+                    });
+                    let out = ServerMsg { ty: "stream", payload: v, meta };
+                    let txt = serde_json::to_string(&out)?;
+                    ws_tx.send(Message::Text(txt)).await?;
+                }
+                msg = out_rx.recv() => {
+                    let Some(msg) = msg else { break; };
+                    ws_tx.send(msg).await?;
+                }
+            }
         }
-        #[allow(unreachable_code)]
         Ok::<(), anyhow::Error>(())
     });
 
-    // Reader: accept commands but no-op.
+    // Reader: accept commands and allow PQC attestation for the session.
     while let Some(Ok(msg)) = ws_rx.next().await {
         if let Message::Text(t) = msg {
-            let _ = serde_json::from_str::<ClientCmd>(&t);
+            if let Ok(cmd) = serde_json::from_str::<ClientCmd>(&t) {
+                match cmd {
+                    ClientCmd::PqcAttest {
+                        envelope_hex,
+                        sha256,
+                    } => {
+                        if let Ok(bytes) = decode_hex(&envelope_hex) {
+                            let fp = blake3::hash(&bytes).to_hex().to_string();
+                            *pqc_fp.write() = Some(fp.clone());
+                            let out = ServerMsg {
+                                ty: "pqc_status",
+                                payload: json!({
+                                    "fingerprint": fp,
+                                    "algo": "blake3",
+                                    "bytes": bytes.len(),
+                                    "sha256_browser": sha256,
+                                }),
+                                meta: None,
+                            };
+                            let _ = out_tx
+                                .send(Message::Text(serde_json::to_string(&out)?))
+                                .await;
+                        } else {
+                            let out = ServerMsg {
+                                ty: "error",
+                                payload: json!({"message":"invalid pqc_attest envelopeHex (expected hex)"}),
+                                meta: None,
+                            };
+                            let _ = out_tx
+                                .send(Message::Text(serde_json::to_string(&out)?))
+                                .await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -310,6 +368,7 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
             payload: json!({
                 "message": "Missing streamer credentials. Provide them from the UI (Streamer URL + Token) or set TASTYTRADE_STREAMER_URL and TASTYTRADE_STREAMER_TOKEN."
             }),
+            meta: None,
         };
         let _ = client_tx
             .send(Message::Text(serde_json::to_string(&out)?))
@@ -357,6 +416,7 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
     }
 
     // Forward both directions on one select loop.
+    let mut pqc_fp: Option<String> = None;
     loop {
         tokio::select! {
             msg = client_rx.next() => {
@@ -373,8 +433,36 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
                             let out = ServerMsg {
                                 ty: "info",
                                 payload: json!({"message":"Streamer config received, but this session is already connected upstream. Disconnect + Connect to apply."}),
+                                meta: None,
                             };
                             let _ = client_tx.send(Message::Text(serde_json::to_string(&out)?)).await;
+                        }
+                        ClientCmd::PqcAttest { envelope_hex, sha256 } => {
+                            match decode_hex(&envelope_hex) {
+                                Ok(bytes) => {
+                                    let fp = blake3::hash(&bytes).to_hex().to_string();
+                                    pqc_fp = Some(fp.clone());
+                                    let out = ServerMsg {
+                                        ty: "pqc_status",
+                                        payload: json!({
+                                            "fingerprint": fp,
+                                            "algo": "blake3",
+                                            "bytes": bytes.len(),
+                                            "sha256_browser": sha256,
+                                        }),
+                                        meta: None,
+                                    };
+                                    let _ = client_tx.send(Message::Text(serde_json::to_string(&out)?)).await;
+                                }
+                                Err(_) => {
+                                    let out = ServerMsg {
+                                        ty: "error",
+                                        payload: json!({"message":"invalid pqc_attest envelopeHex (expected hex)"}),
+                                        meta: None,
+                                    };
+                                    let _ = client_tx.send(Message::Text(serde_json::to_string(&out)?)).await;
+                                }
+                            }
                         }
                         other => {
                             if let Some(out_msg) = client_cmd_to_upstream(other) {
@@ -399,7 +487,14 @@ async fn handle_tastytrade_ws(state: Arc<AppState>, socket: WebSocket) -> anyhow
                     _ => continue,
                 };
 
-                let out = ServerMsg { ty: "stream", payload };
+                let out = ServerMsg {
+                    ty: "stream",
+                    payload,
+                    meta: pqc_fp.as_ref().map(|fp| json!({
+                        "pqc_attested": true,
+                        "pqc_fingerprint": fp
+                    })),
+                };
                 let txt = serde_json::to_string(&out)?;
                 client_tx.send(Message::Text(txt)).await?;
             }
@@ -432,6 +527,7 @@ fn client_cmd_to_upstream(cmd: ClientCmd) -> Option<serde_json::Value> {
         }
         ClientCmd::Raw { payload } => Some(payload),
         ClientCmd::ConfigureStreamer { .. } => None,
+        ClientCmd::PqcAttest { .. } => None,
     }
 }
 
@@ -442,6 +538,30 @@ fn resolve_streamer_env(cfg: &TastytradeConfig) -> anyhow::Result<(String, Strin
     Err(anyhow::anyhow!(
         "Missing streamer credentials. Set TASTYTRADE_STREAMER_URL and TASTYTRADE_STREAMER_TOKEN (preferred for demos)."
     ))
+}
+
+fn decode_hex(s: &str) -> Result<Vec<u8>, ()> {
+    let s = s.trim();
+    if s.len() % 2 != 0 {
+        return Err(());
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    let bytes = s.as_bytes();
+    for i in (0..bytes.len()).step_by(2) {
+        let hi = from_hex_nibble(bytes[i])?;
+        let lo = from_hex_nibble(bytes[i + 1])?;
+        out.push((hi << 4) | lo);
+    }
+    Ok(out)
+}
+
+fn from_hex_nibble(b: u8) -> Result<u8, ()> {
+    match b {
+        b'0'..=b'9' => Ok(b - b'0'),
+        b'a'..=b'f' => Ok(b - b'a' + 10),
+        b'A'..=b'F' => Ok(b - b'A' + 10),
+        _ => Err(()),
+    }
 }
 
 fn spawn_sim(tx: broadcast::Sender<serde_json::Value>) {
