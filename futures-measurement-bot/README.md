@@ -1,101 +1,215 @@
 ## Futures Measurement Bot (PQCNet)
 
-A **futures trading measurement bot**: it measures execution quality (fill probability, slippage, rejection rate, latency breakdowns, microstructure response) by consuming an event stream:
+A **futures trading execution-quality measurement bot**.
 
-- **Strategy intent** (decision time + reference price)
-- **Execution events** (send/ack/reject/cancel/fill)
-- **Market data snapshots** (top-of-book)
+This crate is intentionally **not** an “alpha bot”. It’s the plumbing you wrap around any strategy/execution stack to answer:
 
-It’s designed to run standalone as a production-shaped Rust crate, while reusing PQCNet components for **auditability and transport primitives**.
+- Did we get filled when we expected to?
+- How much slippage did we take (adverse vs favorable)?
+- Where is latency coming from (decision→send, send→ack, send→fill)?
+- What happened to the market *after* we traded (microstructure response)?
+- Can we turn the measurement stream into **evidence artifacts** (audit trail), not just logs?
 
-### How it works
+It does that by ingesting a single ordered stream of events:
 
-- **Strategy engine** (your code): emits `StrategyIntent` with:
-  - `t_decision`
-  - `reference_price` (mid/bbo/mark)
-  - optional book snapshot
-- **Execution adapter**: emits `OrderSent`, `OrderAck`, `OrderFill`, `OrderCancelled`, `OrderRejected` with raw timestamps.
-- **Metrics engine**: correlates `intent_id → order_id → fills` and updates per-bucket stats.
-- **Audit sinks (PQCNet-backed)**:
-  - **TupleChain** (`autheo-pqcnet-tuplechain`): persists each audit event as a tuple with commitments/sharding.
-  - **QS-DAG** (`pqcnet-qs-dag`): anchors each audit event as a DAG diff (in-memory in this repo) for append-only audit graph semantics.
+- `StrategyIntent` (what the strategy decided, when, with what reference price)
+- `OrderSent` / `OrderAck` / `OrderRejected` / `OrderCancelled` / `OrderFill` (what execution did)
+- `MarketData` (top-of-book snapshots)
 
-### Metrics computed
+…and correlating everything into per-bucket stats.
 
-- **Fill probability**: per bucket, terminal outcomes
-  - \(\text{fills} / (\text{fills} + \text{cancels} + \text{timeouts})\)
-- **Slippage** (bps): compares final VWAP fill to decision reference price
-  - tracked separately as **adverse** vs **favorable**
-- **Rejection rate**: \(\text{rejected} / \text{submitted}\)
-- **Latency** (ms histograms):
+---
+
+### Big picture: how the pieces fit
+
+```
+┌──────────────────┐
+│ Strategy engine  │
+│ (your code)      │
+└───────┬──────────┘
+        │ emits Event::StrategyIntent
+        v
+┌──────────────────┐            ┌──────────────────────────┐
+│ MetricsEngine    │◄───────────│ Market data (top-of-book)│
+│ (correlate+stats)│   observes │ Event::MarketData         │
+└───────┬──────────┘            └──────────────────────────┘
+        │ observes
+        │ Event::Order* (send/ack/reject/cancel/fill)
+        v
+┌──────────────────┐
+│ Execution adapter │
+│ (venue-specific)  │
+└──────────────────┘
+
+In parallel:
+  MetricsEngine -> Telemetry (OTLP-ish) + Audit sinks (TupleChain + QS-DAG)
+```
+
+There are two “front doors” in this repo:
+
+- `src/bin/bot.rs`: a CLI demo that simulates market data, emits intents, calls an execution adapter, and feeds all resulting events into the `MetricsEngine`.
+- `src/bin/web_ui.rs`: a small server that serves a static browser UI, relays a websocket feed (simulated or Tastytrade streamer), and exposes a rescue-route scanner API.
+
+---
+
+### Core data model
+
+All measurement input is represented by the `Event` enum (`src/events.rs`). A typical lifecycle looks like:
+
+1) `MarketData` (snapshot before decision)
+2) `StrategyIntent` (includes `intent_id`, `OrderParams`, optional `reference_price`, optional `book`)
+3) `OrderSent` (binds `intent_id` → `order_id`)
+4) `OrderAck` (optional, but enables send→ack latency)
+5) One terminal outcome:
+   - `OrderFill` (may be partials; a final fill is marked by `is_final = true`)
+   - `OrderCancelled`
+   - `OrderRejected`
+   - Or a **timeout** detected by `MetricsEngine::tick()` when no terminal outcome arrives within `fill_timeout_ms`
+
+The only requirement is that you feed the engine a coherent stream. The engine does not talk to venues directly.
+
+---
+
+### Correlation logic (intent → order → fills)
+
+The `MetricsEngine` (`src/metrics/engine.rs`) correlates in two phases:
+
+- **At intent time**: it creates an `OrderState` keyed by a placeholder `OrderId("intent:<intent_id>")`. This lets you start timing from decision immediately.
+- **At send time** (`OrderSent`): it removes the placeholder state and re-inserts it under the real `order_id`, binding `intent_id → order_id`.
+
+From that point on, all subsequent `OrderAck` / `OrderFill` / `OrderCancelled` are keyed by `order_id`.
+
+Rejections are handled defensively: a venue might reject before an `order_id` exists, so `OrderRejected` supports `intent_id` and/or `order_id`.
+
+---
+
+### Bucketing (how stats are grouped)
+
+Bucket keys live in `src/buckets.rs`.
+
+Every intent/order is assigned a `BucketKey`:
+
+- `symbol`
+- `venue`
+- `side`
+- `order_type`
+- `qty_bucket` (micro/small/medium/large)
+- `tod` (coarse UTC time-of-day bucket)
+
+This lets you compute “fill probability for ES, Autheo, Buy, Limit, Small size, US hours” instead of a single global average.
+
+---
+
+### Metrics computed (what “measurement” means here)
+
+Metrics are stored per bucket in `BucketStats` (`src/metrics/stats.rs`) and surfaced via `snapshot_kv()` / `snapshot_buckets()`.
+
+- **Fill probability**
+  - `filled / (filled + cancelled + timed_out)`
+- **Rejection rate**
+  - `rejected / submitted`
+- **Slippage (bps histograms)**
+  - Compares **final VWAP** to `StrategyIntent.reference_price`.
+  - Slippage is split into:
+    - **adverse**: worse than reference (buys above reference; sells below reference)
+    - **favorable**: better than reference
+- **Latency (ms histograms)**
   - decision→send
   - send→ack
   - send→first fill
   - send→last fill
-- **Microstructure response** (bps histograms): mid drift after fill at horizons (100ms/1s/5s by default)
+- **Microstructure response (bps histograms)**
+  - At configurable horizons (default 100ms / 1s / 5s), it measures mid-price drift using the latest available `MarketData`.
+- **Decision-time spread/depth context**
+  - Spread bps at decision, and bid/ask depth (sum across top-N)
 
-Buckets include: symbol, venue, side, order type, quantity bucket, and a coarse time-of-day bucket.
+Important nuance: microstructure horizons are recorded when you call `MetricsEngine::tick(now)` and the engine can find a recent `MarketData` snapshot for the (venue,symbol).
 
-### Why PQCNet helps here
+---
 
-- **TupleChain gives an audit ledger primitive**
-  - Each measurement event becomes a tuple with a deterministic commitment, versioning, and sharding.
-  - You get an evidence trail suitable for post-trade forensics and compliance workflows.
+### Telemetry
 
-- **QS-DAG gives an append-only audit graph model**
-  - The measurement stream can be represented as DAG diffs with attached tuple envelopes.
-  - This is a natural fit for "what happened when" audit timelines and anchoring.
+`MetricsEngine` also records counters/latencies via `pqcnet-telemetry`.
 
-- **QSTP integration surface exists**
-  - PQCNet’s QSTP crate includes tuple-pointer patterns and routing metadata.
-  - In production, the same measurement events can be moved over QSTP tunnels and anchored identically.
+- Default endpoint: `http://localhost:4318` (see `MetricsConfig.telemetry_endpoint`)
+- If you don’t have an OTLP collector running, the demo still works; telemetry is a best-effort side-channel.
 
-In short: PQCNet turns "metrics logs" into **evidence artifacts**.
+---
 
-### Run the demo bot
+### Audit trail (why PQCNet is involved)
 
-From this repo directory:
+This repo treats measurement events as **audit-worthy**: “what happened when” should be representable as immutable-ish evidence, not just text logs.
+
+Audit is abstracted behind `AuditSink` (`src/audit/mod.rs`). The CLI demo (`bot`) fans out to two sinks:
+
+- **TupleChain** (`src/audit/tuplechain.rs` via `autheo-pqcnet-tuplechain`)
+  - Each audit event is stored as a tuple (subject/predicate/object)
+  - A proof/commitment is attached (demo uses signature scheme wiring)
+  - The tuple store can shard and support simple querying
+
+- **QS-DAG** (`src/audit/qsdg.rs` via `pqcnet-qs-dag`)
+  - Each audit event is anchored as a `StateDiff` with an attached `TupleEnvelope` (domain=Finance)
+  - In this repo it’s an in-memory DAG, but the shape matches an append-only audit graph model
+
+In short: PQCNet turns “metrics logs” into **structured artifacts** that are easier to anchor, route, and verify.
+
+---
+
+### Execution adapters (venue integration surface)
+
+Execution is intentionally separated behind `ExecutionAdapter` (`src/execution/mod.rs`).
+
+This repo includes **stub/simulated** adapters to show the event contract:
+
+- `AutheoAdapter` (`src/execution/autheo.rs`)
+  - Demonstrates the intended QSTP/TupleChain integration surface (in-memory in this demo)
+  - Emits send/ack and probabilistic fill/cancel events with simulated timings
+
+- `TradingStationAdapter` (`src/execution/trading_station.rs`)
+  - Another simulated venue path with different latency/fill profile
+
+In production, your adapter would talk to a real order API / FIX gateway / broker SDK and emit the same event types with raw timestamps.
+
+---
+
+### Run the measurement demo (CLI)
+
+From this crate directory:
 
 ```bash
 cargo run --bin bot -- --venue autheo --symbol ES --side buy --order-type limit --qty 1 --iters 50
 ```
 
-It prints a small KV snapshot (e.g., fill probability) at the end.
+It prints a JSON key/value snapshot at the end (including per-bucket fill probability).
 
-### Run the browser demo UI (Streamer + PQCNet WASM)
+---
 
-This repo also includes a **static HTML demo UI** plus a small Rust server that:
+### Web UI demo (static UI + websocket relay)
+
+This repo includes a static browser UI plus a small Rust server:
 
 - Serves `web-ui/` (HTML/JS/CSS)
-- Exposes a **local websocket** at `/ws` for the browser
-- Connects to the **Tastytrade Streamer websocket** (or a simulator) and relays messages to the browser
-- Serves `autheo_pqc_wasm.wasm` at `/wasm/autheo_pqc_wasm.wasm` so the browser can run a PQCNet handshake
+- Exposes a local websocket at `/ws` for the browser
+- In **sim mode**, emits a fake quote stream (`SIM`) ~4 times/second
+- In **Tastytrade streamer mode**, connects to a dxLink-style upstream websocket and forwards messages
+- Serves PQC WASM at `/wasm/autheo_pqc_wasm.wasm` so the browser can run a PQCNet handshake demo
+- Exposes `POST /api/rescue_scan` for the Distressed Position Rescue Scanner
 
-#### Distressed Position Rescue Scanner (feature)
+Note: the server also exposes `/api/metrics/*`, but the current web UI server does not yet ingest any measurement `Event`s into its `MetricsEngine` (it’s a placeholder for wiring a live event stream later).
 
-The web UI includes a **Distressed Position Rescue Scanner** that helps you explore “escape routes” for a short-premium vertical spread by comparing:
+#### Distressed Position Rescue Scanner
 
-- **Break-even** (better for put spreads = lower; better for call spreads = higher)
-- **Theta/day** (prefers positive time decay)
-- **Capital at risk** (allowed to increase, but penalized)
+A concrete, interactive example of “strategy-shaped analytics” living next to the measurement plumbing:
 
-**Why it’s here**
+- You enter a vertical spread (short strike, long strike, DTE, IV, underlying)
+- The server computes theoretical prices/Greeks (self-contained Black–Scholes)
+- It enumerates candidate rescue routes along:
+  - **roll out** (increase DTE)
+  - **roll down** (shift strikes)
+  - **widen** (increase width)
+- It ranks candidates to prefer positive theta and/or improved break-even, with a small penalty for extra risk
 
-- It’s a concrete, interactive example of “strategy-shaped” analytics living next to the bot + audit/metrics plumbing.
-- It’s **self-contained** (no external quant dependencies): a simple Black–Scholes implementation + a deterministic candidate grid so demos are reproducible.
-- It gives a fast way to sanity-check “roll out / roll down / widen” adjustments in a consistent scoring framework (not a recommendation engine).
-
-**How it works (high level)**
-
-- You provide a vertical (short strike / long strike / DTE / IV / underlying).
-- The engine computes theoretical leg prices + Greeks (delta/theta/vega) and derives spread metrics (credit, break-even, theta/day, capital at risk).
-- It enumerates candidate routes across three axes:
-  - **Roll out**: increases DTE across a fixed grid
-  - **Roll down**: shifts strikes (down for puts, up for calls)
-  - **Widen**: moves the long leg further OTM to increase width
-- Candidates are filtered/ranked to prefer **positive theta** and/or an **improved break-even**, with a small penalty for extra risk.
-
-> Note: this is a simplified model intended for exploration and UI demos, not trading advice.
+This is for exploration and demo UX, not trading advice.
 
 #### 1) Start the server (simulated stream)
 
@@ -103,24 +217,17 @@ The web UI includes a **Distressed Position Rescue Scanner** that helps you expl
 STREAM_SIM=1 cargo run --bin web_ui
 ```
 
-Open `http://localhost:8080/` and hit **Connect**. You should see a `SIM` stream updating ~4 times/second.
+Open `http://localhost:8080/` and hit **Connect**.
 
-If you’re running from the repo root (no `cd`), use:
+If you’re running from the repo root (no `cd`):
 
 ```bash
 cargo run --manifest-path futures-measurement-bot/Cargo.toml --bin web_ui
 ```
 
-Then:
+#### 2) Start the server (real Tastytrade streamer)
 
-- Open `http://localhost:8080/`
-- Scroll to **Distressed Position Rescue Scanner**
-- Enter your spread inputs (e.g. PLTR: **short strike / long strike / DTE / IV / underlying**)
-- Click **Scan rescue routes**
-
-#### 2) Start the server (real Tastytrade Streamer)
-
-For the demo server, **do not** put API tokens in browser JS. Instead, set them as server env vars:
+Set credentials as server env vars (don’t put tokens in browser JS):
 
 ```bash
 export TASTYTRADE_STREAMER_URL="wss://<dxlink-streamer-host>/..."
@@ -128,16 +235,15 @@ export TASTYTRADE_STREAMER_TOKEN="<streamer-token>"
 cargo run --bin web_ui
 ```
 
-Then open `http://localhost:8080/`, click **Connect**, and use **Subscribe** to request symbols/feeds.
+Open `http://localhost:8080/`, click **Connect**, then use **Subscribe**.
 
-Notes:
+---
 
-- The dxLink protocol details can change; the UI includes a **Raw send** box so you can try exact JSON payloads without redeploying.
-- The server currently expects `TASTYTRADE_STREAMER_URL` + `TASTYTRADE_STREAMER_TOKEN` (recommended for demos). A login/token-fetch flow can be added later if needed.
+### Build / embed PQCNet WASM (for the browser demo)
 
-#### 3) Build / embed PQCNet WASM
+The UI requests:
 
-The UI tries to fetch `GET /wasm/autheo_pqc_wasm.wasm`.
+- `GET /wasm/autheo_pqc_wasm.wasm`
 
 By default, the server looks for a built artifact at:
 
@@ -151,15 +257,28 @@ rustup target add wasm32-unknown-unknown
 cargo build --release -p autheo-pqc-wasm --target wasm32-unknown-unknown
 ```
 
-If you want to override where the server loads the WASM from:
+Override the path:
 
 ```bash
 AUTHEO_PQC_WASM_PATH="/absolute/path/to/autheo_pqc_wasm.wasm" cargo run --bin web_ui
 ```
 
-If you don’t want to build WASM, you can also copy a prebuilt `autheo_pqc_wasm.wasm` into:
+Or copy a prebuilt artifact into:
 
 - `web-ui/wasm/autheo_pqc_wasm.wasm`
+
+---
+
+### Extending / integrating
+
+- **Plug in real market data**: feed `Event::MarketData` into `MetricsEngine::observe()`.
+- **Plug in a real strategy**: emit `Event::StrategyIntent` with a stable `intent_id` and a decision-time `reference_price`.
+- **Plug in a real venue**: implement `ExecutionAdapter` and emit `Event::Order*` with accurate timestamps.
+- **Drive time**: call `MetricsEngine::tick(now)` periodically to process timeouts and microstructure horizons.
+- **Change horizons/timeouts**: pass a custom `MetricsConfig`.
+- **Swap audit backends**: implement `AuditSink` (or use `CompositeAuditSink` to fan out).
+
+---
 
 ### Test
 
@@ -167,4 +286,4 @@ If you don’t want to build WASM, you can also copy a prebuilt `autheo_pqc_wasm
 cargo test
 ```
 
-This runs unit tests that validate fill probability, slippage directionality, and basic correlation logic.
+This validates basic correlation logic and the rescue scanner.
