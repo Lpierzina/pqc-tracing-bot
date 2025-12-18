@@ -354,6 +354,102 @@ function clearRescueErr() {
 
 let rescueSort = { key: "score", dir: "desc" };
 let rescueRows = [];
+let rescueLastPlot = { current: null, candidates: null };
+
+// -------- Pop-out modal helpers (click-to-expand) --------
+let popoutState = null;
+
+function addPopoutHint(labelEl) {
+  if (!labelEl) return;
+  const hint = document.createElement("span");
+  hint.className = "popoutHint";
+  hint.textContent = "(click to expand)";
+  labelEl.appendChild(hint);
+}
+
+function closePopout() {
+  if (!popoutState) return;
+  const { overlay, node, placeholder, onClose } = popoutState;
+
+  try {
+    placeholder.replaceWith(node);
+  } catch {
+    // ignore
+  }
+  overlay.remove();
+  document.body.classList.remove("modalOpen");
+  popoutState = null;
+  if (typeof onClose === "function") onClose();
+}
+
+function openPopout({ title, node, onOpen, onClose }) {
+  if (!node) return;
+  if (popoutState) closePopout();
+
+  const placeholder = document.createElement("div");
+  placeholder.className = "popoutPlaceholder";
+  placeholder.textContent = "Popped out — press Esc or click outside to close and restore.";
+
+  node.replaceWith(placeholder);
+
+  const overlay = document.createElement("div");
+  overlay.className = "popoutOverlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+
+  const panel = document.createElement("div");
+  panel.className = "popoutPanel";
+
+  const header = document.createElement("div");
+  header.className = "popoutHeader";
+
+  const t = document.createElement("div");
+  t.className = "popoutTitle";
+  t.textContent = title || "Expanded view";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "popoutClose";
+  closeBtn.type = "button";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", closePopout);
+
+  header.appendChild(t);
+  header.appendChild(closeBtn);
+
+  const body = document.createElement("div");
+  body.className = "popoutBody";
+  body.appendChild(node);
+
+  panel.appendChild(header);
+  panel.appendChild(body);
+  overlay.appendChild(panel);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closePopout();
+  });
+
+  const onKey = (e) => {
+    if (e.key === "Escape") closePopout();
+  };
+  window.addEventListener("keydown", onKey, { capture: true });
+
+  document.body.appendChild(overlay);
+  document.body.classList.add("modalOpen");
+
+  popoutState = {
+    overlay,
+    node,
+    placeholder,
+    onClose: () => {
+      window.removeEventListener("keydown", onKey, { capture: true });
+      if (typeof onClose === "function") onClose();
+    },
+  };
+
+  if (typeof onOpen === "function") onOpen();
+  // Best-effort focus to make ESC feel responsive.
+  closeBtn.focus({ preventScroll: true });
+}
 
 function sortRescueRows() {
   const { key, dir } = rescueSort;
@@ -483,6 +579,11 @@ function renderRescuePlot(current, candidates) {
   ctx.fillText(`Theta/day ${money(thMin)} → ${money(thMax)}`, pad + 220, 16);
 }
 
+function rerenderRescuePlotIfPossible() {
+  if (!rescueLastPlot.current || !Array.isArray(rescueLastPlot.candidates)) return;
+  renderRescuePlot(rescueLastPlot.current, rescueLastPlot.candidates);
+}
+
 async function runRescueScan() {
   clearRescueErr();
 
@@ -564,7 +665,9 @@ async function runRescueScan() {
 
     sortRescueRows();
     renderRescueTable();
-    renderRescuePlot(cur, data.candidates || []);
+    rescueLastPlot.current = cur;
+    rescueLastPlot.candidates = data.candidates || [];
+    renderRescuePlot(cur, rescueLastPlot.candidates);
   } catch (e) {
     showRescueErr(String(e));
   } finally {
@@ -575,6 +678,8 @@ async function runRescueScan() {
 function clearRescue() {
   clearRescueErr();
   rescueRows = [];
+  rescueLastPlot.current = null;
+  rescueLastPlot.candidates = null;
   renderRescueTable();
   $("curCredit").textContent = "—";
   $("curBe").textContent = "—";
@@ -602,6 +707,62 @@ for (const th of $("rescueTable")?.querySelectorAll("th") || []) {
     renderRescueTable();
   });
 }
+
+// click-to-expand: plot + candidates section
+(() => {
+  const plotCanvas = $("rescuePlot");
+  const plotRow = plotCanvas?.closest?.(".row");
+  const plotLabel = plotRow?.querySelector?.(".label");
+
+  const table = $("rescueTable");
+  const tableRow = table?.closest?.(".row");
+  const tableLabel = tableRow?.querySelector?.(".label");
+  const tableWrap = tableRow?.querySelector?.(".tableWrap");
+
+  if (plotCanvas && plotRow) {
+    plotCanvas.classList.add("popoutTarget");
+    plotCanvas.title = "Click to expand";
+    addPopoutHint(plotLabel);
+
+    const open = () =>
+      openPopout({
+        title: "Theta vs Break-even (top candidates)",
+        node: plotRow,
+        onOpen: () => {
+          rerenderRescuePlotIfPossible();
+          // Re-render on resize while expanded (keeps canvas crisp).
+          const onResize = () => rerenderRescuePlotIfPossible();
+          window.addEventListener("resize", onResize);
+          popoutState.onClose = ((orig) => () => {
+            window.removeEventListener("resize", onResize);
+            orig?.();
+          })(popoutState.onClose);
+        },
+        onClose: () => rerenderRescuePlotIfPossible(),
+      });
+
+    plotCanvas.addEventListener("click", open);
+    plotLabel?.addEventListener?.("click", open);
+  }
+
+  if (tableRow && tableWrap) {
+    tableWrap.classList.add("popoutTarget");
+    tableWrap.title = "Click label to expand";
+    addPopoutHint(tableLabel);
+
+    const open = () =>
+      openPopout({
+        title: "Candidates (sortable)",
+        node: tableRow,
+      });
+
+    // Don't steal clicks from header sorting; open via label (and background only).
+    tableLabel?.addEventListener?.("click", open);
+    tableWrap.addEventListener("click", (e) => {
+      if (e.target === tableWrap) open();
+    });
+  }
+})();
 
 // Init PQC UI state (best-effort; no network calls).
 setPqcWasmStatus(null, "not loaded");
