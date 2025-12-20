@@ -271,6 +271,106 @@
           </aside>
         </div>
       </section>
+
+      <section class="card" id="openMaCard">
+        <h2>Open-MA Trend Window Detector</h2>
+        <p class="small">
+          Live “open moving averages” phase detector: it watches a streaming price series and marks contiguous windows where
+          SMA(fast) and SMA(slow) are <b>open</b> (minimum gap) and both are sloping in the same direction. Emits <b>BEGIN</b> /
+          <b>END</b> points as they happen.
+        </p>
+
+        <div class="row">
+          <label class="label">Alert</label>
+          <div id="openMaAlert" class="alert">No data yet — connect + subscribe, then pick a symbol.</div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Symbol to watch</label>
+            <input id="openMaSymbol" class="input" value="SIM" />
+          </div>
+          <div>
+            <label class="label">Price source</label>
+            <select id="openMaSource" class="input">
+              <option value="last" selected>Last</option>
+              <option value="mid">Mid ( (bid+ask)/2 )</option>
+              <option value="bid">Bid</option>
+              <option value="ask">Ask</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Fast SMA period</label>
+            <input id="openMaFast" class="input mono" value="10" />
+          </div>
+          <div>
+            <label class="label">Slow SMA period</label>
+            <input id="openMaSlow" class="input mono" value="20" />
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Slope lookback (bars)</label>
+            <input id="openMaSlopeLb" class="input mono" value="3" />
+          </div>
+          <div>
+            <label class="label">Min gap (% of slow SMA)</label>
+            <input id="openMaMinGapPct" class="input mono" value="0.5" />
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label class="label">Min slope (%/bar, abs)</label>
+            <input id="openMaMinSlopePct" class="input mono" value="0.10" />
+          </div>
+          <div>
+            <label class="label">Max points in plot</label>
+            <input id="openMaMaxPts" class="input mono" value="600" />
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="openMaPause" class="btn btn-secondary">Pause</button>
+          <button id="openMaClear" class="btn btn-secondary">Clear</button>
+          <button id="openMaRecalc" class="btn btn-secondary">Recompute</button>
+        </div>
+
+        <div class="kvs">
+          <div class="kv"><span class="k">Phase</span><span class="v" id="openMaPhase">—</span></div>
+          <div class="kv"><span class="k">Active since</span><span class="v mono" id="openMaActiveSince">—</span></div>
+          <div class="kv"><span class="k">Last BEGIN</span><span class="v mono" id="openMaLastBegin">—</span></div>
+          <div class="kv"><span class="k">Last END</span><span class="v mono" id="openMaLastEnd">—</span></div>
+        </div>
+
+        <div class="row">
+          <label class="label">Price + SMA(fast/slow) with BEGIN/END markers</label>
+          <canvas id="openMaPlot" width="900" height="240" class="plot"></canvas>
+        </div>
+
+        <div class="row">
+          <label class="label">Detected windows (latest first)</label>
+          <div class="tableWrap">
+            <table class="tbl" id="openMaTable">
+              <thead>
+                <tr>
+                  <th>Dir</th>
+                  <th>Begin (UTC)</th>
+                  <th>End (UTC)</th>
+                  <th>Bars</th>
+                  <th>Begin px</th>
+                  <th>End px</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
 
     <script type="module" src="/app.js"></script>

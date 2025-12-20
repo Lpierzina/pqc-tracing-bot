@@ -568,9 +568,27 @@ fn spawn_sim(tx: broadcast::Sender<serde_json::Value>) {
     tokio::spawn(async move {
         let mut t = tokio::time::interval(Duration::from_millis(250));
         let mut last = 100.0f64;
+        let mut tick: u64 = 0;
         loop {
             t.tick().await;
-            last *= 1.0 + (rand::random::<f64>() - 0.5) * 0.002;
+            tick = tick.wrapping_add(1);
+
+            // Make SIM useful for the Open-MA detector: alternate between drift regimes so
+            // the UI reliably produces BEGIN/END markers without a real market feed.
+            //
+            // Regime schedule (each block ~40s at 250ms/tick):
+            // - flat/noise
+            // - up drift
+            // - flat/noise
+            // - down drift
+            let phase = (tick / 160) % 4;
+            let drift = match phase {
+                1 => 0.0012,  // +0.12% per tick (strong up)
+                3 => -0.0012, // -0.12% per tick (strong down)
+                _ => 0.0,
+            };
+            let noise = (rand::random::<f64>() - 0.5) * 0.0006; // +/- 0.03%
+            last *= 1.0 + drift + noise;
             let bid = last - 0.01;
             let ask = last + 0.01;
             let msg = json!({
