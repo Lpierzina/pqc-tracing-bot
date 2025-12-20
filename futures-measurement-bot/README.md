@@ -194,6 +194,7 @@ This repo includes a static browser UI plus a small Rust server:
 - In **Tastytrade streamer mode**, connects to a dxLink-style upstream websocket and forwards messages
 - Serves PQC WASM at `/wasm/autheo_pqc_wasm.wasm` so the browser can run a PQCNet handshake demo
 - Exposes `POST /api/rescue_scan` for the Distressed Position Rescue Scanner
+- Includes a **live Open-MA trend-window detector** in the browser UI (no backend required)
 
 Note: the server also exposes `/api/metrics/*`, but the current web UI server does not yet ingest any measurement `Event`s into its `MetricsEngine` (it’s a placeholder for wiring a live event stream later).
 
@@ -236,6 +237,39 @@ cargo run --bin web_ui
 ```
 
 Open `http://localhost:8080/`, click **Connect**, then use **Subscribe**.
+
+#### Open-MA trend-window detector (live chart + BEGIN/END alerts)
+
+The UI includes a live “open moving averages” detector that marks contiguous **trend windows** and emits the same “begin/end”
+concept as the circled points in the prompt.
+
+- **Input**: the live websocket stream (simulated `SIM` or forwarded dxLink messages).
+- **Signal definition** (mirrors `src/strategy/open_ma_trend.rs`):
+  - Compute SMA(fast) and SMA(slow) on the observed price series (oldest → newest).
+  - At bar \(i\), classify as:
+    - **UP** if \( \text{SMA}_{fast} > \text{SMA}_{slow} \) and both SMA slopes are positive.
+    - **DOWN** if \( \text{SMA}_{fast} < \text{SMA}_{slow} \) and both SMA slopes are negative.
+  - Require the averages to be “open”:
+    - Gap constraint: \( |\text{SMA}_{fast} - \text{SMA}_{slow}| / |\text{SMA}_{slow}| \ge \text{min\_gap\_pct} \)
+  - Require minimum momentum:
+    - Slope constraint: for a lookback of `slope_lookback` bars, both SMAs must have
+      \( |\Delta \text{SMA} / \text{SMA}| \) per bar ≥ `min_slope_pct_per_bar`.
+- **BEGIN/END semantics**:
+  - A window **begins** at the first bar where the classifier returns UP/DOWN.
+  - A window **ends** at the last bar before the classifier becomes `None` (or switches direction).
+
+**How to use it**
+
+- Start `web_ui` (sim or streamer mode), open `http://localhost:8080/`, and connect your feed.
+- In the **Open-MA Trend Window Detector** card:
+  - Set **Symbol to watch** (default `SIM` in sim mode).
+  - Pick **Price source**:
+    - `Last` works for sim mode and many trade feeds.
+    - `Mid` uses \( (bid+ask)/2 \) if both are present.
+  - Tune `fast/slow`, `slope lookback`, `min gap`, and `min slope` if needed.
+- Watch the chart:
+  - The shaded region indicates the currently active open-MA phase (green=UP, red=DOWN).
+  - Vertical markers show detected BEGIN/END points as they occur.
 
 ---
 

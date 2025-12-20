@@ -8,6 +8,13 @@ const pqcAttestStatusEl = $("pqcAttestStatus");
 const pqcFpServerEl = $("pqcFpServer");
 const pqcFpBrowserEl = $("pqcFpBrowser");
 
+// Open-MA detector UI
+const openMaAlertEl = $("openMaAlert");
+const openMaPhaseEl = $("openMaPhase");
+const openMaActiveSinceEl = $("openMaActiveSince");
+const openMaLastBeginEl = $("openMaLastBegin");
+const openMaLastEndEl = $("openMaLastEnd");
+
 const LS_STREAMER_URL = "tt_streamer_url";
 const LS_STREAMER_TOKEN = "tt_streamer_token";
 
@@ -40,6 +47,13 @@ function log(line, obj) {
   const div = document.createElement("div");
   div.textContent = `[${ts}] ${msg}`;
   logEl.prepend(div);
+}
+
+function setAlert(el, kind, text) {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("ok", kind === "ok");
+  el.classList.toggle("bad", kind === "bad");
 }
 
 function parseSymbols() {
@@ -153,11 +167,13 @@ function connect() {
     if (msg?.type === "stream" && msg.payload !== undefined) {
       log("<- stream", msg.payload);
       if (typeof msg.payload === "object") updateTopOfBook(msg.payload);
+      if (typeof msg.payload === "object") openMaIngestStream(msg.payload);
       return;
     }
 
     log("<-", msg);
     if (typeof msg === "object") updateTopOfBook(msg);
+    if (typeof msg === "object") openMaIngestStream(msg);
   };
 
   setStatus(null, "connecting...");
@@ -195,6 +211,597 @@ setStatus(false, "disconnected");
 loadStreamerSettings();
 $("streamerUrl")?.addEventListener("change", persistStreamerSettings);
 $("streamerToken")?.addEventListener("change", persistStreamerSettings);
+
+// -------- Open-MA Trend Window Detector (live, client-side) --------
+
+function fmtTsUTC(ms) {
+  if (!Number.isFinite(ms)) return "—";
+  return new Date(ms).toISOString();
+}
+
+function fN(x, digits) {
+  return Number.isFinite(x) ? x.toFixed(digits) : "—";
+}
+
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function parseIntSafe(t, fallback) {
+  const v = Number(String(t ?? "").trim());
+  const n = Math.floor(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function parseFloatSafe(t, fallback) {
+  const v = Number(String(t ?? "").trim());
+  return Number.isFinite(v) ? v : fallback;
+}
+
+function parseStreamFields(msg) {
+  // Best-effort extraction across sim + various websocket payload shapes.
+  const root = Array.isArray(msg) ? msg[0] || msg : msg;
+  const inner = Array.isArray(root?.data) ? root.data[0] : root?.data;
+  const sym = root?.symbol || root?.eventSymbol || inner?.symbol || inner?.eventSymbol || null;
+  const bid =
+    root?.bidPrice ??
+    inner?.bidPrice ??
+    inner?.bid ??
+    root?.bid ??
+    root?.bestBid ??
+    inner?.bestBid;
+  const ask =
+    root?.askPrice ??
+    inner?.askPrice ??
+    inner?.ask ??
+    root?.ask ??
+    root?.bestAsk ??
+    inner?.bestAsk;
+  const last =
+    root?.lastPrice ??
+    inner?.lastPrice ??
+    inner?.last ??
+    root?.last ??
+    root?.price ??
+    inner?.price;
+  const tsRaw = root?.ts || inner?.ts || root?.timestamp || inner?.timestamp || null;
+  const tsMs = tsRaw ? Date.parse(tsRaw) : Date.now();
+  return { sym, bid, ask, last, tsMs: Number.isFinite(tsMs) ? tsMs : Date.now() };
+}
+
+function selectPrice(fields, source) {
+  const bid = fields.bid;
+  const ask = fields.ask;
+  const last = fields.last;
+  if (source === "bid") return Number.isFinite(bid) ? Number(bid) : null;
+  if (source === "ask") return Number.isFinite(ask) ? Number(ask) : null;
+  if (source === "mid") {
+    if (Number.isFinite(bid) && Number.isFinite(ask)) return (Number(bid) + Number(ask)) / 2;
+    return null;
+  }
+  // default: last
+  return Number.isFinite(last) ? Number(last) : null;
+}
+
+function makeRollingSma(period) {
+  return {
+    period,
+    q: [],
+    sum: 0,
+    push(v) {
+      if (!Number.isFinite(v)) return null;
+      this.q.push(v);
+      this.sum += v;
+      if (this.q.length > this.period) this.sum -= this.q.shift();
+      if (this.q.length < this.period) return null;
+      return this.sum / this.period;
+    },
+    reset(period) {
+      this.period = period;
+      this.q = [];
+      this.sum = 0;
+    },
+  };
+}
+
+const openMaState = (() => {
+  const st = {
+    paused: false,
+    seq: 0,
+    points: [], // {seq, tsMs, price, fSma, sSma}
+    windows: [], // {dir, startSeq, endSeq|null, startTsMs, endTsMs|null, startPx, endPx|null}
+    active: null, // {dir, startSeq}
+    cfg: {
+      fast: 10,
+      slow: 20,
+      slopeLb: 3,
+      minGapPct: 0.005,
+      minSlopePctPerBar: 0.001,
+      maxPts: 600,
+      source: "last",
+      symbol: "SIM",
+    },
+    smaFast: makeRollingSma(10),
+    smaSlow: makeRollingSma(20),
+  };
+  return st;
+})();
+
+function openMaReadCfgFromUI() {
+  const sym = $("openMaSymbol")?.value?.trim?.() ?? openMaState.cfg.symbol;
+  const source = $("openMaSource")?.value ?? openMaState.cfg.source;
+
+  const fast = parseIntSafe($("openMaFast")?.value, 10);
+  const slow = parseIntSafe($("openMaSlow")?.value, 20);
+  const slopeLb = parseIntSafe($("openMaSlopeLb")?.value, 3);
+  const minGapPct = parseFloatSafe($("openMaMinGapPct")?.value, 0.5) / 100.0;
+  const minSlopePctPerBar = parseFloatSafe($("openMaMinSlopePct")?.value, 0.1) / 100.0;
+  const maxPts = clamp(parseIntSafe($("openMaMaxPts")?.value, 600), 60, 5000);
+
+  openMaState.cfg = { ...openMaState.cfg, symbol: sym, source, fast, slow, slopeLb, minGapPct, minSlopePctPerBar, maxPts };
+}
+
+function openMaSetKvs() {
+  const st = openMaState;
+  const active = st.active;
+  if (st.paused) {
+    setText(openMaPhaseEl, "paused");
+  } else if (!active) {
+    setText(openMaPhaseEl, "—");
+  } else {
+    setText(openMaPhaseEl, active.dir === "Up" ? "UP (open)" : "DOWN (open)");
+  }
+
+  if (active) {
+    const p0 = st.points.find((p) => p.seq === active.startSeq);
+    setText(openMaActiveSinceEl, p0 ? fmtTsUTC(p0.tsMs) : "—");
+  } else {
+    setText(openMaActiveSinceEl, "—");
+  }
+
+  const lastBegin = st.windows.length ? st.windows[st.windows.length - 1] : null;
+  if (lastBegin) {
+    setText(openMaLastBeginEl, `${lastBegin.dir} @ ${fmtTsUTC(lastBegin.startTsMs)}`);
+  } else {
+    setText(openMaLastBeginEl, "—");
+  }
+
+  const lastClosed = [...st.windows].reverse().find((w) => w.endSeq !== null);
+  if (lastClosed) {
+    setText(openMaLastEndEl, `${lastClosed.dir} @ ${fmtTsUTC(lastClosed.endTsMs)}`);
+  } else {
+    setText(openMaLastEndEl, "—");
+  }
+}
+
+function openMaClassifyAtIdx(i) {
+  // Mirror futures-measurement-bot/src/strategy/open_ma_trend.rs logic.
+  const st = openMaState;
+  const cfg = st.cfg;
+  const lb = cfg.slopeLb;
+  if (i < lb) return null;
+
+  const pNow = st.points[i];
+  const pThen = st.points[i - lb];
+  const fNow = pNow?.fSma;
+  const sNow = pNow?.sSma;
+  const fThen = pThen?.fSma;
+  const sThen = pThen?.sSma;
+
+  if (!Number.isFinite(fNow) || !Number.isFinite(sNow) || !Number.isFinite(fThen) || !Number.isFinite(sThen)) return null;
+  if (sNow === 0 || fNow === 0) return null;
+
+  const gapPct = Math.abs(fNow - sNow) / Math.abs(sNow);
+  if (!Number.isFinite(gapPct) || gapPct < cfg.minGapPct) return null;
+
+  const fSlopePerBar = (fNow - fThen) / lb;
+  const sSlopePerBar = (sNow - sThen) / lb;
+  const fSlopePct = Math.abs(fSlopePerBar / Math.abs(fNow));
+  const sSlopePct = Math.abs(sSlopePerBar / Math.abs(sNow));
+  if (
+    !Number.isFinite(fSlopePct) ||
+    !Number.isFinite(sSlopePct) ||
+    fSlopePct < cfg.minSlopePctPerBar ||
+    sSlopePct < cfg.minSlopePctPerBar
+  ) {
+    return null;
+  }
+
+  if (fNow > sNow && fSlopePerBar > 0 && sSlopePerBar > 0) return "Up";
+  if (fNow < sNow && fSlopePerBar < 0 && sSlopePerBar < 0) return "Down";
+  return null;
+}
+
+function openMaTrim() {
+  const st = openMaState;
+  const keep = st.cfg.maxPts;
+  if (st.points.length <= keep) return;
+  const drop = st.points.length - keep;
+  st.points.splice(0, drop);
+  // windows are keyed by seq (global), so trimming points doesn't require reindexing.
+}
+
+function openMaPushPoint(tsMs, price) {
+  const st = openMaState;
+  st.seq += 1;
+  const seq = st.seq;
+
+  const fSma = st.smaFast.push(price);
+  const sSma = st.smaSlow.push(price);
+
+  st.points.push({ seq, tsMs, price, fSma, sSma });
+  openMaTrim();
+
+  const i = st.points.length - 1;
+  const dirHere = openMaClassifyAtIdx(i);
+
+  const active = st.active;
+  if (!active && dirHere) {
+    st.active = { dir: dirHere, startSeq: seq };
+    st.windows.push({
+      dir: dirHere,
+      startSeq: seq,
+      endSeq: null,
+      startTsMs: tsMs,
+      endTsMs: null,
+      startPx: price,
+      endPx: null,
+    });
+    setAlert(openMaAlertEl, dirHere === "Up" ? "ok" : "bad", `BEGIN ${dirHere} @ ${fmtTsUTC(tsMs)} px=${fN(price, 2)}`);
+  } else if (active && dirHere && active.dir === dirHere) {
+    // continue window
+  } else if (active && dirHere && active.dir !== dirHere) {
+    // close prior, begin new
+    const last = st.windows[st.windows.length - 1];
+    if (last && last.endSeq === null && last.dir === active.dir) {
+      last.endSeq = st.points[i - 1]?.seq ?? seq;
+      last.endTsMs = st.points[i - 1]?.tsMs ?? tsMs;
+      last.endPx = st.points[i - 1]?.price ?? price;
+    }
+    st.active = { dir: dirHere, startSeq: seq };
+    st.windows.push({
+      dir: dirHere,
+      startSeq: seq,
+      endSeq: null,
+      startTsMs: tsMs,
+      endTsMs: null,
+      startPx: price,
+      endPx: null,
+    });
+    setAlert(
+      openMaAlertEl,
+      dirHere === "Up" ? "ok" : "bad",
+      `SWITCH ${active.dir} → ${dirHere} @ ${fmtTsUTC(tsMs)} px=${fN(price, 2)}`
+    );
+  } else if (active && !dirHere) {
+    // close window at i-1
+    const last = st.windows[st.windows.length - 1];
+    const endPt = st.points[i - 1] || st.points[i] || null;
+    if (last && last.endSeq === null && endPt) {
+      last.endSeq = endPt.seq;
+      last.endTsMs = endPt.tsMs;
+      last.endPx = endPt.price;
+    }
+    st.active = null;
+    if (endPt) {
+      setAlert(openMaAlertEl, null, `END ${last?.dir ?? ""} @ ${fmtTsUTC(endPt.tsMs)} px=${fN(endPt.price, 2)}`);
+    } else {
+      setAlert(openMaAlertEl, null, `END @ ${fmtTsUTC(tsMs)} px=${fN(price, 2)}`);
+    }
+  }
+}
+
+function openMaRenderTable() {
+  const tbody = $("openMaTable")?.querySelector?.("tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const st = openMaState;
+  const rows = [];
+
+  // Active first (if any), then closed windows newest-first.
+  const activeRow = st.windows.length ? st.windows[st.windows.length - 1] : null;
+  if (activeRow && activeRow.endSeq === null) rows.push(activeRow);
+  for (let i = st.windows.length - 1; i >= 0; i--) {
+    const w = st.windows[i];
+    if (w.endSeq !== null) rows.push(w);
+    if (rows.length >= 60) break;
+  }
+
+  for (const w of rows) {
+    const tr = document.createElement("tr");
+    const td = (txt, cls) => {
+      const x = document.createElement("td");
+      x.textContent = txt;
+      if (cls) x.className = cls;
+      return x;
+    };
+    const bars = w.endSeq === null ? "—" : String(Math.max(1, w.endSeq - w.startSeq + 1));
+    const endTs = w.endTsMs ? fmtTsUTC(w.endTsMs) : "— (active)";
+    const endPx = w.endPx != null ? fN(w.endPx, 2) : "—";
+    tr.appendChild(td(w.dir, w.dir === "Up" ? "pos" : "neg"));
+    tr.appendChild(td(fmtTsUTC(w.startTsMs), "mono"));
+    tr.appendChild(td(endTs, "mono"));
+    tr.appendChild(td(bars, "num"));
+    tr.appendChild(td(fN(w.startPx, 2), "num"));
+    tr.appendChild(td(endPx, "num"));
+    tbody.appendChild(tr);
+  }
+}
+
+function openMaRenderPlot() {
+  const c = $("openMaPlot");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  const nextW = Math.max(1, Math.round(rect.width * dpr));
+  const nextH = Math.max(1, Math.round(rect.height * dpr));
+  if (c.width !== nextW || c.height !== nextH) {
+    c.width = nextW;
+    c.height = nextH;
+  }
+  const w = c.width;
+  const h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#070a0f";
+  ctx.fillRect(0, 0, w, h);
+
+  const st = openMaState;
+  const pts = st.points;
+  if (!pts.length) return;
+
+  const pad = 24;
+  const prices = pts.map((p) => p.price).filter((x) => Number.isFinite(x));
+  const fVals = pts.map((p) => p.fSma).filter((x) => Number.isFinite(x));
+  const sVals = pts.map((p) => p.sSma).filter((x) => Number.isFinite(x));
+  const all = [...prices, ...fVals, ...sVals];
+  if (all.length < 2) return;
+  let yMin = Math.min(...all);
+  let yMax = Math.max(...all);
+  if (yMax === yMin) {
+    yMax += 1;
+    yMin -= 1;
+  }
+  const xOf = (idx) => pad + (idx / Math.max(1, pts.length - 1)) * (w - pad * 2);
+  const yOf = (v) => {
+    const t = (v - yMin) / (yMax - yMin);
+    return h - pad - t * (h - pad * 2);
+  };
+
+  // Active window shading (start → now)
+  if (st.active) {
+    const startSeq = st.active.startSeq;
+    const startIdx = pts.findIndex((p) => p.seq === startSeq);
+    if (startIdx >= 0) {
+      const x0 = xOf(startIdx);
+      const x1 = xOf(pts.length - 1);
+      ctx.fillStyle = st.active.dir === "Up" ? "rgba(45,212,191,0.10)" : "rgba(255,90,115,0.10)";
+      ctx.fillRect(x0, pad, x1 - x0, h - pad * 2);
+    }
+  }
+
+  // Axes
+  ctx.strokeStyle = "#1f2a37";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad, h - pad);
+  ctx.stroke();
+
+  // Window boundary markers (visible only)
+  const visibleSeqMin = pts[0].seq;
+  const visibleSeqMax = pts[pts.length - 1].seq;
+  for (const win of st.windows) {
+    if (win.startSeq >= visibleSeqMin && win.startSeq <= visibleSeqMax) {
+      const idx = pts.findIndex((p) => p.seq === win.startSeq);
+      if (idx >= 0) {
+        ctx.strokeStyle = win.dir === "Up" ? "rgba(45,212,191,0.8)" : "rgba(255,90,115,0.8)";
+        ctx.beginPath();
+        const x = xOf(idx);
+        ctx.moveTo(x, pad);
+        ctx.lineTo(x, h - pad);
+        ctx.stroke();
+      }
+    }
+    if (win.endSeq != null && win.endSeq >= visibleSeqMin && win.endSeq <= visibleSeqMax) {
+      const idx = pts.findIndex((p) => p.seq === win.endSeq);
+      if (idx >= 0) {
+        ctx.strokeStyle = "rgba(153,163,176,0.65)";
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        const x = xOf(idx);
+        ctx.moveTo(x, pad);
+        ctx.lineTo(x, h - pad);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  const drawLine = (getY, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < pts.length; i++) {
+      const yv = getY(pts[i]);
+      if (!Number.isFinite(yv)) continue;
+      const x = xOf(i);
+      const y = yOf(yv);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    if (started) ctx.stroke();
+  };
+
+  // Price + SMAs
+  drawLine((p) => p.price, "rgba(230,237,243,0.9)");
+  drawLine((p) => p.fSma, "rgba(79,140,255,0.95)");
+  drawLine((p) => p.sSma, "rgba(45,212,191,0.95)");
+
+  // Labels
+  ctx.fillStyle = "#99a3b0";
+  ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  const cfg = st.cfg;
+  ctx.fillText(
+    `px + SMA(${cfg.fast}) + SMA(${cfg.slow}) | gap>=${(cfg.minGapPct * 100).toFixed(2)}% | slope>=${(
+      cfg.minSlopePctPerBar * 100
+    ).toFixed(3)}%/bar`,
+    pad,
+    16
+  );
+}
+
+function openMaRecomputeFromScratch() {
+  openMaReadCfgFromUI();
+  const st = openMaState;
+
+  // Mirror Rust behavior: ensure fast <= slow for internal SMA calculation.
+  const f0 = st.cfg.fast;
+  const s0 = st.cfg.slow;
+  const fast = Math.min(f0, s0);
+  const slow = Math.max(f0, s0);
+  st.cfg.fast = fast;
+  st.cfg.slow = slow;
+
+  st.smaFast.reset(fast);
+  st.smaSlow.reset(slow);
+
+  const oldPts = st.points.map((p) => ({ seq: p.seq, tsMs: p.tsMs, price: p.price }));
+  st.points = [];
+  st.windows = [];
+  st.active = null;
+
+  for (const p of oldPts) {
+    const fSma = st.smaFast.push(p.price);
+    const sSma = st.smaSlow.push(p.price);
+    st.points.push({ ...p, fSma, sSma });
+    // Replay classification / window logic by temporarily using same codepath:
+    const i = st.points.length - 1;
+    const dirHere = openMaClassifyAtIdx(i);
+    const active = st.active;
+    if (!active && dirHere) {
+      st.active = { dir: dirHere, startSeq: p.seq };
+      st.windows.push({
+        dir: dirHere,
+        startSeq: p.seq,
+        endSeq: null,
+        startTsMs: p.tsMs,
+        endTsMs: null,
+        startPx: p.price,
+        endPx: null,
+      });
+    } else if (active && dirHere && active.dir === dirHere) {
+      // continue
+    } else if (active && dirHere && active.dir !== dirHere) {
+      const last = st.windows[st.windows.length - 1];
+      if (last && last.endSeq === null && i > 0) {
+        const endPt = st.points[i - 1];
+        last.endSeq = endPt.seq;
+        last.endTsMs = endPt.tsMs;
+        last.endPx = endPt.price;
+      }
+      st.active = { dir: dirHere, startSeq: p.seq };
+      st.windows.push({
+        dir: dirHere,
+        startSeq: p.seq,
+        endSeq: null,
+        startTsMs: p.tsMs,
+        endTsMs: null,
+        startPx: p.price,
+        endPx: null,
+      });
+    } else if (active && !dirHere) {
+      const last = st.windows[st.windows.length - 1];
+      if (last && last.endSeq === null && i > 0) {
+        const endPt = st.points[i - 1];
+        last.endSeq = endPt.seq;
+        last.endTsMs = endPt.tsMs;
+        last.endPx = endPt.price;
+      }
+      st.active = null;
+    }
+  }
+
+  openMaTrim();
+  openMaSetKvs();
+  openMaRenderTable();
+  openMaRenderPlot();
+  setAlert(openMaAlertEl, null, "Recomputed windows from buffered points.");
+}
+
+function openMaClear() {
+  const st = openMaState;
+  st.seq = 0;
+  st.points = [];
+  st.windows = [];
+  st.active = null;
+  st.smaFast.reset(st.cfg.fast);
+  st.smaSlow.reset(st.cfg.slow);
+  openMaSetKvs();
+  openMaRenderTable();
+  openMaRenderPlot();
+  setAlert(openMaAlertEl, null, "Cleared.");
+}
+
+function openMaIngestStream(payload) {
+  try {
+    const st = openMaState;
+    if (st.paused) return;
+    if (!payload || typeof payload !== "object") return;
+    openMaReadCfgFromUI();
+
+    const fields = parseStreamFields(payload);
+    const watch = st.cfg.symbol?.trim?.() || "";
+    if (watch && fields.sym && String(fields.sym) !== watch) return;
+    if (!fields.sym && watch) return;
+
+    const price = selectPrice(fields, st.cfg.source);
+    if (!Number.isFinite(price)) return;
+
+    // Ensure internal fast/slow period ordering (Rust swaps).
+    const fast = Math.min(st.cfg.fast, st.cfg.slow);
+    const slow = Math.max(st.cfg.fast, st.cfg.slow);
+    if (fast !== st.smaFast.period || slow !== st.smaSlow.period) {
+      // If config changed live, recompute to keep historical classification consistent.
+      openMaRecomputeFromScratch();
+    }
+
+    openMaPushPoint(fields.tsMs, price);
+    openMaSetKvs();
+    openMaRenderTable();
+    openMaRenderPlot();
+  } catch {
+    // ignore (best-effort UI)
+  }
+}
+
+// Wire buttons + lightweight auto-recompute.
+$("openMaPause")?.addEventListener("click", () => {
+  openMaState.paused = !openMaState.paused;
+  $("openMaPause").textContent = openMaState.paused ? "Resume" : "Pause";
+  openMaSetKvs();
+  setAlert(openMaAlertEl, null, openMaState.paused ? "Paused (not ingesting stream)." : "Resumed.");
+});
+$("openMaClear")?.addEventListener("click", openMaClear);
+$("openMaRecalc")?.addEventListener("click", openMaRecomputeFromScratch);
+
+for (const id of ["openMaSymbol", "openMaSource", "openMaFast", "openMaSlow", "openMaSlopeLb", "openMaMinGapPct", "openMaMinSlopePct", "openMaMaxPts"]) {
+  $(id)?.addEventListener("change", () => openMaRecomputeFromScratch());
+}
+window.addEventListener("resize", () => openMaRenderPlot());
+
+// Init Open-MA UI state
+openMaReadCfgFromUI();
+openMaSetKvs();
+openMaRenderTable();
+openMaRenderPlot();
 
 // -------- PQCNet WASM demo --------
 

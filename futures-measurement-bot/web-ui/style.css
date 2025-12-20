@@ -43,6 +43,12 @@ h2{margin:0 0 10px 0;font-size:16px}
 .pos{color:#b7f7d3}
 .neg{color:#ffd0d8}
 
+/* Alerts (used by Open-MA detector) */
+.alert{border:1px solid var(--border);border-radius:12px;background:#070a0f;padding:10px;color:var(--muted);font-size:12px;line-height:1.4}
+.alert.ok{border-color:#1f3d2f;color:#b7f7d3;background:#0b1a12}
+.alert.bad{border-color:#3d1f25;color:#ffd0d8;background:#1a0b10}
+.alert .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+
 /* Pop-out modal (click-to-expand) */
 body.modalOpen{overflow:hidden}
 .popoutHint{margin-left:6px;font-weight:600;font-size:11px;color:#7f8a99}
