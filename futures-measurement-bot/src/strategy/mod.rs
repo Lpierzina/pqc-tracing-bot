@@ -4,3 +4,4 @@
 //! publish `Event::StrategyIntent` and then hand off to an execution adapter.
 
 pub mod distressed_position_rescue;
+pub mod open_ma_trend;
